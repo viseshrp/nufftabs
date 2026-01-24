@@ -263,6 +263,21 @@ async function exportJson(): Promise<void> {
   } catch {
     setStatus('Exported JSON.');
   }
+
+  try {
+    const blob = new Blob([jsonAreaEl.value], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `nufftabs-backup-${new Date().toISOString().replace(/[:.]/g, '-')}.json`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+    setStatus('Exported backup file.');
+  } catch {
+    // Keep existing status if download fails.
+  }
 }
 
 async function importJson(): Promise<void> {
