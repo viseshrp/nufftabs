@@ -73,6 +73,9 @@ function renderList(savedTabs: SavedTab[]): void {
     url.className = 'item-url';
     url.textContent = tab.url;
 
+    const actions = document.createElement('div');
+    actions.className = 'row-actions';
+
     const restoreButton = document.createElement('button');
     restoreButton.className = 'icon-button row-action';
     restoreButton.setAttribute('aria-label', 'Restore');
@@ -83,10 +86,22 @@ function renderList(savedTabs: SavedTab[]): void {
       void restoreSingle(tab.id);
     });
 
+    const deleteButton = document.createElement('button');
+    deleteButton.className = 'icon-button danger row-action';
+    deleteButton.setAttribute('aria-label', 'Delete');
+    deleteButton.setAttribute('title', 'Delete');
+    deleteButton.innerHTML =
+      '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 6h8l-1 14H9L8 6Z" fill="currentColor"/><rect x="7" y="6" width="10" height="2" rx="1" fill="currentColor"/><rect x="10" y="4" width="4" height="2" rx="1" fill="currentColor"/></svg>';
+    deleteButton.addEventListener('click', () => {
+      void deleteSingle(tab.id);
+    });
+
     main.appendChild(title);
     main.appendChild(url);
+    actions.appendChild(restoreButton);
+    actions.appendChild(deleteButton);
     item.appendChild(main);
-    item.appendChild(restoreButton);
+    item.appendChild(actions);
     listEl.appendChild(item);
   }
 }
@@ -110,6 +125,18 @@ async function restoreSingle(id: string): Promise<void> {
   await setSavedTabs(updated);
   renderList(updated);
   setStatus('Restored 1 tab.');
+}
+
+async function deleteSingle(id: string): Promise<void> {
+  const savedTabs = await getSavedTabs();
+  const updated = savedTabs.filter((entry) => entry.id !== id);
+  if (updated.length === savedTabs.length) {
+    setStatus('Tab not found.');
+    return;
+  }
+  await setSavedTabs(updated);
+  renderList(updated);
+  setStatus('Deleted 1 tab.');
 }
 
 async function restoreAll(): Promise<void> {
