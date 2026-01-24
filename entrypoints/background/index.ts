@@ -49,16 +49,18 @@ function saveTabsToList(tabs: chrome.tabs.Tab[], existing: SavedTab[]): SavedTab
   return saved.length > 0 ? [...saved, ...existing] : existing;
 }
 
-async function condenseCurrentWindow(): Promise<void> {
+async function condenseCurrentWindow(targetWindowId?: number): Promise<void> {
   const settings = await getSettings();
-  const tabs = await chrome.tabs.query({ currentWindow: true });
+  const tabs = await chrome.tabs.query(
+    typeof targetWindowId === 'number' ? { windowId: targetWindowId } : { currentWindow: true },
+  );
   const eligibleTabs = tabs.filter((tab) => {
     if (settings.excludePinned && tab.pinned) return false;
     return typeof tab.url === 'string' && tab.url.length > 0;
   });
 
   if (eligibleTabs.length === 0) {
-    await openOrFocusListPage();
+    await openOrFocusListPage(targetWindowId);
     return;
   }
 
@@ -74,28 +76,36 @@ async function condenseCurrentWindow(): Promise<void> {
     await chrome.tabs.remove(tabIds);
   }
 
-  await openOrFocusListPage();
+  await openOrFocusListPage(targetWindowId);
 }
 
-async function openOrFocusListPage(): Promise<void> {
+async function openOrFocusListPage(targetWindowId?: number): Promise<void> {
   const listUrl = browser.runtime.getURL('/nufftabs.html');
   const existing = await chrome.tabs.query({ url: listUrl });
-  if (existing.length > 0) {
-    const tab = existing[0];
-    if (typeof tab.id === 'number') {
-      await chrome.tabs.update(tab.id, { active: true });
-    }
-    if (typeof tab.windowId === 'number') {
-      await chrome.windows.update(tab.windowId, { focused: true });
-    }
+  const targetId = typeof targetWindowId === 'number' ? targetWindowId : undefined;
+  const inTarget = targetId
+    ? existing.find((tab) => tab.windowId === targetId)
+    : undefined;
+
+  if (inTarget && typeof inTarget.id === 'number') {
+    await chrome.tabs.update(inTarget.id, { active: true });
+    await chrome.windows.update(inTarget.windowId!, { focused: true });
     return;
   }
 
-  await chrome.tabs.create({ url: listUrl });
+  const existingTab = existing.find((tab) => typeof tab.id === 'number');
+  if (existingTab && typeof existingTab.id === 'number' && typeof targetId === 'number') {
+    await chrome.tabs.move(existingTab.id, { windowId: targetId, index: -1 });
+    await chrome.tabs.update(existingTab.id, { active: true });
+    await chrome.windows.update(targetId, { focused: true });
+    return;
+  }
+
+  await chrome.tabs.create({ url: listUrl, windowId: targetId });
 }
 
 export default defineBackground(() => {
-  chrome.action.onClicked.addListener(() => {
-    void condenseCurrentWindow();
+  chrome.action.onClicked.addListener((tab) => {
+    void condenseCurrentWindow(tab?.windowId);
   });
 });
