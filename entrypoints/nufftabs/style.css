@@ -135,6 +135,18 @@ h1 {
   flex-wrap: wrap;
 }
 
+.collapse-toggle svg {
+  transition: transform 0.2s ease;
+}
+
+.group-card.is-collapsed .collapse-toggle svg {
+  transform: rotate(-90deg);
+}
+
+.group-card.is-collapsed .group-items {
+  display: none;
+}
+
 .group-items {
   border-radius: 10px;
   overflow: hidden;

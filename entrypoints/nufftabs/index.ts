@@ -114,6 +114,13 @@ function renderGroups(savedGroups: SavedTabGroups): void {
     const actions = document.createElement('div');
     actions.className = 'group-actions';
 
+    const collapseButton = document.createElement('button');
+    collapseButton.className = 'icon-button collapse-toggle';
+    collapseButton.setAttribute('aria-label', 'Collapse list');
+    collapseButton.setAttribute('title', 'Collapse list');
+    collapseButton.innerHTML =
+      '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6z" fill="currentColor"/></svg>';
+
     const restoreAllButton = document.createElement('button');
     restoreAllButton.className = 'icon-button';
     restoreAllButton.setAttribute('aria-label', 'Restore all tabs');
@@ -134,6 +141,15 @@ function renderGroups(savedGroups: SavedTabGroups): void {
       void deleteGroup(groupKey);
     });
 
+    collapseButton.addEventListener('click', () => {
+      const isCollapsed = card.classList.toggle('is-collapsed');
+      const label = isCollapsed ? 'Expand list' : 'Collapse list';
+      collapseButton.setAttribute('aria-label', label);
+      collapseButton.setAttribute('title', label);
+      updateScrollControls();
+    });
+
+    actions.appendChild(collapseButton);
     actions.appendChild(restoreAllButton);
     actions.appendChild(deleteAllButton);
 
