@@ -15,7 +15,7 @@ body {
 }
 
 .page {
-  max-width: 880px;
+  max-width: 960px;
   margin: 0 auto;
   padding: 24px;
 }
@@ -35,17 +35,25 @@ h1 {
   margin: 0;
   font-size: 20px;
   font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .subtitle {
   margin: 2px 0 0;
   font-size: 12px;
   color: #5f6368;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .app-actions {
   display: flex;
   gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 .content {
@@ -169,6 +177,45 @@ button {
 .list-section {
   border-radius: 12px;
   overflow: hidden;
+}
+
+@media (max-width: 600px) {
+  .page {
+    padding: 16px;
+  }
+
+  .app-bar {
+    padding: 10px 12px;
+    gap: 12px;
+  }
+
+  .content {
+    padding: 12px;
+  }
+
+  .app-actions {
+    gap: 6px;
+  }
+}
+
+@media (max-width: 420px) {
+  .page {
+    padding: 12px;
+  }
+
+  .subtitle {
+    display: none;
+  }
+
+  .app-bar {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .app-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
 }
 
 .io-panel {
