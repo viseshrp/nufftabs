@@ -7,7 +7,20 @@ type SavedTab = {
 
 const STORAGE_KEYS = {
   savedTabs: 'savedTabs',
+  settings: 'settings',
 } as const;
+
+const DEFAULT_SETTINGS = {
+  excludePinned: true,
+};
+
+function getSettings(): Promise<{ excludePinned: boolean }> {
+  return new Promise((resolve) => {
+    chrome.storage.local.get([STORAGE_KEYS.settings], (result) => {
+      resolve({ ...DEFAULT_SETTINGS, ...(result.settings || {}) });
+    });
+  });
+}
 
 function getSavedTabs(): Promise<SavedTab[]> {
   return new Promise((resolve) => {
@@ -37,8 +50,12 @@ function saveTabsToList(tabs: chrome.tabs.Tab[], existing: SavedTab[]): SavedTab
 }
 
 async function condenseCurrentWindow(): Promise<void> {
+  const settings = await getSettings();
   const tabs = await chrome.tabs.query({ currentWindow: true });
-  const eligibleTabs = tabs.filter((tab) => typeof tab.url === 'string' && tab.url.length > 0);
+  const eligibleTabs = tabs.filter((tab) => {
+    if (settings.excludePinned && tab.pinned) return false;
+    return typeof tab.url === 'string' && tab.url.length > 0;
+  });
 
   if (eligibleTabs.length === 0) {
     await chrome.runtime.openOptionsPage();
