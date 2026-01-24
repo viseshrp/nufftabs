@@ -90,9 +90,26 @@ function renderGroups(savedGroups: SavedTabGroups): void {
     const header = document.createElement('div');
     header.className = 'group-header';
 
+    const metaWrap = document.createElement('div');
+
     const title = document.createElement('div');
     title.className = 'group-title';
     title.textContent = `${tabs.length} tab${tabs.length === 1 ? '' : 's'}`;
+
+    const createdAt = tabs.reduce((min, tab) => {
+      const value = typeof tab.savedAt === 'number' ? tab.savedAt : Number.POSITIVE_INFINITY;
+      return value < min ? value : min;
+    }, Number.POSITIVE_INFINITY);
+    const createdLabel = Number.isFinite(createdAt)
+      ? `Created ${formatCreatedAt(createdAt)}`
+      : 'Created —';
+
+    const meta = document.createElement('div');
+    meta.className = 'group-meta';
+    meta.textContent = createdLabel;
+
+    metaWrap.appendChild(title);
+    metaWrap.appendChild(meta);
 
     const actions = document.createElement('div');
     actions.className = 'group-actions';
@@ -120,7 +137,7 @@ function renderGroups(savedGroups: SavedTabGroups): void {
     actions.appendChild(restoreAllButton);
     actions.appendChild(deleteAllButton);
 
-    header.appendChild(title);
+    header.appendChild(metaWrap);
     header.appendChild(actions);
 
     const itemsWrap = document.createElement('div');
@@ -556,6 +573,18 @@ async function init(): Promise<void> {
 }
 
 void init();
+
+function formatCreatedAt(timestamp: number): string {
+  const date = new Date(timestamp);
+  return date.toLocaleString(undefined, {
+    year: 'numeric',
+    month: 'numeric',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    second: '2-digit',
+  });
+}
 
 function getListBottomScrollTarget(): number {
   if (!listSectionEl) return 0;

@@ -122,6 +122,11 @@ h1 {
   margin: 0;
 }
 
+.group-meta {
+  font-size: 12px;
+  color: #5f6368;
+}
+
 
 .group-actions {
   display: flex;
