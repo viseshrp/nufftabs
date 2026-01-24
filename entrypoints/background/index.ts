@@ -54,13 +54,28 @@ async function condenseCurrentWindow(targetWindowId?: number): Promise<void> {
   const tabs = await chrome.tabs.query(
     typeof targetWindowId === 'number' ? { windowId: targetWindowId } : { currentWindow: true },
   );
+  const resolvedWindowId =
+    typeof targetWindowId === 'number'
+      ? targetWindowId
+      : tabs.find((tab) => typeof tab.windowId === 'number')?.windowId;
+  const listUrl = browser.runtime.getURL('/nufftabs.html');
+  const listTabId = await ensureListTabInWindow(listUrl, resolvedWindowId);
   const eligibleTabs = tabs.filter((tab) => {
     if (settings.excludePinned && tab.pinned) return false;
+    if (tab.id === listTabId) return false;
+    if (tab.url === listUrl) return false;
     return typeof tab.url === 'string' && tab.url.length > 0;
   });
 
   if (eligibleTabs.length === 0) {
-    await openOrFocusListPage(targetWindowId);
+    if (typeof listTabId === 'number') {
+      await chrome.tabs.update(listTabId, { active: true });
+      if (typeof resolvedWindowId === 'number') {
+        await chrome.windows.update(resolvedWindowId, { focused: true });
+      }
+    } else {
+      await openOrFocusListPage(resolvedWindowId);
+    }
     return;
   }
 
@@ -76,7 +91,38 @@ async function condenseCurrentWindow(targetWindowId?: number): Promise<void> {
     await chrome.tabs.remove(tabIds);
   }
 
-  await openOrFocusListPage(targetWindowId);
+  if (typeof listTabId === 'number') {
+    await chrome.tabs.update(listTabId, { active: true });
+    if (typeof resolvedWindowId === 'number') {
+      await chrome.windows.update(resolvedWindowId, { focused: true });
+    }
+  } else {
+    await openOrFocusListPage(resolvedWindowId);
+  }
+}
+
+async function ensureListTabInWindow(
+  listUrl: string,
+  targetWindowId?: number,
+): Promise<number | undefined> {
+  const existing = await chrome.tabs.query({ url: listUrl });
+  const targetId = typeof targetWindowId === 'number' ? targetWindowId : undefined;
+  const inTarget = targetId
+    ? existing.find((tab) => tab.windowId === targetId && typeof tab.id === 'number')
+    : undefined;
+
+  if (inTarget && typeof inTarget.id === 'number') {
+    return inTarget.id;
+  }
+
+  const existingTab = existing.find((tab) => typeof tab.id === 'number');
+  if (existingTab && typeof existingTab.id === 'number' && typeof targetId === 'number') {
+    await chrome.tabs.move(existingTab.id, { windowId: targetId, index: -1 });
+    return existingTab.id;
+  }
+
+  const created = await chrome.tabs.create({ url: listUrl, windowId: targetId, active: false });
+  return created.id;
 }
 
 async function openOrFocusListPage(targetWindowId?: number): Promise<void> {
