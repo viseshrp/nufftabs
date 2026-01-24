@@ -149,7 +149,76 @@ button {
   overflow: hidden;
 }
 
-.io,
-.status {
+.io-panel {
   margin-top: 16px;
+}
+
+.io-panel[hidden] {
+  display: none;
+}
+
+.io-header {
+  font-size: 13px;
+  font-weight: 600;
+  color: #5f6368;
+  margin-bottom: 8px;
+}
+
+textarea {
+  width: 100%;
+  border-radius: 10px;
+  border: 1px solid #dadce0;
+  padding: 10px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  font-size: 12px;
+  background: #fafafa;
+}
+
+.io-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.text-button {
+  height: 34px;
+  padding: 0 12px;
+  border-radius: 8px;
+  background: #eef2ff;
+  color: #1a4fd8;
+  font-size: 13px;
+}
+
+.text-button:hover {
+  background: #e0e7ff;
+}
+
+.text-button.danger {
+  background: #fdecec;
+  color: #b32624;
+}
+
+.text-button.danger:hover {
+  background: #f8d7d7;
+}
+
+.snackbar {
+  position: fixed;
+  left: 50%;
+  bottom: 20px;
+  transform: translateX(-50%);
+  background: #323232;
+  color: #fff;
+  padding: 10px 14px;
+  border-radius: 10px;
+  font-size: 12.5px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.snackbar.show {
+  opacity: 1;
+  transform: translateX(-50%) translateY(-4px);
 }

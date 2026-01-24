@@ -13,15 +13,25 @@ const STORAGE_KEYS = {
 
 const listEl = document.querySelector<HTMLUListElement>('#list');
 const emptyEl = document.querySelector<HTMLDivElement>('#empty');
-const statusEl = document.querySelector<HTMLDivElement>('#status');
+const snackbarEl = document.querySelector<HTMLDivElement>('#snackbar');
 const restoreAllEl = document.querySelector<HTMLButtonElement>('#restoreAll');
 const deleteAllEl = document.querySelector<HTMLButtonElement>('#deleteAll');
+const toggleIoEl = document.querySelector<HTMLButtonElement>('#toggleIo');
 const exportJsonEl = document.querySelector<HTMLButtonElement>('#exportJson');
 const importJsonEl = document.querySelector<HTMLButtonElement>('#importJson');
 const jsonAreaEl = document.querySelector<HTMLTextAreaElement>('#jsonArea');
+const ioPanelEl = document.querySelector<HTMLElement>('#ioPanel');
+
+let snackbarTimer: number | undefined;
 
 function setStatus(message: string): void {
-  if (statusEl) statusEl.textContent = message;
+  if (!snackbarEl) return;
+  snackbarEl.textContent = message;
+  snackbarEl.classList.add('show');
+  if (snackbarTimer) window.clearTimeout(snackbarTimer);
+  snackbarTimer = window.setTimeout(() => {
+    snackbarEl.classList.remove('show');
+  }, 2200);
 }
 
 function getSavedTabs(): Promise<SavedTab[]> {
@@ -174,7 +184,12 @@ async function exportJson(): Promise<void> {
   if (!jsonAreaEl) return;
   const savedTabs = await getSavedTabs();
   jsonAreaEl.value = JSON.stringify({ savedTabs }, null, 2);
-  setStatus('Exported JSON.');
+  try {
+    await navigator.clipboard.writeText(jsonAreaEl.value);
+    setStatus('Exported and copied.');
+  } catch {
+    setStatus('Exported JSON.');
+  }
 }
 
 async function importJson(): Promise<void> {
@@ -204,6 +219,11 @@ async function init(): Promise<void> {
 
   deleteAllEl?.addEventListener('click', () => {
     void deleteAll();
+  });
+
+  toggleIoEl?.addEventListener('click', () => {
+    if (!ioPanelEl) return;
+    ioPanelEl.hidden = !ioPanelEl.hidden;
   });
 
   exportJsonEl?.addEventListener('click', () => {
