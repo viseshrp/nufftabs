@@ -115,7 +115,12 @@ async function restoreSingle(id: string): Promise<void> {
     return;
   }
 
-  await chrome.windows.create({ url: tab.url });
+  try {
+    await chrome.windows.create({ url: tab.url });
+  } catch {
+    setStatus('Failed to restore tab.');
+    return;
+  }
   const updated = savedTabs.filter((entry) => entry.id !== id);
   await setSavedTabs(updated);
   renderList(updated);
@@ -130,12 +135,22 @@ async function restoreAll(): Promise<void> {
   }
 
   const [first, ...rest] = savedTabs;
-  const window = await chrome.windows.create({ url: first.url });
-  const windowId = window.id;
-  if (typeof windowId === 'number') {
-    for (const tab of rest) {
-      await chrome.tabs.create({ windowId, url: tab.url });
-    }
+  let windowId: number | undefined;
+  try {
+    const window = await chrome.windows.create({ url: first.url });
+    windowId = window.id;
+  } catch {
+    setStatus('Failed to restore tabs.');
+    return;
+  }
+
+  if (typeof windowId !== 'number') {
+    setStatus('Failed to restore tabs.');
+    return;
+  }
+
+  for (const tab of rest) {
+    await chrome.tabs.create({ windowId, url: tab.url });
   }
 
   await setSavedTabs([]);
