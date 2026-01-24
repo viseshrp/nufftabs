@@ -59,25 +59,32 @@ async function condenseCurrentWindow(targetWindowId?: number): Promise<void> {
       ? targetWindowId
       : tabs.find((tab) => typeof tab.windowId === 'number')?.windowId;
   const listUrl = browser.runtime.getURL('/nufftabs.html');
-  console.info('[nufftabs] condense', {
-    targetWindowId,
-    resolvedWindowId,
-    listUrl,
-    tabCount: tabs.length,
-  });
-  let listTabId: number | undefined;
-  try {
-    listTabId = await ensureListTabInWindow(listUrl, resolvedWindowId);
-    console.info('[nufftabs] ensure list tab', { listTabId });
-  } catch (error) {
-    console.error('[nufftabs] ensure list tab failed', error);
-  }
+  const listUiTabFound = tabs.some((tab) => tab.url === listUrl);
   const eligibleTabs = tabs.filter((tab) => {
     if (settings.excludePinned && tab.pinned) return false;
-    if (tab.id === listTabId) return false;
     if (tab.url === listUrl) return false;
     return typeof tab.url === 'string' && tab.url.length > 0;
   });
+  const excludedCount = tabs.length - eligibleTabs.length;
+  console.info('[nufftabs] condense', {
+    windowId: resolvedWindowId,
+    totalTabs: tabs.length,
+    eligibleCount: eligibleTabs.length,
+    excludedCount,
+    listUiTabFound,
+    listUrl,
+  });
+
+  let listTabId: number | undefined;
+  let listTabAction: string | undefined;
+  try {
+    const result = await ensureListTabInWindow(listUrl, resolvedWindowId);
+    listTabId = result.tabId;
+    listTabAction = result.action;
+    console.info('[nufftabs] list tab ensured', { listTabId, listTabAction });
+  } catch (error) {
+    console.error('[nufftabs] ensure list tab failed', error);
+  }
 
   if (eligibleTabs.length === 0) {
     await focusAndPinListTab(listTabId, resolvedWindowId);
@@ -107,7 +114,7 @@ async function condenseCurrentWindow(targetWindowId?: number): Promise<void> {
 async function ensureListTabInWindow(
   listUrl: string,
   targetWindowId?: number,
-): Promise<number | undefined> {
+): Promise<{ tabId?: number; action: 'found' | 'moved' | 'created' | 'unknown' }> {
   const existing = await chrome.tabs.query({ url: listUrl });
   const targetId = typeof targetWindowId === 'number' ? targetWindowId : undefined;
   const inTarget = targetId
@@ -120,19 +127,19 @@ async function ensureListTabInWindow(
   });
 
   if (inTarget && typeof inTarget.id === 'number') {
-    return inTarget.id;
+    return { tabId: inTarget.id, action: 'found' };
   }
 
   const existingTab = existing.find((tab) => typeof tab.id === 'number');
   if (existingTab && typeof existingTab.id === 'number' && typeof targetId === 'number') {
     await chrome.tabs.move(existingTab.id, { windowId: targetId, index: -1 });
     console.info('[nufftabs] moved list tab', { tabId: existingTab.id, targetId });
-    return existingTab.id;
+    return { tabId: existingTab.id, action: 'moved' };
   }
 
   const created = await chrome.tabs.create({ url: listUrl, windowId: targetId, active: false });
   console.info('[nufftabs] created list tab', { tabId: created.id, targetId });
-  return created.id;
+  return { tabId: created.id, action: 'created' };
 }
 
 async function focusAndPinListTab(
