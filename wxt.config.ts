@@ -13,6 +13,7 @@ export default defineConfig({
         32: 'icon/32.png',
         38: 'icon/38.png',
         48: 'icon/48.png',
+        96: 'icon/96.png',
         128: 'icon/128.png',
       },
     },
@@ -22,6 +23,7 @@ export default defineConfig({
       32: 'icon/32.png',
       38: 'icon/38.png',
       48: 'icon/48.png',
+      96: 'icon/96.png',
       128: 'icon/128.png',
     },
     options_ui: {
