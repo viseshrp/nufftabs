@@ -15,6 +15,7 @@ const STORAGE_KEYS = {
 const listEl = document.querySelector<HTMLUListElement>('#list');
 const emptyEl = document.querySelector<HTMLDivElement>('#empty');
 const snackbarEl = document.querySelector<HTMLDivElement>('#snackbar');
+const tabCountEl = document.querySelector<HTMLSpanElement>('#tabCount');
 const restoreAllEl = document.querySelector<HTMLButtonElement>('#restoreAll');
 const deleteAllEl = document.querySelector<HTMLButtonElement>('#deleteAll');
 const toggleIoEl = document.querySelector<HTMLButtonElement>('#toggleIo');
@@ -53,6 +54,7 @@ function setSavedTabs(savedTabs: SavedTab[]): Promise<void> {
 function renderList(savedTabs: SavedTab[]): void {
   if (!listEl || !emptyEl) return;
   listEl.innerHTML = '';
+  if (tabCountEl) tabCountEl.textContent = String(savedTabs.length);
 
   if (savedTabs.length === 0) {
     emptyEl.style.display = 'block';
