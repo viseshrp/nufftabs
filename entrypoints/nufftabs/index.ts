@@ -165,23 +165,45 @@ async function restoreAll(): Promise<void> {
     return;
   }
 
-  const [first, ...rest] = savedTabs;
+  const chunkSize = 100;
+  const chunks: SavedTab[][] = [];
+  for (let i = 0; i < savedTabs.length; i += chunkSize) {
+    chunks.push(savedTabs.slice(i, i + chunkSize));
+  }
   try {
     const reuse = await getReuseWindowContext();
     if (reuse.shouldReuse && typeof reuse.tabId === 'number' && typeof reuse.windowId === 'number') {
-      await chrome.tabs.create({ windowId: reuse.windowId, url: first.url, active: false });
-      for (const tab of rest) {
-        await chrome.tabs.create({ windowId: reuse.windowId, url: tab.url, active: false });
+      const [firstChunk, ...remainingChunks] = chunks;
+      if (firstChunk) {
+        for (const tab of firstChunk) {
+          await chrome.tabs.create({ windowId: reuse.windowId, url: tab.url, active: false });
+        }
       }
       await chrome.tabs.update(reuse.tabId, { active: true });
-    } else {
-      const window = await chrome.windows.create({ url: first.url });
-      const windowId = window.id;
-      if (typeof windowId !== 'number') {
-        throw new Error('Missing window id');
+      for (const chunk of remainingChunks) {
+        const [first, ...rest] = chunk;
+        if (!first) continue;
+        const window = await chrome.windows.create({ url: first.url });
+        const windowId = window.id;
+        if (typeof windowId !== 'number') {
+          throw new Error('Missing window id');
+        }
+        for (const tab of rest) {
+          await chrome.tabs.create({ windowId, url: tab.url });
+        }
       }
-      for (const tab of rest) {
-        await chrome.tabs.create({ windowId, url: tab.url });
+    } else {
+      for (const chunk of chunks) {
+        const [first, ...rest] = chunk;
+        if (!first) continue;
+        const window = await chrome.windows.create({ url: first.url });
+        const windowId = window.id;
+        if (typeof windowId !== 'number') {
+          throw new Error('Missing window id');
+        }
+        for (const tab of rest) {
+          await chrome.tabs.create({ windowId, url: tab.url });
+        }
       }
     }
   } catch {
