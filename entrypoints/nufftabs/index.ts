@@ -68,12 +68,6 @@ function setSavedGroups(savedTabs: SavedTabGroups): Promise<void> {
   });
 }
 
-function formatGroupLabel(key: string): string {
-  if (/^\d+$/.test(key)) return `Window ${key}`;
-  if (key === 'unknown') return 'Window unknown';
-  return `Window ${key}`;
-}
-
 function renderGroups(savedGroups: SavedTabGroups): void {
   if (!groupsEl || !emptyEl) return;
   groupsEl.innerHTML = '';
@@ -90,33 +84,22 @@ function renderGroups(savedGroups: SavedTabGroups): void {
   emptyEl.style.display = 'none';
 
   for (const [groupKey, tabs] of entries) {
-    const label = formatGroupLabel(groupKey);
-
     const card = document.createElement('section');
     card.className = 'group-card';
 
     const header = document.createElement('div');
     header.className = 'group-header';
 
-    const metaWrap = document.createElement('div');
-
     const title = document.createElement('div');
     title.className = 'group-title';
-    title.textContent = label;
-
-    const meta = document.createElement('div');
-    meta.className = 'group-meta';
-    meta.textContent = `${tabs.length} tab${tabs.length === 1 ? '' : 's'}`;
-
-    metaWrap.appendChild(title);
-    metaWrap.appendChild(meta);
+    title.textContent = `${tabs.length} tab${tabs.length === 1 ? '' : 's'}`;
 
     const actions = document.createElement('div');
     actions.className = 'group-actions';
 
     const restoreAllButton = document.createElement('button');
     restoreAllButton.className = 'icon-button';
-    restoreAllButton.setAttribute('aria-label', `Restore all from ${label}`);
+    restoreAllButton.setAttribute('aria-label', 'Restore all tabs');
     restoreAllButton.setAttribute('title', 'Restore all');
     restoreAllButton.innerHTML =
       '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="7" width="9" height="8" rx="2" fill="currentColor" opacity="0.45"/><rect x="7" y="5" width="9" height="8" rx="2" fill="currentColor" opacity="0.7"/><rect x="13" y="11" width="6" height="2" rx="1" fill="currentColor"/><path d="M18 8l4 4-4 4z" fill="currentColor"/></svg>';
@@ -126,7 +109,7 @@ function renderGroups(savedGroups: SavedTabGroups): void {
 
     const deleteAllButton = document.createElement('button');
     deleteAllButton.className = 'icon-button danger';
-    deleteAllButton.setAttribute('aria-label', `Delete all from ${label}`);
+    deleteAllButton.setAttribute('aria-label', 'Delete all tabs');
     deleteAllButton.setAttribute('title', 'Delete all');
     deleteAllButton.innerHTML =
       '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="8" width="12" height="12" rx="2" fill="currentColor"/><rect x="5" y="6" width="14" height="2" rx="1" fill="currentColor"/><rect x="9" y="4" width="6" height="2" rx="1" fill="currentColor"/></svg>';
@@ -137,7 +120,7 @@ function renderGroups(savedGroups: SavedTabGroups): void {
     actions.appendChild(restoreAllButton);
     actions.appendChild(deleteAllButton);
 
-    header.appendChild(metaWrap);
+    header.appendChild(title);
     header.appendChild(actions);
 
     const itemsWrap = document.createElement('div');
