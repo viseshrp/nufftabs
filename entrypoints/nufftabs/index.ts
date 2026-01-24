@@ -115,7 +115,12 @@ async function restoreSingle(id: string): Promise<void> {
   }
 
   try {
-    await chrome.windows.create({ url: tab.url });
+    const reuse = await getReuseWindowContext();
+    if (reuse.shouldReuse && typeof reuse.tabId === 'number' && typeof reuse.windowId === 'number') {
+      await chrome.tabs.update(reuse.tabId, { url: tab.url });
+    } else {
+      await chrome.windows.create({ url: tab.url });
+    }
   } catch {
     setStatus('Failed to restore tab.');
     return;
@@ -147,22 +152,26 @@ async function restoreAll(): Promise<void> {
   }
 
   const [first, ...rest] = savedTabs;
-  let windowId: number | undefined;
   try {
-    const window = await chrome.windows.create({ url: first.url });
-    windowId = window.id;
+    const reuse = await getReuseWindowContext();
+    if (reuse.shouldReuse && typeof reuse.tabId === 'number' && typeof reuse.windowId === 'number') {
+      await chrome.tabs.update(reuse.tabId, { url: first.url });
+      for (const tab of rest) {
+        await chrome.tabs.create({ windowId: reuse.windowId, url: tab.url });
+      }
+    } else {
+      const window = await chrome.windows.create({ url: first.url });
+      const windowId = window.id;
+      if (typeof windowId !== 'number') {
+        throw new Error('Missing window id');
+      }
+      for (const tab of rest) {
+        await chrome.tabs.create({ windowId, url: tab.url });
+      }
+    }
   } catch {
     setStatus('Failed to restore tabs.');
     return;
-  }
-
-  if (typeof windowId !== 'number') {
-    setStatus('Failed to restore tabs.');
-    return;
-  }
-
-  for (const tab of rest) {
-    await chrome.tabs.create({ windowId, url: tab.url });
   }
 
   await setSavedTabs([]);
@@ -174,6 +183,30 @@ async function deleteAll(): Promise<void> {
   await setSavedTabs([]);
   renderList([]);
   setStatus('Deleted all tabs.');
+}
+
+async function getReuseWindowContext(): Promise<{
+  shouldReuse: boolean;
+  windowId?: number;
+  tabId?: number;
+}> {
+  try {
+    const currentTab = await chrome.tabs.getCurrent();
+    if (!currentTab || typeof currentTab.windowId !== 'number' || typeof currentTab.id !== 'number') {
+      return { shouldReuse: false };
+    }
+    const listUrl = browser.runtime.getURL('/nufftabs.html');
+    const tabsInWindow = await chrome.tabs.query({ windowId: currentTab.windowId });
+    const onlyListTab =
+      tabsInWindow.length === 1 && tabsInWindow[0]?.url === listUrl && tabsInWindow[0]?.id === currentTab.id;
+    return {
+      shouldReuse: onlyListTab,
+      windowId: currentTab.windowId,
+      tabId: currentTab.id,
+    };
+  } catch {
+    return { shouldReuse: false };
+  }
 }
 
 function normalizeImportedTabs(data: unknown): SavedTab[] | null {
