@@ -24,11 +24,8 @@ function getSettings(): Promise<{ excludePinned: boolean }> {
 
 type SavedTabGroups = Record<string, SavedTab[]>;
 
-function normalizeSavedGroups(value: unknown): SavedTabGroups {
-  if (Array.isArray(value)) {
-    return value.length > 0 ? { legacy: value } : {};
-  }
-  if (!value || typeof value !== 'object') return {};
+function coerceSavedGroups(value: unknown): SavedTabGroups {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
   const groups: SavedTabGroups = {};
   for (const [key, group] of Object.entries(value as Record<string, unknown>)) {
     if (Array.isArray(group)) {
@@ -41,7 +38,7 @@ function normalizeSavedGroups(value: unknown): SavedTabGroups {
 function getSavedGroups(): Promise<SavedTabGroups> {
   return new Promise((resolve) => {
     chrome.storage.local.get([STORAGE_KEYS.savedTabs], (result) => {
-      resolve(normalizeSavedGroups(result.savedTabs));
+      resolve(coerceSavedGroups(result.savedTabs));
     });
   });
 }
