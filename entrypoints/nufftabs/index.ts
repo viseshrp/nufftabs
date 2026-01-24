@@ -1,4 +1,5 @@
 import './style.css';
+import { countOneTabNonEmptyLines, parseOneTabExport } from './onetab_import';
 
 type SavedTab = {
   id: string;
@@ -19,6 +20,7 @@ const deleteAllEl = document.querySelector<HTMLButtonElement>('#deleteAll');
 const toggleIoEl = document.querySelector<HTMLButtonElement>('#toggleIo');
 const exportJsonEl = document.querySelector<HTMLButtonElement>('#exportJson');
 const importJsonEl = document.querySelector<HTMLButtonElement>('#importJson');
+const importOneTabEl = document.querySelector<HTMLButtonElement>('#importOneTab');
 const jsonAreaEl = document.querySelector<HTMLTextAreaElement>('#jsonArea');
 const ioPanelEl = document.querySelector<HTMLElement>('#ioPanel');
 
@@ -273,6 +275,23 @@ async function importJson(): Promise<void> {
   }
 }
 
+async function importOneTab(): Promise<void> {
+  if (!jsonAreaEl) return;
+  const text = jsonAreaEl.value;
+  const totalLines = countOneTabNonEmptyLines(text);
+  const imported = parseOneTabExport(text);
+  const skipped = Math.max(0, totalLines - imported.length);
+  if (imported.length === 0) {
+    setStatus(`Imported 0, skipped ${skipped}.`);
+    return;
+  }
+  const existing = await getSavedTabs();
+  const merged = [...existing, ...imported];
+  await setSavedTabs(merged);
+  renderList(merged);
+  setStatus(`Imported ${imported.length}, skipped ${skipped}.`);
+}
+
 async function init(): Promise<void> {
   const refreshList = async () => {
     const savedTabs = await getSavedTabs();
@@ -300,6 +319,10 @@ async function init(): Promise<void> {
 
   importJsonEl?.addEventListener('click', () => {
     void importJson();
+  });
+
+  importOneTabEl?.addEventListener('click', () => {
+    void importOneTab();
   });
 
   chrome.storage.onChanged.addListener((changes, areaName) => {

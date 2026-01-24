@@ -84,6 +84,11 @@ pnpm build
 2. **Export** populates the JSON textarea and copies to clipboard (if allowed).
 3. **Import (replace)** reads the textarea and replaces the saved list if valid.
 
+### Import from OneTab
+1. In OneTab, open “Export / Import URLs” and copy the text.
+2. Paste it into the nufftabs Import panel textarea.
+3. Click **Import OneTab** to append those tabs to the current list.
+
 ### Exclude pinned tabs
 1. Open the options page (Extension details → “Extension options”).
 2. Toggle **Exclude pinned tabs**.
