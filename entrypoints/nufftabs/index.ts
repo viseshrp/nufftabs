@@ -24,6 +24,8 @@ const deleteAllEl = document.querySelector<HTMLButtonElement>('#deleteAll');
 const toggleIoEl = document.querySelector<HTMLButtonElement>('#toggleIo');
 const exportJsonEl = document.querySelector<HTMLButtonElement>('#exportJson');
 const importJsonEl = document.querySelector<HTMLButtonElement>('#importJson');
+const importFileEl = document.querySelector<HTMLButtonElement>('#importFile');
+const importFileInputEl = document.querySelector<HTMLInputElement>('#importFileInput');
 const importOneTabEl = document.querySelector<HTMLButtonElement>('#importOneTab');
 const jsonAreaEl = document.querySelector<HTMLTextAreaElement>('#jsonArea');
 const ioPanelEl = document.querySelector<HTMLElement>('#ioPanel');
@@ -280,10 +282,9 @@ async function exportJson(): Promise<void> {
   }
 }
 
-async function importJson(): Promise<void> {
-  if (!jsonAreaEl) return;
+async function importJsonText(text: string): Promise<void> {
   try {
-    const parsed = JSON.parse(jsonAreaEl.value);
+    const parsed = JSON.parse(text);
     const normalized = normalizeImportedTabs(parsed);
     if (!normalized) {
       setStatus('Invalid JSON: expected array or { savedTabs: [] } with valid URLs.');
@@ -294,6 +295,21 @@ async function importJson(): Promise<void> {
     setStatus('Imported JSON.');
   } catch {
     setStatus('Invalid JSON: could not parse.');
+  }
+}
+
+async function importJson(): Promise<void> {
+  if (!jsonAreaEl) return;
+  await importJsonText(jsonAreaEl.value);
+}
+
+async function importJsonFile(file: File): Promise<void> {
+  try {
+    const text = await file.text();
+    if (jsonAreaEl) jsonAreaEl.value = text;
+    await importJsonText(text);
+  } catch {
+    setStatus('Failed to read file.');
   }
 }
 
@@ -342,6 +358,18 @@ async function init(): Promise<void> {
 
   importJsonEl?.addEventListener('click', () => {
     void importJson();
+  });
+
+  importFileEl?.addEventListener('click', () => {
+    importFileInputEl?.click();
+  });
+
+  importFileInputEl?.addEventListener('change', () => {
+    const file = importFileInputEl.files?.[0];
+    if (file) {
+      void importJsonFile(file);
+      importFileInputEl.value = '';
+    }
   });
 
   importOneTabEl?.addEventListener('click', () => {
