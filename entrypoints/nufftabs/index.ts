@@ -210,8 +210,12 @@ async function importJson(): Promise<void> {
 }
 
 async function init(): Promise<void> {
-  const savedTabs = await getSavedTabs();
-  renderList(savedTabs);
+  const refreshList = async () => {
+    const savedTabs = await getSavedTabs();
+    renderList(savedTabs);
+  };
+
+  await refreshList();
 
   restoreAllEl?.addEventListener('click', () => {
     void restoreAll();
@@ -232,6 +236,19 @@ async function init(): Promise<void> {
 
   importJsonEl?.addEventListener('click', () => {
     void importJson();
+  });
+
+  chrome.storage.onChanged.addListener((changes, areaName) => {
+    if (areaName !== 'local') return;
+    if (changes.savedTabs) {
+      void refreshList();
+    }
+  });
+
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) {
+      void refreshList();
+    }
   });
 }
 
