@@ -121,4 +121,4 @@ In `chrome.storage.local` under `savedTabs` and `settings`.
 It’s a safety default so pinned tabs are not closed unless you turn the setting off.
 
 ## License
-No license file is present in this repository.
+MIT. See `LICENSE`.
