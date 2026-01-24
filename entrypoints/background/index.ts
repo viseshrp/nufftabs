@@ -59,7 +59,7 @@ async function condenseCurrentWindow(targetWindowId?: number): Promise<void> {
       ? targetWindowId
       : tabs.find((tab) => typeof tab.windowId === 'number')?.windowId;
   const listUrl = browser.runtime.getURL('/nufftabs.html');
-  const listTabs = await chrome.tabs.query({ url: listUrl });
+  let listTabs = await chrome.tabs.query({ url: listUrl });
   const listUiTabFound = listTabs.length > 0;
   const eligibleTabs = tabs.filter((tab) => {
     if (settings.excludePinned && tab.pinned) return false;
@@ -88,6 +88,23 @@ async function condenseCurrentWindow(targetWindowId?: number): Promise<void> {
 
   const updatedSaved = saveTabsToList(eligibleTabs, existingSaved);
   await setSavedTabs(updatedSaved);
+
+  if (excludedCount === 0 && listTabs.length === 0 && typeof resolvedWindowId === 'number') {
+    try {
+      const created = await chrome.tabs.create({
+        url: listUrl,
+        windowId: resolvedWindowId,
+        active: false,
+      });
+      listTabs = created ? [created] : listTabs;
+      console.info('[nufftabs] created list tab before close', {
+        tabId: created?.id,
+        windowId: created?.windowId,
+      });
+    } catch (error) {
+      console.error('[nufftabs] create list tab before close failed', error);
+    }
+  }
 
   if (tabIds.length > 0) {
     try {
