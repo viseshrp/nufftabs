@@ -6,12 +6,7 @@ type SavedTab = {
 };
 
 function isHttpUrl(value: string): boolean {
-  try {
-    const url = new URL(value);
-    return url.protocol === 'http:' || url.protocol === 'https:';
-  } catch {
-    return false;
-  }
+  return /^https?:\/\//i.test(value);
 }
 
 export function countOneTabNonEmptyLines(text: string): number {
