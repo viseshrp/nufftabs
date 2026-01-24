@@ -20,6 +20,8 @@ const listEl = document.querySelector<HTMLUListElement>('#list');
 const emptyEl = document.querySelector<HTMLDivElement>('#empty');
 const statusEl = document.querySelector<HTMLDivElement>('#status');
 const excludePinnedEl = document.querySelector<HTMLInputElement>('#excludePinned');
+const restoreAllEl = document.querySelector<HTMLButtonElement>('#restoreAll');
+const deleteAllEl = document.querySelector<HTMLButtonElement>('#deleteAll');
 
 function setStatus(message: string): void {
   if (statusEl) statusEl.textContent = message;
@@ -117,10 +119,45 @@ async function restoreSingle(id: string): Promise<void> {
   setStatus('Restored 1 tab.');
 }
 
+async function restoreAll(): Promise<void> {
+  const savedTabs = await getSavedTabs();
+  if (savedTabs.length === 0) {
+    setStatus('No tabs to restore.');
+    return;
+  }
+
+  const [first, ...rest] = savedTabs;
+  const window = await chrome.windows.create({ url: first.url });
+  const windowId = window.id;
+  if (typeof windowId === 'number') {
+    for (const tab of rest) {
+      await chrome.tabs.create({ windowId, url: tab.url });
+    }
+  }
+
+  await setSavedTabs([]);
+  renderList([]);
+  setStatus('Restored all tabs.');
+}
+
+async function deleteAll(): Promise<void> {
+  await setSavedTabs([]);
+  renderList([]);
+  setStatus('Deleted all tabs.');
+}
+
 async function init(): Promise<void> {
   await initSettings();
   const savedTabs = await getSavedTabs();
   renderList(savedTabs);
+
+  restoreAllEl?.addEventListener('click', () => {
+    void restoreAll();
+  });
+
+  deleteAllEl?.addEventListener('click', () => {
+    void deleteAll();
+  });
 }
 
 void init();

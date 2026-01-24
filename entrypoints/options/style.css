@@ -35,6 +35,12 @@ header {
   font-weight: 600;
 }
 
+.bulk-actions {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
 h1 {
   margin: 0 0 4px;
   font-size: 24px;
@@ -94,6 +100,14 @@ button {
 
 button:hover {
   background: #1558b0;
+}
+
+button.secondary {
+  background: #e53935;
+}
+
+button.secondary:hover {
+  background: #b32624;
 }
 
 .status {
