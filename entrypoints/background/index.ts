@@ -58,7 +58,7 @@ async function condenseCurrentWindow(): Promise<void> {
   });
 
   if (eligibleTabs.length === 0) {
-    await chrome.runtime.openOptionsPage();
+    await openOrFocusListPage();
     return;
   }
 
@@ -74,7 +74,24 @@ async function condenseCurrentWindow(): Promise<void> {
     await chrome.tabs.remove(tabIds);
   }
 
-  await chrome.runtime.openOptionsPage();
+  await openOrFocusListPage();
+}
+
+async function openOrFocusListPage(): Promise<void> {
+  const listUrl = browser.runtime.getURL('/nufftabs.html');
+  const existing = await chrome.tabs.query({ url: listUrl });
+  if (existing.length > 0) {
+    const tab = existing[0];
+    if (typeof tab.id === 'number') {
+      await chrome.tabs.update(tab.id, { active: true });
+    }
+    if (typeof tab.windowId === 'number') {
+      await chrome.windows.update(tab.windowId, { focused: true });
+    }
+    return;
+  }
+
+  await chrome.tabs.create({ url: listUrl });
 }
 
 export default defineBackground(() => {

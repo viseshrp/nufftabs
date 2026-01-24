@@ -1,4 +1,4 @@
-import './style.css';
+import './nufftabs.css';
 
 type SavedTab = {
   id: string;
@@ -121,6 +121,7 @@ async function restoreSingle(id: string): Promise<void> {
     setStatus('Failed to restore tab.');
     return;
   }
+
   const updated = savedTabs.filter((entry) => entry.id !== id);
   await setSavedTabs(updated);
   renderList(updated);
