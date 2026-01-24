@@ -27,6 +27,7 @@ const importJsonEl = document.querySelector<HTMLButtonElement>('#importJson');
 const importFileEl = document.querySelector<HTMLButtonElement>('#importFile');
 const importFileInputEl = document.querySelector<HTMLInputElement>('#importFileInput');
 const importOneTabEl = document.querySelector<HTMLButtonElement>('#importOneTab');
+const clearJsonEl = document.querySelector<HTMLButtonElement>('#clearJson');
 const jsonAreaEl = document.querySelector<HTMLTextAreaElement>('#jsonArea');
 const ioPanelEl = document.querySelector<HTMLElement>('#ioPanel');
 
@@ -396,6 +397,11 @@ async function init(): Promise<void> {
 
   importOneTabEl?.addEventListener('click', () => {
     void importOneTab();
+  });
+
+  clearJsonEl?.addEventListener('click', () => {
+    if (jsonAreaEl) jsonAreaEl.value = '';
+    setStatus('Cleared text area.');
   });
 
   chrome.storage.onChanged.addListener((changes, areaName) => {
