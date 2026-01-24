@@ -81,7 +81,7 @@ function renderList(savedTabs: SavedTab[]): void {
     restoreButton.setAttribute('aria-label', 'Restore');
     restoreButton.setAttribute('title', 'Restore');
     restoreButton.innerHTML =
-      '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 7h5v5H6z" fill="currentColor"/><path d="M6 7l4-4 4 4H6z" fill="currentColor"/><path d="M12 7a5 5 0 1 1-5 5h2a3 3 0 1 0 3-3v2l-3-3 3-3v2Z" fill="currentColor"/></svg>';
+      '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="6" width="9" height="12" rx="2" fill="currentColor" opacity="0.6"/><rect x="13" y="11" width="6" height="2" rx="1" fill="currentColor"/><path d="M18 8l4 4-4 4z" fill="currentColor"/></svg>';
     restoreButton.addEventListener('click', () => {
       void restoreSingle(tab.id);
     });
@@ -91,7 +91,7 @@ function renderList(savedTabs: SavedTab[]): void {
     deleteButton.setAttribute('aria-label', 'Delete');
     deleteButton.setAttribute('title', 'Delete');
     deleteButton.innerHTML =
-      '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 6h8l-1 14H9L8 6Z" fill="currentColor"/><rect x="7" y="6" width="10" height="2" rx="1" fill="currentColor"/><rect x="10" y="4" width="4" height="2" rx="1" fill="currentColor"/></svg>';
+      '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="8" width="12" height="12" rx="2" fill="currentColor"/><rect x="5" y="6" width="14" height="2" rx="1" fill="currentColor"/><rect x="9" y="4" width="6" height="2" rx="1" fill="currentColor"/></svg>';
     deleteButton.addEventListener('click', () => {
       void deleteSingle(tab.id);
     });
