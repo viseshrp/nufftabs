@@ -78,7 +78,7 @@ function renderList(savedTabs: SavedTab[]): void {
     restoreButton.setAttribute('aria-label', 'Restore');
     restoreButton.setAttribute('title', 'Restore');
     restoreButton.innerHTML =
-      '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7v4h4M7 11a6 6 0 1 0 2-4.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+      '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 7h5v5H6z" fill="currentColor"/><path d="M6 7l4-4 4 4H6z" fill="currentColor"/><path d="M12 7a5 5 0 1 1-5 5h2a3 3 0 1 0 3-3v2l-3-3 3-3v2Z" fill="currentColor"/></svg>';
     restoreButton.addEventListener('click', () => {
       void restoreSingle(tab.id);
     });
