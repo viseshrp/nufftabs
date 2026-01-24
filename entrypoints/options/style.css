@@ -1,0 +1,52 @@
+:root {
+  color-scheme: light;
+  font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  line-height: 1.4;
+}
+
+body {
+  margin: 0;
+  padding: 24px;
+  background: #f6f6f6;
+  color: #202124;
+}
+
+.app {
+  max-width: 720px;
+  margin: 0 auto;
+  background: #ffffff;
+  padding: 20px 24px;
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+}
+
+header {
+  margin-bottom: 16px;
+}
+
+h1 {
+  margin: 0 0 4px;
+  font-size: 24px;
+}
+
+.subtitle {
+  margin: 0;
+  color: #5f6368;
+}
+
+.settings {
+  margin-bottom: 16px;
+}
+
+.setting {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+}
+
+.status {
+  margin-top: 16px;
+  min-height: 20px;
+  color: #5f6368;
+}

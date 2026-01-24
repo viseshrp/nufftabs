@@ -24,17 +24,6 @@ header {
   margin-bottom: 16px;
 }
 
-.settings {
-  margin-bottom: 16px;
-}
-
-.setting {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-weight: 600;
-}
-
 .bulk-actions {
   display: flex;
   gap: 8px;

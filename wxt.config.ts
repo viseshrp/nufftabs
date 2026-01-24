@@ -6,5 +6,9 @@ export default defineConfig({
     action: {
       default_title: 'Condense tabs',
     },
+    options_ui: {
+      page: 'options.html',
+      open_in_tab: true,
+    },
   },
 });

@@ -1,4 +1,4 @@
-import './nufftabs.css';
+import './style.css';
 
 type SavedTab = {
   id: string;
@@ -9,17 +9,11 @@ type SavedTab = {
 
 const STORAGE_KEYS = {
   savedTabs: 'savedTabs',
-  settings: 'settings',
 } as const;
-
-const DEFAULT_SETTINGS = {
-  excludePinned: true,
-};
 
 const listEl = document.querySelector<HTMLUListElement>('#list');
 const emptyEl = document.querySelector<HTMLDivElement>('#empty');
 const statusEl = document.querySelector<HTMLDivElement>('#status');
-const excludePinnedEl = document.querySelector<HTMLInputElement>('#excludePinned');
 const restoreAllEl = document.querySelector<HTMLButtonElement>('#restoreAll');
 const deleteAllEl = document.querySelector<HTMLButtonElement>('#deleteAll');
 const exportJsonEl = document.querySelector<HTMLButtonElement>('#exportJson');
@@ -41,30 +35,6 @@ function getSavedTabs(): Promise<SavedTab[]> {
 function setSavedTabs(savedTabs: SavedTab[]): Promise<void> {
   return new Promise((resolve) => {
     chrome.storage.local.set({ [STORAGE_KEYS.savedTabs]: savedTabs }, () => resolve());
-  });
-}
-
-function getSettings(): Promise<{ excludePinned: boolean }> {
-  return new Promise((resolve) => {
-    chrome.storage.local.get([STORAGE_KEYS.settings], (result) => {
-      resolve({ ...DEFAULT_SETTINGS, ...(result.settings || {}) });
-    });
-  });
-}
-
-function setSettings(settings: { excludePinned: boolean }): Promise<void> {
-  return new Promise((resolve) => {
-    chrome.storage.local.set({ [STORAGE_KEYS.settings]: settings }, () => resolve());
-  });
-}
-
-async function initSettings(): Promise<void> {
-  if (!excludePinnedEl) return;
-  const settings = await getSettings();
-  excludePinnedEl.checked = settings.excludePinned;
-  excludePinnedEl.addEventListener('change', async () => {
-    await setSettings({ excludePinned: excludePinnedEl.checked });
-    setStatus('Settings saved.');
   });
 }
 
@@ -221,7 +191,6 @@ async function importJson(): Promise<void> {
 }
 
 async function init(): Promise<void> {
-  await initSettings();
   const savedTabs = await getSavedTabs();
   renderList(savedTabs);
 

@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>nufftabs options</title>
+  </head>
+  <body>
+    <main class="app">
+      <header>
+        <h1>nufftabs options</h1>
+        <p class="subtitle">Settings</p>
+      </header>
+      <section class="settings">
+        <label class="setting">
+          <input id="excludePinned" type="checkbox" />
+          <span>Exclude pinned tabs</span>
+        </label>
+      </section>
+      <div id="status" class="status" role="status" aria-live="polite"></div>
+    </main>
+    <script type="module" src="./index.ts"></script>
+  </body>
+</html>
