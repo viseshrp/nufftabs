@@ -116,9 +116,11 @@ async function restoreSingle(id: string): Promise<void> {
 
   try {
     const reuse = await getReuseWindowContext();
-    if (reuse.shouldReuse && typeof reuse.tabId === 'number' && typeof reuse.windowId === 'number') {
+    if (typeof reuse.windowId === 'number') {
       await chrome.tabs.create({ windowId: reuse.windowId, url: tab.url, active: false });
-      await chrome.tabs.update(reuse.tabId, { active: true });
+      if (typeof reuse.tabId === 'number') {
+        await chrome.tabs.update(reuse.tabId, { active: true });
+      }
     } else {
       await chrome.windows.create({ url: tab.url });
     }
