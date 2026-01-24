@@ -22,6 +22,9 @@ const statusEl = document.querySelector<HTMLDivElement>('#status');
 const excludePinnedEl = document.querySelector<HTMLInputElement>('#excludePinned');
 const restoreAllEl = document.querySelector<HTMLButtonElement>('#restoreAll');
 const deleteAllEl = document.querySelector<HTMLButtonElement>('#deleteAll');
+const exportJsonEl = document.querySelector<HTMLButtonElement>('#exportJson');
+const importJsonEl = document.querySelector<HTMLButtonElement>('#importJson');
+const jsonAreaEl = document.querySelector<HTMLTextAreaElement>('#jsonArea');
 
 function setStatus(message: string): void {
   if (statusEl) statusEl.textContent = message;
@@ -146,6 +149,61 @@ async function deleteAll(): Promise<void> {
   setStatus('Deleted all tabs.');
 }
 
+function normalizeImportedTabs(data: unknown): SavedTab[] | null {
+  const now = Date.now();
+  const rawArray = Array.isArray(data)
+    ? data
+    : data && typeof data === 'object' && Array.isArray((data as { savedTabs?: unknown }).savedTabs)
+      ? (data as { savedTabs: unknown[] }).savedTabs
+      : null;
+
+  if (!rawArray) return null;
+
+  const normalized: SavedTab[] = [];
+  for (const entry of rawArray) {
+    if (!entry || typeof entry !== 'object') return null;
+    const url = (entry as { url?: unknown }).url;
+    if (typeof url !== 'string' || url.length === 0) return null;
+
+    const id = (entry as { id?: unknown }).id;
+    const title = (entry as { title?: unknown }).title;
+    const savedAt = (entry as { savedAt?: unknown }).savedAt;
+
+    normalized.push({
+      id: typeof id === 'string' && id.length > 0 ? id : crypto.randomUUID(),
+      url,
+      title: typeof title === 'string' && title.length > 0 ? title : url,
+      savedAt: typeof savedAt === 'number' ? savedAt : now,
+    });
+  }
+
+  return normalized;
+}
+
+async function exportJson(): Promise<void> {
+  if (!jsonAreaEl) return;
+  const savedTabs = await getSavedTabs();
+  jsonAreaEl.value = JSON.stringify({ savedTabs }, null, 2);
+  setStatus('Exported JSON.');
+}
+
+async function importJson(): Promise<void> {
+  if (!jsonAreaEl) return;
+  try {
+    const parsed = JSON.parse(jsonAreaEl.value);
+    const normalized = normalizeImportedTabs(parsed);
+    if (!normalized) {
+      setStatus('Invalid JSON: expected array or { savedTabs: [] } with valid URLs.');
+      return;
+    }
+    await setSavedTabs(normalized);
+    renderList(normalized);
+    setStatus('Imported JSON.');
+  } catch {
+    setStatus('Invalid JSON: could not parse.');
+  }
+}
+
 async function init(): Promise<void> {
   await initSettings();
   const savedTabs = await getSavedTabs();
@@ -157,6 +215,14 @@ async function init(): Promise<void> {
 
   deleteAllEl?.addEventListener('click', () => {
     void deleteAll();
+  });
+
+  exportJsonEl?.addEventListener('click', () => {
+    void exportJson();
+  });
+
+  importJsonEl?.addEventListener('click', () => {
+    void importJson();
   });
 }
 

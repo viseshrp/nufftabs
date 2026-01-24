@@ -89,6 +89,26 @@ h1 {
   margin-top: 8px;
 }
 
+.io {
+  margin-top: 16px;
+}
+
+.io-actions {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+textarea {
+  width: 100%;
+  border-radius: 8px;
+  border: 1px solid #dadce0;
+  padding: 8px;
+  font-family: Consolas, "Courier New", monospace;
+  font-size: 12px;
+  box-sizing: border-box;
+}
+
 button {
   background: #1a73e8;
   color: #fff;

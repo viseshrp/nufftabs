@@ -25,6 +25,13 @@
         <div id="empty" class="empty">No saved tabs yet.</div>
         <ul id="list" class="list"></ul>
       </section>
+      <section class="io">
+        <div class="io-actions">
+          <button id="exportJson" type="button">Export JSON</button>
+          <button id="importJson" type="button" class="secondary">Import JSON (replace)</button>
+        </div>
+        <textarea id="jsonArea" rows="8" spellcheck="false"></textarea>
+      </section>
       <div id="status" class="status" role="status" aria-live="polite"></div>
     </main>
     <script type="module" src="./index.ts"></script>
