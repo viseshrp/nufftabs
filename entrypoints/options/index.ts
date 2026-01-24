@@ -17,7 +17,7 @@ function setStatus(message: string): void {
 
 function getSettings(): Promise<{ excludePinned: boolean }> {
   return new Promise((resolve) => {
-    chrome.storage.local.get([STORAGE_KEYS.settings], (result) => {
+    chrome.storage.sync.get([STORAGE_KEYS.settings], (result) => {
       resolve({ ...DEFAULT_SETTINGS, ...(result.settings || {}) });
     });
   });
@@ -25,7 +25,7 @@ function getSettings(): Promise<{ excludePinned: boolean }> {
 
 function setSettings(settings: { excludePinned: boolean }): Promise<void> {
   return new Promise((resolve) => {
-    chrome.storage.local.set({ [STORAGE_KEYS.settings]: settings }, () => resolve());
+    chrome.storage.sync.set({ [STORAGE_KEYS.settings]: settings }, () => resolve());
   });
 }
 

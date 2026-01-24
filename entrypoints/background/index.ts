@@ -16,7 +16,7 @@ const DEFAULT_SETTINGS = {
 
 function getSettings(): Promise<{ excludePinned: boolean }> {
   return new Promise((resolve) => {
-    chrome.storage.local.get([STORAGE_KEYS.settings], (result) => {
+    chrome.storage.sync.get([STORAGE_KEYS.settings], (result) => {
       resolve({ ...DEFAULT_SETTINGS, ...(result.settings || {}) });
     });
   });
