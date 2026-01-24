@@ -73,7 +73,10 @@ h1 {
 }
 
 .item {
-  padding: 12px 8px;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 12px;
+  padding: 14px 12px;
   border-bottom: 1px solid #eceff1;
 }
 
@@ -81,14 +84,22 @@ h1 {
   border-bottom: none;
 }
 
+.item-main {
+  min-width: 0;
+}
+
 .item-title {
   font-weight: 600;
   margin-bottom: 4px;
+  font-size: 15px;
 }
 
 .item-url {
   color: #5f6368;
-  word-break: break-all;
+  font-size: 12.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 button {
@@ -127,6 +138,15 @@ button {
 
 .icon-button.danger:hover {
   background: #f8d7d7;
+}
+
+.row-action {
+  align-self: center;
+}
+
+.list-section {
+  border-radius: 12px;
+  overflow: hidden;
 }
 
 .io,

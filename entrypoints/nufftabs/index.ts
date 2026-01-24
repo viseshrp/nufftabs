@@ -52,6 +52,9 @@ function renderList(savedTabs: SavedTab[]): void {
     const item = document.createElement('li');
     item.className = 'item';
 
+    const main = document.createElement('div');
+    main.className = 'item-main';
+
     const title = document.createElement('div');
     title.className = 'item-title';
     title.textContent = tab.title;
@@ -60,11 +63,8 @@ function renderList(savedTabs: SavedTab[]): void {
     url.className = 'item-url';
     url.textContent = tab.url;
 
-    const actions = document.createElement('div');
-    actions.className = 'item-actions';
-
     const restoreButton = document.createElement('button');
-    restoreButton.className = 'icon-button';
+    restoreButton.className = 'icon-button row-action';
     restoreButton.setAttribute('aria-label', 'Restore');
     restoreButton.setAttribute('title', 'Restore');
     restoreButton.innerHTML =
@@ -73,10 +73,10 @@ function renderList(savedTabs: SavedTab[]): void {
       void restoreSingle(tab.id);
     });
 
-    actions.appendChild(restoreButton);
-    item.appendChild(title);
-    item.appendChild(url);
-    item.appendChild(actions);
+    main.appendChild(title);
+    main.appendChild(url);
+    item.appendChild(main);
+    item.appendChild(restoreButton);
     listEl.appendChild(item);
   }
 }
