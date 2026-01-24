@@ -8,19 +8,19 @@ type SavedTab = {
   savedAt: number;
 };
 
+type SavedTabGroups = Record<string, SavedTab[]>;
+
 const STORAGE_KEYS = {
   savedTabs: 'savedTabs',
 } as const;
 
-const listEl = document.querySelector<HTMLUListElement>('#list');
+const groupsEl = document.querySelector<HTMLDivElement>('#groups');
 const emptyEl = document.querySelector<HTMLDivElement>('#empty');
 const snackbarEl = document.querySelector<HTMLDivElement>('#snackbar');
 const listSectionEl = document.querySelector<HTMLElement>('.list-section');
 const scrollTopEl = document.querySelector<HTMLButtonElement>('#scrollTop');
 const scrollBottomEl = document.querySelector<HTMLButtonElement>('#scrollBottom');
 const tabCountEl = document.querySelector<HTMLSpanElement>('#tabCount');
-const restoreAllEl = document.querySelector<HTMLButtonElement>('#restoreAll');
-const deleteAllEl = document.querySelector<HTMLButtonElement>('#deleteAll');
 const toggleIoEl = document.querySelector<HTMLButtonElement>('#toggleIo');
 const exportJsonEl = document.querySelector<HTMLButtonElement>('#exportJson');
 const importJsonEl = document.querySelector<HTMLButtonElement>('#importJson');
@@ -43,84 +43,173 @@ function setStatus(message: string): void {
   }, 2200);
 }
 
-function getSavedTabs(): Promise<SavedTab[]> {
+function normalizeSavedGroups(value: unknown): SavedTabGroups {
+  if (Array.isArray(value)) {
+    return value.length > 0 ? { legacy: value } : {};
+  }
+  if (!value || typeof value !== 'object') return {};
+  const groups: SavedTabGroups = {};
+  for (const [key, group] of Object.entries(value as Record<string, unknown>)) {
+    if (Array.isArray(group)) {
+      groups[key] = group as SavedTab[];
+    }
+  }
+  return groups;
+}
+
+function getSavedGroups(): Promise<SavedTabGroups> {
   return new Promise((resolve) => {
     chrome.storage.local.get([STORAGE_KEYS.savedTabs], (result) => {
-      resolve(Array.isArray(result.savedTabs) ? result.savedTabs : []);
+      resolve(normalizeSavedGroups(result.savedTabs));
     });
   });
 }
 
-function setSavedTabs(savedTabs: SavedTab[]): Promise<void> {
+function setSavedGroups(savedTabs: SavedTabGroups): Promise<void> {
   return new Promise((resolve) => {
     chrome.storage.local.set({ [STORAGE_KEYS.savedTabs]: savedTabs }, () => resolve());
   });
 }
 
-function renderList(savedTabs: SavedTab[]): void {
-  if (!listEl || !emptyEl) return;
-  listEl.innerHTML = '';
-  if (tabCountEl) tabCountEl.textContent = String(savedTabs.length);
+function formatGroupLabel(key: string): string {
+  if (/^\d+$/.test(key)) return `Window ${key}`;
+  if (key === 'unknown') return 'Window unknown';
+  if (key === 'legacy') return 'Window legacy';
+  return `Window ${key}`;
+}
 
-  if (savedTabs.length === 0) {
+function renderGroups(savedGroups: SavedTabGroups): void {
+  if (!groupsEl || !emptyEl) return;
+  groupsEl.innerHTML = '';
+  const entries = Object.entries(savedGroups).filter(([, tabs]) => tabs.length > 0);
+  const totalCount = entries.reduce((sum, [, tabs]) => sum + tabs.length, 0);
+  if (tabCountEl) tabCountEl.textContent = String(totalCount);
+
+  if (totalCount === 0) {
     emptyEl.style.display = 'block';
     updateScrollControls();
     return;
   }
 
   emptyEl.style.display = 'none';
-  for (const tab of savedTabs) {
-    const item = document.createElement('li');
-    item.className = 'item';
 
-    const main = document.createElement('div');
-    main.className = 'item-main';
+  for (const [groupKey, tabs] of entries) {
+    const label = formatGroupLabel(groupKey);
+
+    const card = document.createElement('section');
+    card.className = 'group-card';
+
+    const header = document.createElement('div');
+    header.className = 'group-header';
+
+    const metaWrap = document.createElement('div');
 
     const title = document.createElement('div');
-    title.className = 'item-title';
-    title.textContent = tab.title;
+    title.className = 'group-title';
+    title.textContent = label;
 
-    const url = document.createElement('div');
-    url.className = 'item-url';
-    url.textContent = tab.url;
+    const meta = document.createElement('div');
+    meta.className = 'group-meta';
+    meta.textContent = `${tabs.length} tab${tabs.length === 1 ? '' : 's'}`;
+
+    metaWrap.appendChild(title);
+    metaWrap.appendChild(meta);
 
     const actions = document.createElement('div');
-    actions.className = 'row-actions';
+    actions.className = 'group-actions';
 
-    const restoreButton = document.createElement('button');
-    restoreButton.className = 'icon-button row-action';
-    restoreButton.setAttribute('aria-label', 'Restore');
-    restoreButton.setAttribute('title', 'Restore');
-    restoreButton.innerHTML =
-      '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="6" width="9" height="12" rx="2" fill="currentColor" opacity="0.6"/><rect x="13" y="11" width="6" height="2" rx="1" fill="currentColor"/><path d="M18 8l4 4-4 4z" fill="currentColor"/></svg>';
-    restoreButton.addEventListener('click', () => {
-      void restoreSingle(tab.id);
+    const restoreAllButton = document.createElement('button');
+    restoreAllButton.className = 'icon-button';
+    restoreAllButton.setAttribute('aria-label', `Restore all from ${label}`);
+    restoreAllButton.setAttribute('title', 'Restore all');
+    restoreAllButton.innerHTML =
+      '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="7" width="9" height="8" rx="2" fill="currentColor" opacity="0.45"/><rect x="7" y="5" width="9" height="8" rx="2" fill="currentColor" opacity="0.7"/><rect x="13" y="11" width="6" height="2" rx="1" fill="currentColor"/><path d="M18 8l4 4-4 4z" fill="currentColor"/></svg>';
+    restoreAllButton.addEventListener('click', () => {
+      void restoreGroup(groupKey);
     });
 
-    const deleteButton = document.createElement('button');
-    deleteButton.className = 'icon-button danger row-action';
-    deleteButton.setAttribute('aria-label', 'Delete');
-    deleteButton.setAttribute('title', 'Delete');
-    deleteButton.innerHTML =
+    const deleteAllButton = document.createElement('button');
+    deleteAllButton.className = 'icon-button danger';
+    deleteAllButton.setAttribute('aria-label', `Delete all from ${label}`);
+    deleteAllButton.setAttribute('title', 'Delete all');
+    deleteAllButton.innerHTML =
       '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="8" width="12" height="12" rx="2" fill="currentColor"/><rect x="5" y="6" width="14" height="2" rx="1" fill="currentColor"/><rect x="9" y="4" width="6" height="2" rx="1" fill="currentColor"/></svg>';
-    deleteButton.addEventListener('click', () => {
-      void deleteSingle(tab.id);
+    deleteAllButton.addEventListener('click', () => {
+      void deleteGroup(groupKey);
     });
 
-    main.appendChild(title);
-    main.appendChild(url);
-    actions.appendChild(restoreButton);
-    actions.appendChild(deleteButton);
-    item.appendChild(main);
-    item.appendChild(actions);
-    listEl.appendChild(item);
+    actions.appendChild(restoreAllButton);
+    actions.appendChild(deleteAllButton);
+
+    header.appendChild(metaWrap);
+    header.appendChild(actions);
+
+    const itemsWrap = document.createElement('div');
+    itemsWrap.className = 'group-items';
+
+    const list = document.createElement('ul');
+    list.className = 'list';
+
+    for (const tab of tabs) {
+      const item = document.createElement('li');
+      item.className = 'item';
+
+      const main = document.createElement('div');
+      main.className = 'item-main';
+
+      const tabTitle = document.createElement('div');
+      tabTitle.className = 'item-title';
+      tabTitle.textContent = tab.title;
+
+      const url = document.createElement('div');
+      url.className = 'item-url';
+      url.textContent = tab.url;
+
+      const rowActions = document.createElement('div');
+      rowActions.className = 'row-actions';
+
+      const restoreButton = document.createElement('button');
+      restoreButton.className = 'icon-button row-action';
+      restoreButton.setAttribute('aria-label', 'Restore');
+      restoreButton.setAttribute('title', 'Restore');
+      restoreButton.innerHTML =
+        '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="6" width="9" height="12" rx="2" fill="currentColor" opacity="0.6"/><rect x="13" y="11" width="6" height="2" rx="1" fill="currentColor"/><path d="M18 8l4 4-4 4z" fill="currentColor"/></svg>';
+      restoreButton.addEventListener('click', () => {
+        void restoreSingle(groupKey, tab.id);
+      });
+
+      const deleteButton = document.createElement('button');
+      deleteButton.className = 'icon-button danger row-action';
+      deleteButton.setAttribute('aria-label', 'Delete');
+      deleteButton.setAttribute('title', 'Delete');
+      deleteButton.innerHTML =
+        '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="8" width="12" height="12" rx="2" fill="currentColor"/><rect x="5" y="6" width="14" height="2" rx="1" fill="currentColor"/><rect x="9" y="4" width="6" height="2" rx="1" fill="currentColor"/></svg>';
+      deleteButton.addEventListener('click', () => {
+        void deleteSingle(groupKey, tab.id);
+      });
+
+      main.appendChild(tabTitle);
+      main.appendChild(url);
+      rowActions.appendChild(restoreButton);
+      rowActions.appendChild(deleteButton);
+      item.appendChild(main);
+      item.appendChild(rowActions);
+      list.appendChild(item);
+    }
+
+    itemsWrap.appendChild(list);
+    card.appendChild(header);
+    card.appendChild(itemsWrap);
+    groupsEl.appendChild(card);
   }
+
   updateScrollControls();
 }
 
-async function restoreSingle(id: string): Promise<void> {
-  const savedTabs = await getSavedTabs();
-  const tab = savedTabs.find((entry) => entry.id === id);
+async function restoreSingle(groupKey: string, id: string): Promise<void> {
+  const savedGroups = await getSavedGroups();
+  const groupTabs = savedGroups[groupKey] ?? [];
+  const tab = groupTabs.find((entry) => entry.id === id);
   if (!tab) {
     setStatus('Tab not found.');
     return;
@@ -141,31 +230,66 @@ async function restoreSingle(id: string): Promise<void> {
     return;
   }
 
-  const updated = savedTabs.filter((entry) => entry.id !== id);
-  await setSavedTabs(updated);
-  renderList(updated);
+  const updatedGroup = groupTabs.filter((entry) => entry.id !== id);
+  if (updatedGroup.length > 0) {
+    savedGroups[groupKey] = updatedGroup;
+  } else {
+    delete savedGroups[groupKey];
+  }
+  await setSavedGroups(savedGroups);
+  renderGroups(savedGroups);
   setStatus('Restored 1 tab.');
 }
 
-async function deleteSingle(id: string): Promise<void> {
-  const savedTabs = await getSavedTabs();
-  const updated = savedTabs.filter((entry) => entry.id !== id);
-  if (updated.length === savedTabs.length) {
+async function deleteSingle(groupKey: string, id: string): Promise<void> {
+  const savedGroups = await getSavedGroups();
+  const groupTabs = savedGroups[groupKey] ?? [];
+  const updatedGroup = groupTabs.filter((entry) => entry.id !== id);
+  if (updatedGroup.length === groupTabs.length) {
     setStatus('Tab not found.');
     return;
   }
-  await setSavedTabs(updated);
-  renderList(updated);
+  if (updatedGroup.length > 0) {
+    savedGroups[groupKey] = updatedGroup;
+  } else {
+    delete savedGroups[groupKey];
+  }
+  await setSavedGroups(savedGroups);
+  renderGroups(savedGroups);
   setStatus('Deleted 1 tab.');
 }
 
-async function restoreAll(): Promise<void> {
-  const savedTabs = await getSavedTabs();
-  if (savedTabs.length === 0) {
+async function restoreGroup(groupKey: string): Promise<void> {
+  const savedGroups = await getSavedGroups();
+  const groupTabs = savedGroups[groupKey] ?? [];
+  if (groupTabs.length === 0) {
     setStatus('No tabs to restore.');
     return;
   }
 
+  const restored = await restoreTabs(groupTabs);
+  if (!restored) return;
+
+  delete savedGroups[groupKey];
+  await setSavedGroups(savedGroups);
+  renderGroups(savedGroups);
+  setStatus('Restored all tabs.');
+}
+
+async function deleteGroup(groupKey: string): Promise<void> {
+  const savedGroups = await getSavedGroups();
+  const groupTabs = savedGroups[groupKey] ?? [];
+  if (groupTabs.length === 0) {
+    setStatus('No tabs to delete.');
+    return;
+  }
+  delete savedGroups[groupKey];
+  await setSavedGroups(savedGroups);
+  renderGroups(savedGroups);
+  setStatus('Deleted tabs.');
+}
+
+async function restoreTabs(savedTabs: SavedTab[]): Promise<boolean> {
   const chunkSize = 100;
   const chunks: SavedTab[][] = [];
   for (let i = 0; i < savedTabs.length; i += chunkSize) {
@@ -209,18 +333,10 @@ async function restoreAll(): Promise<void> {
     }
   } catch {
     setStatus('Failed to restore tabs.');
-    return;
+    return false;
   }
 
-  await setSavedTabs([]);
-  renderList([]);
-  setStatus('Restored all tabs.');
-}
-
-async function deleteAll(): Promise<void> {
-  await setSavedTabs([]);
-  renderList([]);
-  setStatus('Deleted all tabs.');
+  return true;
 }
 
 async function getReuseWindowContext(): Promise<{
@@ -247,18 +363,12 @@ async function getReuseWindowContext(): Promise<{
   }
 }
 
-function normalizeImportedTabs(data: unknown): SavedTab[] | null {
+function normalizeTabArray(data: unknown): SavedTab[] | null {
+  if (!Array.isArray(data)) return null;
+
   const now = Date.now();
-  const rawArray = Array.isArray(data)
-    ? data
-    : data && typeof data === 'object' && Array.isArray((data as { savedTabs?: unknown }).savedTabs)
-      ? (data as { savedTabs: unknown[] }).savedTabs
-      : null;
-
-  if (!rawArray) return null;
-
   const normalized: SavedTab[] = [];
-  for (const entry of rawArray) {
+  for (const entry of data) {
     if (!entry || typeof entry !== 'object') return null;
     const url = (entry as { url?: unknown }).url;
     if (typeof url !== 'string' || url.length === 0) return null;
@@ -278,10 +388,38 @@ function normalizeImportedTabs(data: unknown): SavedTab[] | null {
   return normalized;
 }
 
+function normalizeImportedGroups(data: unknown, fallbackKey: string): SavedTabGroups | null {
+  const payload = Array.isArray(data)
+    ? data
+    : data && typeof data === 'object'
+      ? (data as { savedTabs?: unknown }).savedTabs ?? data
+      : null;
+
+  if (!payload) return null;
+
+  if (Array.isArray(payload)) {
+    const normalized = normalizeTabArray(payload);
+    if (!normalized) return null;
+    return normalized.length > 0 ? { [fallbackKey]: normalized } : {};
+  }
+
+  if (payload && typeof payload === 'object') {
+    const groups: SavedTabGroups = {};
+    for (const [key, value] of Object.entries(payload as Record<string, unknown>)) {
+      const normalized = normalizeTabArray(value);
+      if (!normalized) return null;
+      if (normalized.length > 0) groups[key] = normalized;
+    }
+    return groups;
+  }
+
+  return null;
+}
+
 async function exportJson(): Promise<void> {
   if (!jsonAreaEl) return;
-  const savedTabs = await getSavedTabs();
-  jsonAreaEl.value = JSON.stringify({ savedTabs }, null, 2);
+  const savedGroups = await getSavedGroups();
+  jsonAreaEl.value = JSON.stringify({ savedTabs: savedGroups }, null, 2);
   try {
     await navigator.clipboard.writeText(jsonAreaEl.value);
     setStatus('Exported and copied.');
@@ -308,13 +446,14 @@ async function exportJson(): Promise<void> {
 async function importJsonText(text: string): Promise<void> {
   try {
     const parsed = JSON.parse(text);
-    const normalized = normalizeImportedTabs(parsed);
+    const fallbackKey = await getCurrentWindowKey();
+    const normalized = normalizeImportedGroups(parsed, fallbackKey);
     if (!normalized) {
-      setStatus('Invalid JSON: expected array or { savedTabs: [] } with valid URLs.');
+      setStatus('Invalid JSON: expected array, { savedTabs: [] }, or grouped object.');
       return;
     }
-    await setSavedTabs(normalized);
-    renderList(normalized);
+    await setSavedGroups(normalized);
+    renderGroups(normalized);
     setStatus('Imported JSON.');
   } catch {
     setStatus('Invalid JSON: could not parse.');
@@ -336,6 +475,18 @@ async function importJsonFile(file: File): Promise<void> {
   }
 }
 
+async function getCurrentWindowKey(): Promise<string> {
+  try {
+    const currentTab = await chrome.tabs.getCurrent();
+    if (currentTab && typeof currentTab.windowId === 'number') {
+      return String(currentTab.windowId);
+    }
+  } catch {
+    // ignore
+  }
+  return 'unknown';
+}
+
 async function importOneTab(): Promise<void> {
   if (!jsonAreaEl) return;
   const text = jsonAreaEl.value;
@@ -346,28 +497,22 @@ async function importOneTab(): Promise<void> {
     setStatus(`Imported 0, skipped ${skipped}.`);
     return;
   }
-  const existing = await getSavedTabs();
-  const merged = [...existing, ...imported];
-  await setSavedTabs(merged);
-  renderList(merged);
+  const savedGroups = await getSavedGroups();
+  const groupKey = await getCurrentWindowKey();
+  const existing = savedGroups[groupKey] ?? [];
+  savedGroups[groupKey] = [...existing, ...imported];
+  await setSavedGroups(savedGroups);
+  renderGroups(savedGroups);
   setStatus(`Imported ${imported.length}, skipped ${skipped}.`);
 }
 
 async function init(): Promise<void> {
   const refreshList = async () => {
-    const savedTabs = await getSavedTabs();
-    renderList(savedTabs);
+    const savedGroups = await getSavedGroups();
+    renderGroups(savedGroups);
   };
 
   await refreshList();
-
-  restoreAllEl?.addEventListener('click', () => {
-    void restoreAll();
-  });
-
-  deleteAllEl?.addEventListener('click', () => {
-    void deleteAll();
-  });
 
   toggleIoEl?.addEventListener('click', () => {
     if (!ioPanelEl) return;

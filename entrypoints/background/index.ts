@@ -22,15 +22,31 @@ function getSettings(): Promise<{ excludePinned: boolean }> {
   });
 }
 
-function getSavedTabs(): Promise<SavedTab[]> {
+type SavedTabGroups = Record<string, SavedTab[]>;
+
+function normalizeSavedGroups(value: unknown): SavedTabGroups {
+  if (Array.isArray(value)) {
+    return value.length > 0 ? { legacy: value } : {};
+  }
+  if (!value || typeof value !== 'object') return {};
+  const groups: SavedTabGroups = {};
+  for (const [key, group] of Object.entries(value as Record<string, unknown>)) {
+    if (Array.isArray(group)) {
+      groups[key] = group as SavedTab[];
+    }
+  }
+  return groups;
+}
+
+function getSavedGroups(): Promise<SavedTabGroups> {
   return new Promise((resolve) => {
     chrome.storage.local.get([STORAGE_KEYS.savedTabs], (result) => {
-      resolve(Array.isArray(result.savedTabs) ? result.savedTabs : []);
+      resolve(normalizeSavedGroups(result.savedTabs));
     });
   });
 }
 
-function setSavedTabs(savedTabs: SavedTab[]): Promise<void> {
+function setSavedGroups(savedTabs: SavedTabGroups): Promise<void> {
   return new Promise((resolve) => {
     chrome.storage.local.set({ [STORAGE_KEYS.savedTabs]: savedTabs }, () => resolve());
   });
@@ -81,13 +97,16 @@ async function condenseCurrentWindow(targetWindowId?: number): Promise<void> {
     return;
   }
 
-  const [existingSaved, tabIds] = await Promise.all([
-    getSavedTabs(),
+  const [existingGroups, tabIds] = await Promise.all([
+    getSavedGroups(),
     Promise.resolve(eligibleTabs.map((tab) => tab.id).filter((id): id is number => typeof id === 'number')),
   ]);
 
-  const updatedSaved = saveTabsToList(eligibleTabs, existingSaved);
-  await setSavedTabs(updatedSaved);
+  const groupKey = typeof resolvedWindowId === 'number' ? String(resolvedWindowId) : 'unknown';
+  const existingGroup = existingGroups[groupKey] ?? [];
+  const updatedGroup = saveTabsToList(eligibleTabs, existingGroup);
+  existingGroups[groupKey] = updatedGroup;
+  await setSavedGroups(existingGroups);
 
   if (excludedCount === 0 && listTabs.length === 0 && typeof resolvedWindowId === 'number') {
     try {
