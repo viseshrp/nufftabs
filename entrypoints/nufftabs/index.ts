@@ -15,6 +15,9 @@ const STORAGE_KEYS = {
 const listEl = document.querySelector<HTMLUListElement>('#list');
 const emptyEl = document.querySelector<HTMLDivElement>('#empty');
 const snackbarEl = document.querySelector<HTMLDivElement>('#snackbar');
+const listSectionEl = document.querySelector<HTMLElement>('.list-section');
+const scrollTopEl = document.querySelector<HTMLButtonElement>('#scrollTop');
+const scrollBottomEl = document.querySelector<HTMLButtonElement>('#scrollBottom');
 const tabCountEl = document.querySelector<HTMLSpanElement>('#tabCount');
 const restoreAllEl = document.querySelector<HTMLButtonElement>('#restoreAll');
 const deleteAllEl = document.querySelector<HTMLButtonElement>('#deleteAll');
@@ -58,6 +61,7 @@ function renderList(savedTabs: SavedTab[]): void {
 
   if (savedTabs.length === 0) {
     emptyEl.style.display = 'block';
+    updateScrollControls();
     return;
   }
 
@@ -108,6 +112,7 @@ function renderList(savedTabs: SavedTab[]): void {
     item.appendChild(actions);
     listEl.appendChild(item);
   }
+  updateScrollControls();
 }
 
 async function restoreSingle(id: string): Promise<void> {
@@ -313,6 +318,7 @@ async function init(): Promise<void> {
   toggleIoEl?.addEventListener('click', () => {
     if (!ioPanelEl) return;
     ioPanelEl.hidden = !ioPanelEl.hidden;
+    updateScrollControls();
   });
 
   exportJsonEl?.addEventListener('click', () => {
@@ -339,6 +345,42 @@ async function init(): Promise<void> {
       void refreshList();
     }
   });
+
+  scrollTopEl?.addEventListener('click', () => {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  });
+
+  scrollBottomEl?.addEventListener('click', () => {
+    const target = getListBottomScrollTarget();
+    window.scrollTo({ top: target, behavior: 'smooth' });
+  });
+
+  window.addEventListener('scroll', updateScrollControls, { passive: true });
+  window.addEventListener('resize', updateScrollControls);
+  updateScrollControls();
 }
 
 void init();
+
+function getListBottomScrollTarget(): number {
+  if (!listSectionEl) return 0;
+  const rect = listSectionEl.getBoundingClientRect();
+  const listBottom = rect.bottom + window.scrollY;
+  const maxScroll = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
+  const target = Math.max(0, listBottom - window.innerHeight + 16);
+  return Math.min(target, maxScroll);
+}
+
+function updateScrollControls(): void {
+  if (!scrollTopEl || !scrollBottomEl) return;
+  const maxScroll = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
+  const hasOverflow = maxScroll > 8;
+  const nearTop = window.scrollY < 24;
+  const bottomTarget = getListBottomScrollTarget();
+  const nearBottom = window.scrollY >= bottomTarget - 24;
+
+  scrollTopEl.classList.toggle('is-hidden', !hasOverflow);
+  scrollBottomEl.classList.toggle('is-hidden', !hasOverflow);
+  scrollTopEl.classList.toggle('is-disabled', !hasOverflow || nearTop);
+  scrollBottomEl.classList.toggle('is-disabled', !hasOverflow || nearBottom);
+}
