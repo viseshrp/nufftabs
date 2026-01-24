@@ -59,7 +59,12 @@ async function condenseCurrentWindow(targetWindowId?: number): Promise<void> {
       ? targetWindowId
       : tabs.find((tab) => typeof tab.windowId === 'number')?.windowId;
   const listUrl = browser.runtime.getURL('/nufftabs.html');
-  const listUiTabFound = tabs.some((tab) => tab.url === listUrl);
+  const listTabs = await chrome.tabs.query({ url: listUrl });
+  const listTabInTarget =
+    typeof resolvedWindowId === 'number'
+      ? listTabs.find((tab) => tab.windowId === resolvedWindowId && typeof tab.id === 'number')
+      : undefined;
+  const listUiTabFound = listTabs.length > 0;
   const eligibleTabs = tabs.filter((tab) => {
     if (settings.excludePinned && tab.pinned) return false;
     if (tab.url === listUrl) return false;
@@ -77,16 +82,22 @@ async function condenseCurrentWindow(targetWindowId?: number): Promise<void> {
 
   let listTabId: number | undefined;
   let listTabAction: string | undefined;
-  try {
-    const result = await ensureListTabInWindow(listUrl, resolvedWindowId);
-    listTabId = result.tabId;
-    listTabAction = result.action;
-    console.info('[nufftabs] list tab ensured', { listTabId, listTabAction });
-  } catch (error) {
-    console.error('[nufftabs] ensure list tab failed', error);
+  if (listTabInTarget && typeof listTabInTarget.id === 'number') {
+    listTabId = listTabInTarget.id;
+    listTabAction = 'found';
   }
 
   if (eligibleTabs.length === 0) {
+    if (typeof listTabId !== 'number') {
+      try {
+        const result = await ensureListTabInWindow(listUrl, resolvedWindowId);
+        listTabId = result.tabId;
+        listTabAction = result.action;
+        console.info('[nufftabs] list tab ensured', { listTabId, listTabAction });
+      } catch (error) {
+        console.error('[nufftabs] ensure list tab failed', error);
+      }
+    }
     await focusAndPinListTab(listTabId, resolvedWindowId);
     return;
   }
@@ -99,12 +110,34 @@ async function condenseCurrentWindow(targetWindowId?: number): Promise<void> {
   const updatedSaved = saveTabsToList(eligibleTabs, existingSaved);
   await setSavedTabs(updatedSaved);
 
+  if (excludedCount === 0 && typeof listTabId !== 'number') {
+    try {
+      const result = await ensureListTabInWindow(listUrl, resolvedWindowId);
+      listTabId = result.tabId;
+      listTabAction = result.action;
+      console.info('[nufftabs] list tab ensured before close', { listTabId, listTabAction });
+    } catch (error) {
+      console.error('[nufftabs] ensure list tab failed', error);
+    }
+  }
+
   if (tabIds.length > 0) {
     try {
       await chrome.tabs.remove(tabIds);
       console.info('[nufftabs] closed tabs', { tabIds });
     } catch (error) {
       console.error('[nufftabs] close tabs failed', error);
+    }
+  }
+
+  if (typeof listTabId !== 'number') {
+    try {
+      const result = await ensureListTabInWindow(listUrl, resolvedWindowId);
+      listTabId = result.tabId;
+      listTabAction = result.action;
+      console.info('[nufftabs] list tab ensured after close', { listTabId, listTabAction });
+    } catch (error) {
+      console.error('[nufftabs] ensure list tab failed', error);
     }
   }
 
