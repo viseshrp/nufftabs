@@ -5,8 +5,8 @@ type SavedTab = {
   savedAt: number;
 };
 
-function isHttpUrl(value: string): boolean {
-  return /^https?:\/\//i.test(value);
+function isAllowedUrl(value: string): boolean {
+  return /^(https?|file|chrome|chrome-extension):\/\//i.test(value);
 }
 
 export function countOneTabNonEmptyLines(text: string): number {
@@ -26,7 +26,7 @@ export function parseOneTabExport(text: string): SavedTab[] {
     const urlPart = pipeIndex >= 0 ? line.slice(0, pipeIndex).trim() : line;
     const titlePart = pipeIndex >= 0 ? line.slice(pipeIndex + 1).trim() : '';
 
-    if (!isHttpUrl(urlPart)) continue;
+    if (!isAllowedUrl(urlPart)) continue;
 
     savedTabs.push({
       id: crypto.randomUUID(),
