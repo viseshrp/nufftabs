@@ -59,7 +59,19 @@ async function condenseCurrentWindow(targetWindowId?: number): Promise<void> {
       ? targetWindowId
       : tabs.find((tab) => typeof tab.windowId === 'number')?.windowId;
   const listUrl = browser.runtime.getURL('/nufftabs.html');
-  const listTabId = await ensureListTabInWindow(listUrl, resolvedWindowId);
+  console.info('[nufftabs] condense', {
+    targetWindowId,
+    resolvedWindowId,
+    listUrl,
+    tabCount: tabs.length,
+  });
+  let listTabId: number | undefined;
+  try {
+    listTabId = await ensureListTabInWindow(listUrl, resolvedWindowId);
+    console.info('[nufftabs] ensure list tab', { listTabId });
+  } catch (error) {
+    console.error('[nufftabs] ensure list tab failed', error);
+  }
   const eligibleTabs = tabs.filter((tab) => {
     if (settings.excludePinned && tab.pinned) return false;
     if (tab.id === listTabId) return false;
@@ -69,9 +81,15 @@ async function condenseCurrentWindow(targetWindowId?: number): Promise<void> {
 
   if (eligibleTabs.length === 0) {
     if (typeof listTabId === 'number') {
-      await chrome.tabs.update(listTabId, { active: true });
-      if (typeof resolvedWindowId === 'number') {
-        await chrome.windows.update(resolvedWindowId, { focused: true });
+      try {
+        await chrome.tabs.update(listTabId, { active: true });
+        console.info('[nufftabs] focused list tab', { listTabId });
+        if (typeof resolvedWindowId === 'number') {
+          await chrome.windows.update(resolvedWindowId, { focused: true });
+          console.info('[nufftabs] focused window', { resolvedWindowId });
+        }
+      } catch (error) {
+        console.error('[nufftabs] focus list tab failed', error);
       }
     } else {
       await openOrFocusListPage(resolvedWindowId);
@@ -88,13 +106,24 @@ async function condenseCurrentWindow(targetWindowId?: number): Promise<void> {
   await setSavedTabs(updatedSaved);
 
   if (tabIds.length > 0) {
-    await chrome.tabs.remove(tabIds);
+    try {
+      await chrome.tabs.remove(tabIds);
+      console.info('[nufftabs] closed tabs', { tabIds });
+    } catch (error) {
+      console.error('[nufftabs] close tabs failed', error);
+    }
   }
 
   if (typeof listTabId === 'number') {
-    await chrome.tabs.update(listTabId, { active: true });
-    if (typeof resolvedWindowId === 'number') {
-      await chrome.windows.update(resolvedWindowId, { focused: true });
+    try {
+      await chrome.tabs.update(listTabId, { active: true });
+      console.info('[nufftabs] focused list tab', { listTabId });
+      if (typeof resolvedWindowId === 'number') {
+        await chrome.windows.update(resolvedWindowId, { focused: true });
+        console.info('[nufftabs] focused window', { resolvedWindowId });
+      }
+    } catch (error) {
+      console.error('[nufftabs] focus list tab failed', error);
     }
   } else {
     await openOrFocusListPage(resolvedWindowId);
@@ -110,6 +139,11 @@ async function ensureListTabInWindow(
   const inTarget = targetId
     ? existing.find((tab) => tab.windowId === targetId && typeof tab.id === 'number')
     : undefined;
+  console.info('[nufftabs] list tabs found', {
+    total: existing.length,
+    targetId,
+    inTarget: Boolean(inTarget),
+  });
 
   if (inTarget && typeof inTarget.id === 'number') {
     return inTarget.id;
@@ -118,10 +152,12 @@ async function ensureListTabInWindow(
   const existingTab = existing.find((tab) => typeof tab.id === 'number');
   if (existingTab && typeof existingTab.id === 'number' && typeof targetId === 'number') {
     await chrome.tabs.move(existingTab.id, { windowId: targetId, index: -1 });
+    console.info('[nufftabs] moved list tab', { tabId: existingTab.id, targetId });
     return existingTab.id;
   }
 
   const created = await chrome.tabs.create({ url: listUrl, windowId: targetId, active: false });
+  console.info('[nufftabs] created list tab', { tabId: created.id, targetId });
   return created.id;
 }
 
@@ -132,22 +168,30 @@ async function openOrFocusListPage(targetWindowId?: number): Promise<void> {
   const inTarget = targetId
     ? existing.find((tab) => tab.windowId === targetId)
     : undefined;
+  console.info('[nufftabs] open/focus list page', { listUrl, targetId, existing: existing.length });
 
-  if (inTarget && typeof inTarget.id === 'number') {
-    await chrome.tabs.update(inTarget.id, { active: true });
-    await chrome.windows.update(inTarget.windowId!, { focused: true });
-    return;
+  try {
+    if (inTarget && typeof inTarget.id === 'number') {
+      await chrome.tabs.update(inTarget.id, { active: true });
+      await chrome.windows.update(inTarget.windowId!, { focused: true });
+      console.info('[nufftabs] focused existing list tab', { tabId: inTarget.id });
+      return;
+    }
+
+    const existingTab = existing.find((tab) => typeof tab.id === 'number');
+    if (existingTab && typeof existingTab.id === 'number' && typeof targetId === 'number') {
+      await chrome.tabs.move(existingTab.id, { windowId: targetId, index: -1 });
+      await chrome.tabs.update(existingTab.id, { active: true });
+      await chrome.windows.update(targetId, { focused: true });
+      console.info('[nufftabs] moved and focused list tab', { tabId: existingTab.id, targetId });
+      return;
+    }
+
+    const created = await chrome.tabs.create({ url: listUrl, windowId: targetId });
+    console.info('[nufftabs] created list tab', { tabId: created.id, targetId });
+  } catch (error) {
+    console.error('[nufftabs] open/focus list page failed', error);
   }
-
-  const existingTab = existing.find((tab) => typeof tab.id === 'number');
-  if (existingTab && typeof existingTab.id === 'number' && typeof targetId === 'number') {
-    await chrome.tabs.move(existingTab.id, { windowId: targetId, index: -1 });
-    await chrome.tabs.update(existingTab.id, { active: true });
-    await chrome.windows.update(targetId, { focused: true });
-    return;
-  }
-
-  await chrome.tabs.create({ url: listUrl, windowId: targetId });
 }
 
 export default defineBackground(() => {
