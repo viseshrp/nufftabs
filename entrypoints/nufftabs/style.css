@@ -291,3 +291,18 @@ textarea {
   opacity: 1;
   transform: translateX(-50%) translateY(-4px);
 }
+
+@media (max-width: 600px) {
+  .io-panel {
+    margin-top: 12px;
+  }
+
+  textarea {
+    font-size: 12px;
+  }
+
+  .io-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}
