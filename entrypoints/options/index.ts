@@ -1,0 +1,95 @@
+import './style.css';
+
+type SavedTab = {
+  id: string;
+  url: string;
+  title: string;
+  savedAt: number;
+};
+
+const STORAGE_KEYS = {
+  savedTabs: 'savedTabs',
+} as const;
+
+const listEl = document.querySelector<HTMLUListElement>('#list');
+const emptyEl = document.querySelector<HTMLDivElement>('#empty');
+const statusEl = document.querySelector<HTMLDivElement>('#status');
+
+function setStatus(message: string): void {
+  if (statusEl) statusEl.textContent = message;
+}
+
+function getSavedTabs(): Promise<SavedTab[]> {
+  return new Promise((resolve) => {
+    chrome.storage.local.get([STORAGE_KEYS.savedTabs], (result) => {
+      resolve(Array.isArray(result.savedTabs) ? result.savedTabs : []);
+    });
+  });
+}
+
+function setSavedTabs(savedTabs: SavedTab[]): Promise<void> {
+  return new Promise((resolve) => {
+    chrome.storage.local.set({ [STORAGE_KEYS.savedTabs]: savedTabs }, () => resolve());
+  });
+}
+
+function renderList(savedTabs: SavedTab[]): void {
+  if (!listEl || !emptyEl) return;
+  listEl.innerHTML = '';
+
+  if (savedTabs.length === 0) {
+    emptyEl.style.display = 'block';
+    return;
+  }
+
+  emptyEl.style.display = 'none';
+  for (const tab of savedTabs) {
+    const item = document.createElement('li');
+    item.className = 'item';
+
+    const title = document.createElement('div');
+    title.className = 'item-title';
+    title.textContent = tab.title;
+
+    const url = document.createElement('div');
+    url.className = 'item-url';
+    url.textContent = tab.url;
+
+    const actions = document.createElement('div');
+    actions.className = 'item-actions';
+
+    const restoreButton = document.createElement('button');
+    restoreButton.textContent = 'Restore';
+    restoreButton.addEventListener('click', () => {
+      void restoreSingle(tab.id);
+    });
+
+    actions.appendChild(restoreButton);
+    item.appendChild(title);
+    item.appendChild(url);
+    item.appendChild(actions);
+    listEl.appendChild(item);
+  }
+}
+
+async function restoreSingle(id: string): Promise<void> {
+  const savedTabs = await getSavedTabs();
+  const tab = savedTabs.find((entry) => entry.id === id);
+  if (!tab) {
+    setStatus('Tab not found.');
+    return;
+  }
+
+  await chrome.windows.create({ url: tab.url });
+  const updated = savedTabs.filter((entry) => entry.id !== id);
+  await setSavedTabs(updated);
+  renderList(updated);
+  setStatus('Restored 1 tab.');
+}
+
+async function init(): Promise<void> {
+  const savedTabs = await getSavedTabs();
+  renderList(savedTabs);
+}
+
+void init();
