@@ -60,6 +60,7 @@ function createSvgIcon(elements: SvgElementSpec[]): SVGSVGElement {
 }
 
 function cloneGroups(groups: SavedTabGroups): SavedTabGroups {
+  // Shallow copy only; callers must replace arrays instead of mutating in place.
   return { ...groups };
 }
 
