@@ -1,9 +1,4 @@
-type SavedTab = {
-  id: string;
-  url: string;
-  title: string;
-  savedAt: number;
-};
+import { createSavedTab, type SavedTab } from '../shared/storage';
 
 function isAllowedUrl(value: string): boolean {
   return /^(https?|file|chrome|chrome-extension):\/\//i.test(value);
@@ -28,12 +23,13 @@ export function parseOneTabExport(text: string): SavedTab[] {
 
     if (!isAllowedUrl(urlPart)) continue;
 
-    savedTabs.push({
-      id: crypto.randomUUID(),
-      url: urlPart,
-      title: titlePart && titlePart.length > 0 ? titlePart : urlPart,
-      savedAt: now,
-    });
+    savedTabs.push(
+      createSavedTab({
+        url: urlPart,
+        title: titlePart && titlePart.length > 0 ? titlePart : urlPart,
+        savedAt: now,
+      }),
+    );
   }
 
   return savedTabs;

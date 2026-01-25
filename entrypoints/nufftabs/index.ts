@@ -1,18 +1,15 @@
 import './style.css';
 import { countOneTabNonEmptyLines, parseOneTabExport } from './onetab_import';
-
-type SavedTab = {
-  id: string;
-  url: string;
-  title: string;
-  savedAt: number;
-};
-
-type SavedTabGroups = Record<string, SavedTab[]>;
-
-const STORAGE_KEYS = {
-  savedTabs: 'savedTabs',
-} as const;
+import {
+  createSavedTab,
+  LIST_PAGE_PATH,
+  normalizeSavedGroups,
+  readSavedGroups,
+  UNKNOWN_GROUP_KEY,
+  writeSavedGroups,
+  type SavedTab,
+  type SavedTabGroups,
+} from '../shared/storage';
 
 const groupsEl = document.querySelector<HTMLDivElement>('#groups');
 const emptyEl = document.querySelector<HTMLDivElement>('#empty');
@@ -32,6 +29,15 @@ const jsonAreaEl = document.querySelector<HTMLTextAreaElement>('#jsonArea');
 const ioPanelEl = document.querySelector<HTMLElement>('#ioPanel');
 
 let snackbarTimer: number | undefined;
+let currentGroups: SavedTabGroups = {};
+
+function cloneGroups(groups: SavedTabGroups): SavedTabGroups {
+  const cloned: SavedTabGroups = {};
+  for (const [key, tabs] of Object.entries(groups)) {
+    cloned[key] = tabs.slice();
+  }
+  return cloned;
+}
 
 function countTotalTabs(groups: SavedTabGroups): number {
   return Object.values(groups).reduce((sum, tabs) => sum + tabs.length, 0);
@@ -47,45 +53,21 @@ function setStatus(message: string): void {
   }, 2200);
 }
 
-function coerceSavedGroups(value: unknown): SavedTabGroups {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
-  const groups: SavedTabGroups = {};
-  for (const [key, group] of Object.entries(value as Record<string, unknown>)) {
-    if (Array.isArray(group)) {
-      groups[key] = group as SavedTab[];
-    }
-  }
-  return groups;
-}
-
-function getSavedGroups(): Promise<SavedTabGroups> {
-  return new Promise((resolve) => {
-    chrome.storage.local.get([STORAGE_KEYS.savedTabs], (result) => {
-      resolve(coerceSavedGroups(result.savedTabs));
-    });
-  });
-}
-
-function setSavedGroups(savedTabs: SavedTabGroups): Promise<void> {
-  return new Promise((resolve) => {
-    chrome.storage.local.set({ [STORAGE_KEYS.savedTabs]: savedTabs }, () => resolve());
-  });
-}
-
 function renderGroups(savedGroups: SavedTabGroups): void {
   if (!groupsEl || !emptyEl) return;
-  groupsEl.innerHTML = '';
   const entries = Object.entries(savedGroups).filter(([, tabs]) => tabs.length > 0);
   const totalCount = entries.reduce((sum, [, tabs]) => sum + tabs.length, 0);
   if (tabCountEl) tabCountEl.textContent = String(totalCount);
 
   if (totalCount === 0) {
     emptyEl.style.display = 'block';
+    groupsEl.replaceChildren();
     updateScrollControls();
     return;
   }
 
   emptyEl.style.display = 'none';
+  const fragment = document.createDocumentFragment();
 
   for (const [groupKey, tabs] of entries) {
     const card = document.createElement('section');
@@ -106,7 +88,7 @@ function renderGroups(savedGroups: SavedTabGroups): void {
     }, Number.POSITIVE_INFINITY);
     const createdLabel = Number.isFinite(createdAt)
       ? `Created ${formatCreatedAt(createdAt)}`
-      : 'Created —';
+      : 'Created -';
 
     const meta = document.createElement('div');
     meta.className = 'group-meta';
@@ -216,14 +198,25 @@ function renderGroups(savedGroups: SavedTabGroups): void {
     itemsWrap.appendChild(list);
     card.appendChild(header);
     card.appendChild(itemsWrap);
-    groupsEl.appendChild(card);
+    fragment.appendChild(card);
   }
 
+  groupsEl.replaceChildren(fragment);
   updateScrollControls();
 }
 
+function applyGroups(savedGroups: SavedTabGroups): void {
+  currentGroups = savedGroups;
+  renderGroups(savedGroups);
+}
+
+async function refreshList(nextGroups?: SavedTabGroups): Promise<void> {
+  const savedGroups = nextGroups ?? (await readSavedGroups());
+  applyGroups(savedGroups);
+}
+
 async function restoreSingle(groupKey: string, id: string): Promise<void> {
-  const savedGroups = await getSavedGroups();
+  const savedGroups = cloneGroups(currentGroups);
   const groupTabs = savedGroups[groupKey] ?? [];
   const tab = groupTabs.find((entry) => entry.id === id);
   if (!tab) {
@@ -252,13 +245,18 @@ async function restoreSingle(groupKey: string, id: string): Promise<void> {
   } else {
     delete savedGroups[groupKey];
   }
-  await setSavedGroups(savedGroups);
-  renderGroups(savedGroups);
+  const saved = await writeSavedGroups(savedGroups);
+  if (!saved) {
+    setStatus('Failed to save changes.');
+    await refreshList();
+    return;
+  }
+  applyGroups(savedGroups);
   setStatus('Restored 1 tab.');
 }
 
 async function deleteSingle(groupKey: string, id: string): Promise<void> {
-  const savedGroups = await getSavedGroups();
+  const savedGroups = cloneGroups(currentGroups);
   const groupTabs = savedGroups[groupKey] ?? [];
   const updatedGroup = groupTabs.filter((entry) => entry.id !== id);
   if (updatedGroup.length === groupTabs.length) {
@@ -270,13 +268,18 @@ async function deleteSingle(groupKey: string, id: string): Promise<void> {
   } else {
     delete savedGroups[groupKey];
   }
-  await setSavedGroups(savedGroups);
-  renderGroups(savedGroups);
+  const saved = await writeSavedGroups(savedGroups);
+  if (!saved) {
+    setStatus('Failed to save changes.');
+    await refreshList();
+    return;
+  }
+  applyGroups(savedGroups);
   setStatus('Deleted 1 tab.');
 }
 
 async function restoreGroup(groupKey: string): Promise<void> {
-  const savedGroups = await getSavedGroups();
+  const savedGroups = cloneGroups(currentGroups);
   const groupTabs = savedGroups[groupKey] ?? [];
   if (groupTabs.length === 0) {
     setStatus('No tabs to restore.');
@@ -287,21 +290,31 @@ async function restoreGroup(groupKey: string): Promise<void> {
   if (!restored) return;
 
   delete savedGroups[groupKey];
-  await setSavedGroups(savedGroups);
-  renderGroups(savedGroups);
+  const saved = await writeSavedGroups(savedGroups);
+  if (!saved) {
+    setStatus('Failed to save changes.');
+    await refreshList();
+    return;
+  }
+  applyGroups(savedGroups);
   setStatus('Restored all tabs.');
 }
 
 async function deleteGroup(groupKey: string): Promise<void> {
-  const savedGroups = await getSavedGroups();
+  const savedGroups = cloneGroups(currentGroups);
   const groupTabs = savedGroups[groupKey] ?? [];
   if (groupTabs.length === 0) {
     setStatus('No tabs to delete.');
     return;
   }
   delete savedGroups[groupKey];
-  await setSavedGroups(savedGroups);
-  renderGroups(savedGroups);
+  const saved = await writeSavedGroups(savedGroups);
+  if (!saved) {
+    setStatus('Failed to save changes.');
+    await refreshList();
+    return;
+  }
+  applyGroups(savedGroups);
   setStatus('Deleted tabs.');
 }
 
@@ -365,7 +378,7 @@ async function getReuseWindowContext(): Promise<{
     if (!currentTab || typeof currentTab.windowId !== 'number' || typeof currentTab.id !== 'number') {
       return { shouldReuse: false };
     }
-    const listUrl = browser.runtime.getURL('/nufftabs.html');
+    const listUrl = chrome.runtime.getURL(LIST_PAGE_PATH);
     const tabsInWindow = await chrome.tabs.query({ windowId: currentTab.windowId });
     const onlyListTab =
       tabsInWindow.length === 1 && tabsInWindow[0]?.url === listUrl && tabsInWindow[0]?.id === currentTab.id;
@@ -393,12 +406,14 @@ function normalizeTabArray(data: unknown): SavedTab[] | null {
     const title = (entry as { title?: unknown }).title;
     const savedAt = (entry as { savedAt?: unknown }).savedAt;
 
-    normalized.push({
-      id: typeof id === 'string' && id.length > 0 ? id : crypto.randomUUID(),
-      url,
-      title: typeof title === 'string' && title.length > 0 ? title : url,
-      savedAt: typeof savedAt === 'number' ? savedAt : now,
-    });
+    normalized.push(
+      createSavedTab({
+        url,
+        id: typeof id === 'string' && id.length > 0 ? id : undefined,
+        title: typeof title === 'string' && title.length > 0 ? title : undefined,
+        savedAt: typeof savedAt === 'number' && Number.isFinite(savedAt) ? savedAt : now,
+      }),
+    );
   }
 
   return normalized;
@@ -434,7 +449,7 @@ function normalizeImportedGroups(data: unknown, fallbackKey: string): SavedTabGr
 
 async function exportJson(): Promise<void> {
   if (!jsonAreaEl) return;
-  const savedGroups = await getSavedGroups();
+  const savedGroups = currentGroups;
   const total = countTotalTabs(savedGroups);
   jsonAreaEl.value = JSON.stringify({ savedTabs: savedGroups }, null, 2);
 
@@ -475,8 +490,13 @@ async function importJsonText(text: string): Promise<void> {
       setStatus('Invalid JSON: expected array, { savedTabs: [] }, or grouped object.');
       return;
     }
-    await setSavedGroups(normalized);
-    renderGroups(normalized);
+    const saved = await writeSavedGroups(normalized);
+    if (!saved) {
+      setStatus('Failed to save changes.');
+      await refreshList();
+      return;
+    }
+    applyGroups(normalized);
     const total = countTotalTabs(normalized);
     setStatus(`Imported ${total} tab${total === 1 ? '' : 's'}, skipped 0.`);
   } catch {
@@ -508,7 +528,7 @@ async function getCurrentWindowKey(): Promise<string> {
   } catch {
     // ignore
   }
-  return 'unknown';
+  return UNKNOWN_GROUP_KEY;
 }
 
 async function importOneTab(): Promise<void> {
@@ -521,21 +541,21 @@ async function importOneTab(): Promise<void> {
     setStatus(`Imported 0 tabs, skipped ${skipped}.`);
     return;
   }
-  const savedGroups = await getSavedGroups();
+  const savedGroups = cloneGroups(currentGroups);
   const groupKey = await getCurrentWindowKey();
   const existing = savedGroups[groupKey] ?? [];
   savedGroups[groupKey] = [...existing, ...imported];
-  await setSavedGroups(savedGroups);
-  renderGroups(savedGroups);
+  const saved = await writeSavedGroups(savedGroups);
+  if (!saved) {
+    setStatus('Failed to save changes.');
+    await refreshList();
+    return;
+  }
+  applyGroups(savedGroups);
   setStatus(`Imported ${imported.length} tab${imported.length === 1 ? '' : 's'}, skipped ${skipped}.`);
 }
 
 async function init(): Promise<void> {
-  const refreshList = async () => {
-    const savedGroups = await getSavedGroups();
-    renderGroups(savedGroups);
-  };
-
   await refreshList();
 
   toggleIoEl?.addEventListener('click', () => {
@@ -576,7 +596,7 @@ async function init(): Promise<void> {
   chrome.storage.onChanged.addListener((changes, areaName) => {
     if (areaName !== 'local') return;
     if (changes.savedTabs) {
-      void refreshList();
+      void refreshList(normalizeSavedGroups(changes.savedTabs.newValue));
     }
   });
 
@@ -595,8 +615,8 @@ async function init(): Promise<void> {
     window.scrollTo({ top: target, behavior: 'smooth' });
   });
 
-  window.addEventListener('scroll', updateScrollControls, { passive: true });
-  window.addEventListener('resize', updateScrollControls);
+  window.addEventListener('scroll', scheduleScrollControlsUpdate, { passive: true });
+  window.addEventListener('resize', scheduleScrollControlsUpdate);
   updateScrollControls();
 }
 
@@ -623,6 +643,16 @@ function getListBottomScrollTarget(): number {
   return Math.min(target, maxScroll);
 }
 
+let scrollUpdateFrame = 0;
+
+function scheduleScrollControlsUpdate(): void {
+  if (scrollUpdateFrame) return;
+  scrollUpdateFrame = window.requestAnimationFrame(() => {
+    scrollUpdateFrame = 0;
+    updateScrollControls();
+  });
+}
+
 function updateScrollControls(): void {
   if (!scrollTopEl || !scrollBottomEl) return;
   const maxScroll = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
@@ -636,3 +666,4 @@ function updateScrollControls(): void {
   scrollTopEl.classList.toggle('is-disabled', !hasOverflow || nearTop);
   scrollBottomEl.classList.toggle('is-disabled', !hasOverflow || nearBottom);
 }
+

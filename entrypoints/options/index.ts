@@ -1,12 +1,5 @@
 import './style.css';
-
-const STORAGE_KEYS = {
-  settings: 'settings',
-} as const;
-
-const DEFAULT_SETTINGS = {
-  excludePinned: true,
-};
+import { readSettings, writeSettings, type Settings } from '../shared/storage';
 
 const excludePinnedEl = document.querySelector<HTMLInputElement>('#excludePinned');
 const statusEl = document.querySelector<HTMLDivElement>('#status');
@@ -15,26 +8,19 @@ function setStatus(message: string): void {
   if (statusEl) statusEl.textContent = message;
 }
 
-function getSettings(): Promise<{ excludePinned: boolean }> {
-  return new Promise((resolve) => {
-    chrome.storage.sync.get([STORAGE_KEYS.settings], (result) => {
-      resolve({ ...DEFAULT_SETTINGS, ...(result.settings || {}) });
-    });
-  });
-}
-
-function setSettings(settings: { excludePinned: boolean }): Promise<void> {
-  return new Promise((resolve) => {
-    chrome.storage.sync.set({ [STORAGE_KEYS.settings]: settings }, () => resolve());
-  });
-}
-
 async function init(): Promise<void> {
   if (!excludePinnedEl) return;
-  const settings = await getSettings();
+  let settings: Settings = await readSettings();
   excludePinnedEl.checked = settings.excludePinned;
   excludePinnedEl.addEventListener('change', async () => {
-    await setSettings({ excludePinned: excludePinnedEl.checked });
+    const nextSettings: Settings = { excludePinned: excludePinnedEl.checked };
+    const saved = await writeSettings(nextSettings);
+    if (!saved) {
+      excludePinnedEl.checked = settings.excludePinned;
+      setStatus('Failed to save settings.');
+      return;
+    }
+    settings = nextSettings;
     setStatus('Settings saved.');
   });
 }

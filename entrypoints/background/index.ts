@@ -1,92 +1,54 @@
-type SavedTab = {
-  id: string;
-  url: string;
-  title: string;
-  savedAt: number;
-};
-
-const STORAGE_KEYS = {
-  savedTabs: 'savedTabs',
-  settings: 'settings',
-} as const;
-
-const DEFAULT_SETTINGS = {
-  excludePinned: true,
-};
-
-function getSettings(): Promise<{ excludePinned: boolean }> {
-  return new Promise((resolve) => {
-    chrome.storage.sync.get([STORAGE_KEYS.settings], (result) => {
-      resolve({ ...DEFAULT_SETTINGS, ...(result.settings || {}) });
-    });
-  });
-}
-
-type SavedTabGroups = Record<string, SavedTab[]>;
-
-function coerceSavedGroups(value: unknown): SavedTabGroups {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
-  const groups: SavedTabGroups = {};
-  for (const [key, group] of Object.entries(value as Record<string, unknown>)) {
-    if (Array.isArray(group)) {
-      groups[key] = group as SavedTab[];
-    }
-  }
-  return groups;
-}
-
-function getSavedGroups(): Promise<SavedTabGroups> {
-  return new Promise((resolve) => {
-    chrome.storage.local.get([STORAGE_KEYS.savedTabs], (result) => {
-      resolve(coerceSavedGroups(result.savedTabs));
-    });
-  });
-}
-
-function setSavedGroups(savedTabs: SavedTabGroups): Promise<void> {
-  return new Promise((resolve) => {
-    chrome.storage.local.set({ [STORAGE_KEYS.savedTabs]: savedTabs }, () => resolve());
-  });
-}
+import {
+  createSavedTab,
+  LIST_PAGE_PATH,
+  readSavedGroups,
+  readSettings,
+  UNKNOWN_GROUP_KEY,
+  writeSavedGroups,
+  type SavedTab,
+} from '../shared/storage';
 
 function saveTabsToList(tabs: chrome.tabs.Tab[], existing: SavedTab[]): SavedTab[] {
-  const now = Date.now();
-  const saved = tabs
-    .filter((tab) => typeof tab.url === 'string' && tab.url.length > 0)
-    .map((tab) => ({
-      id: crypto.randomUUID(),
-      url: tab.url as string,
-      title: tab.title && tab.title.length > 0 ? tab.title : (tab.url as string),
-      savedAt: now,
-    }));
+  const savedAt = Date.now();
+  const saved: SavedTab[] = [];
+  for (const tab of tabs) {
+    if (typeof tab.url !== 'string' || tab.url.length === 0) continue;
+    saved.push(
+      createSavedTab({
+        url: tab.url,
+        title: typeof tab.title === 'string' && tab.title.length > 0 ? tab.title : tab.url,
+        savedAt,
+      }),
+    );
+  }
   return saved.length > 0 ? [...saved, ...existing] : existing;
 }
 
 async function condenseCurrentWindow(targetWindowId?: number): Promise<void> {
-  const settings = await getSettings();
-  const tabs = await chrome.tabs.query(
-    typeof targetWindowId === 'number' ? { windowId: targetWindowId } : { currentWindow: true },
-  );
+  const settings = await readSettings();
+  let tabs: chrome.tabs.Tab[] = [];
+  try {
+    tabs = await chrome.tabs.query(
+      typeof targetWindowId === 'number' ? { windowId: targetWindowId } : { currentWindow: true },
+    );
+  } catch {
+    return;
+  }
   const resolvedWindowId =
     typeof targetWindowId === 'number'
       ? targetWindowId
       : tabs.find((tab) => typeof tab.windowId === 'number')?.windowId;
-  const listUrl = browser.runtime.getURL('/nufftabs.html');
-  let listTabs = await chrome.tabs.query({ url: listUrl });
-  const listUiTabFound = listTabs.length > 0;
+  const listUrl = chrome.runtime.getURL(LIST_PAGE_PATH);
+  let listTabs: chrome.tabs.Tab[] = [];
+  try {
+    listTabs = await chrome.tabs.query({ url: listUrl });
+  } catch {
+    listTabs = [];
+  }
   const eligibleTabs = tabs.filter((tab) => {
     if (settings.excludePinned && tab.pinned) return false;
     if (tab.url === listUrl) return false;
     return typeof tab.url === 'string' && tab.url.length > 0;
-  });
-  const excludedCount = tabs.length - eligibleTabs.length;
-  console.info('[nufftabs] condense', {
-    windowId: resolvedWindowId,
-    totalTabs: tabs.length,
-    eligibleCount: eligibleTabs.length,
-    excludedCount,
-    listUiTabFound,
-    listUrl,
   });
 
   if (eligibleTabs.length === 0) {
@@ -94,18 +56,22 @@ async function condenseCurrentWindow(targetWindowId?: number): Promise<void> {
     return;
   }
 
+  const groupKey = typeof resolvedWindowId === 'number' ? String(resolvedWindowId) : UNKNOWN_GROUP_KEY;
   const [existingGroups, tabIds] = await Promise.all([
-    getSavedGroups(),
+    readSavedGroups(groupKey),
     Promise.resolve(eligibleTabs.map((tab) => tab.id).filter((id): id is number => typeof id === 'number')),
   ]);
 
-  const groupKey = typeof resolvedWindowId === 'number' ? String(resolvedWindowId) : 'unknown';
   const existingGroup = existingGroups[groupKey] ?? [];
   const updatedGroup = saveTabsToList(eligibleTabs, existingGroup);
   existingGroups[groupKey] = updatedGroup;
-  await setSavedGroups(existingGroups);
+  const saved = await writeSavedGroups(existingGroups);
+  if (!saved) {
+    await focusExistingListTabOrCreate(listTabs, listUrl, resolvedWindowId);
+    return;
+  }
 
-  if (excludedCount === 0 && listTabs.length === 0 && typeof resolvedWindowId === 'number') {
+  if (tabs.length === eligibleTabs.length && listTabs.length === 0 && typeof resolvedWindowId === 'number') {
     try {
       const created = await chrome.tabs.create({
         url: listUrl,
@@ -113,21 +79,16 @@ async function condenseCurrentWindow(targetWindowId?: number): Promise<void> {
         active: false,
       });
       listTabs = created ? [created] : listTabs;
-      console.info('[nufftabs] created list tab before close', {
-        tabId: created?.id,
-        windowId: created?.windowId,
-      });
     } catch (error) {
-      console.error('[nufftabs] create list tab before close failed', error);
+      void error;
     }
   }
 
   if (tabIds.length > 0) {
     try {
       await chrome.tabs.remove(tabIds);
-      console.info('[nufftabs] closed tabs', { tabIds });
     } catch (error) {
-      console.error('[nufftabs] close tabs failed', error);
+      void error;
     }
   }
 
@@ -157,13 +118,9 @@ async function focusExistingListTabOrCreate(
       if (typeof existing.windowId === 'number') {
         await chrome.windows.update(existing.windowId, { focused: true });
       }
-      console.info('[nufftabs] focused existing list tab', {
-        tabId: existing.id,
-        windowId: existing.windowId,
-      });
       return;
     } catch (error) {
-      console.error('[nufftabs] focus existing list tab failed', error);
+      void error;
     }
   }
 
@@ -179,9 +136,8 @@ async function focusExistingListTabOrCreate(
     if (typeof created.windowId === 'number') {
       await chrome.windows.update(created.windowId, { focused: true });
     }
-    console.info('[nufftabs] created list tab', { tabId: created.id, windowId: created.windowId });
   } catch (error) {
-    console.error('[nufftabs] create list tab failed', error);
+    void error;
   }
 }
 
