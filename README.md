@@ -56,6 +56,17 @@ tradeoffs. These are documented in code comments, but summarized here for mainta
 - **List tab reuse.** Condense may focus an existing list tab in another window and pins it,
   which can feel surprising if multiple windows are open.
 
+### Developer notes
+- **Storage schema:** saved tabs are stored per group under `savedTabs:<groupKey>` with a
+  `savedTabsIndex` array listing active group keys. This avoids full-blob rewrites.
+- **Data shapes:** `SavedTab` requires a UUID `id`, non-empty `url`, `title`, and `savedAt`
+  epoch ms. Settings are `{ excludePinned, restoreBatchSize }`.
+- **Restore chunking:** `restoreBatchSize` controls how many tabs open per window during
+  "Restore all" (one window per chunk, after any reused list window).
+- **Permissions:** only `tabs` + `storage` are required; no host permissions are used.
+- **WXT output:** dev builds live in `.output/chrome-mv3-dev/` and prod builds in
+  `.output/chrome-mv3/`.
+
 ### Restore rules
 - **Restore single:** always opens the tab in the current window (the window that contains the list tab) and keeps the list tab open and pinned.
 - **Restore all:** opens a new window by default. Exception: if the list tab is the only tab in the current window, all restored tabs open in that same window (list tab remains open and active).
