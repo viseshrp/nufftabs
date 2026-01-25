@@ -18,7 +18,6 @@ export type SettingsInput = {
 };
 
 export const STORAGE_KEYS = {
-  savedTabs: 'savedTabs',
   savedTabsIndex: 'savedTabsIndex',
   settings: 'settings',
 } as const;
@@ -103,32 +102,6 @@ export function isSavedGroupStorageKey(key: string): boolean {
   return key.startsWith(GROUP_KEY_PREFIX);
 }
 
-let migrationPromise: Promise<SavedTabGroups | null> | null = null;
-
-async function ensureMigrated(fallbackKey: string): Promise<SavedTabGroups | null> {
-  if (migrationPromise) return migrationPromise;
-  migrationPromise = (async () => {
-    try {
-      const result = await chrome.storage.local.get([STORAGE_KEYS.savedTabs, STORAGE_KEYS.savedTabsIndex]);
-      const legacy = result[STORAGE_KEYS.savedTabs];
-      if (legacy === undefined) return null;
-      const index = normalizeIndex(result[STORAGE_KEYS.savedTabsIndex]);
-      if (index.length > 0) {
-        await chrome.storage.local.remove(STORAGE_KEYS.savedTabs);
-        return null;
-      }
-      const groups = normalizeSavedGroups(legacy, fallbackKey);
-      await writeAllGroupsInternal(groups, []);
-      return groups;
-    } catch {
-      return null;
-    }
-  })();
-  const migrated = await migrationPromise;
-  migrationPromise = null;
-  return migrated;
-}
-
 async function readSavedGroupsIndex(): Promise<string[]> {
   const result = await chrome.storage.local.get([STORAGE_KEYS.savedTabsIndex]);
   return normalizeIndex(result[STORAGE_KEYS.savedTabsIndex]);
@@ -150,7 +123,6 @@ async function writeAllGroupsInternal(savedTabs: SavedTabGroups, existingIndex: 
   for (const key of existingIndex) {
     if (!nextIndex.includes(key)) removedKeys.push(groupStorageKey(key));
   }
-  removedKeys.push(STORAGE_KEYS.savedTabs);
   if (removedKeys.length > 0) {
     await chrome.storage.local.remove(removedKeys);
   }
@@ -187,8 +159,6 @@ export function normalizeSettings(value: unknown): Settings {
 
 export async function readSavedGroups(fallbackKey = UNKNOWN_GROUP_KEY): Promise<SavedTabGroups> {
   try {
-    const migrated = await ensureMigrated(fallbackKey);
-    if (migrated) return migrated;
     const index = await readSavedGroupsIndex();
     if (index.length === 0) return {};
     const groupKeys = index.map((key) => groupStorageKey(key));
@@ -217,8 +187,6 @@ export async function writeSavedGroups(savedTabs: SavedTabGroups): Promise<boole
 
 export async function readSavedGroup(groupKey: string): Promise<SavedTab[]> {
   try {
-    const migrated = await ensureMigrated(groupKey);
-    if (migrated) return migrated[groupKey] ?? [];
     const result = await chrome.storage.local.get([groupStorageKey(groupKey)]);
     return normalizeSavedTabArray(result[groupStorageKey(groupKey)]);
   } catch {
@@ -228,7 +196,6 @@ export async function readSavedGroup(groupKey: string): Promise<SavedTab[]> {
 
 export async function writeSavedGroup(groupKey: string, tabs: SavedTab[]): Promise<boolean> {
   try {
-    await ensureMigrated(groupKey);
     const index = await readSavedGroupsIndex();
     const hasGroup = index.includes(groupKey);
     let nextIndex = index;
@@ -243,7 +210,6 @@ export async function writeSavedGroup(groupKey: string, tabs: SavedTab[]): Promi
       await chrome.storage.local.set({ [STORAGE_KEYS.savedTabsIndex]: nextIndex });
       await chrome.storage.local.remove(groupStorageKey(groupKey));
     }
-    await chrome.storage.local.remove(STORAGE_KEYS.savedTabs);
     return true;
   } catch {
     return false;

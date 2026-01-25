@@ -3,7 +3,6 @@ import { parseOneTabExport } from './onetab_import';
 import {
   createSavedTab,
   LIST_PAGE_PATH,
-  normalizeSavedGroups,
   readSavedGroups,
   readSettings,
   STORAGE_KEYS,
@@ -1023,14 +1022,9 @@ async function init(): Promise<void> {
     if (areaName !== 'local') return;
     const changeKeys = Object.keys(changes);
     const hasSavedTabsChange =
-      Boolean(changes[STORAGE_KEYS.savedTabs]) ||
       Boolean(changes[STORAGE_KEYS.savedTabsIndex]) ||
       changeKeys.some((key) => isSavedGroupStorageKey(key));
     if (!hasSavedTabsChange) return;
-    if (changes[STORAGE_KEYS.savedTabs]) {
-      void refreshList(normalizeSavedGroups(changes[STORAGE_KEYS.savedTabs].newValue));
-      return;
-    }
     void refreshList();
   });
 
