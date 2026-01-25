@@ -1,12 +1,14 @@
 import './style.css';
-import { countOneTabNonEmptyLines, parseOneTabExport } from './onetab_import';
+import { parseOneTabExport } from './onetab_import';
 import {
   createSavedTab,
   LIST_PAGE_PATH,
-  normalizeSavedGroups,
   readSavedGroups,
   readSettings,
+  STORAGE_KEYS,
+  isSavedGroupStorageKey,
   UNKNOWN_GROUP_KEY,
+  writeSavedGroup,
   writeSavedGroups,
   type SavedTab,
   type SavedTabGroups,
@@ -35,6 +37,13 @@ const SVG_NS = 'http://www.w3.org/2000/svg';
 let snackbarTimer: number | undefined;
 let currentGroups: SavedTabGroups = {};
 
+// Render only a subset of each group at first paint to keep DOM size bounded; users can
+// load additional rows in chunks via the "Load more" control.
+const RENDER_PAGE_SIZE = 200;
+// Restore tabs in limited parallel batches to improve throughput; this can relax strict
+// tab ordering compared to fully sequential creation.
+const RESTORE_CONCURRENCY = 6;
+
 type SvgElementSpec = {
   tag: 'path' | 'rect';
   attrs: Record<string, string>;
@@ -55,11 +64,9 @@ function createSvgIcon(elements: SvgElementSpec[]): SVGSVGElement {
 }
 
 function cloneGroups(groups: SavedTabGroups): SavedTabGroups {
-  const cloned: SavedTabGroups = {};
-  for (const [key, tabs] of Object.entries(groups)) {
-    cloned[key] = tabs.slice();
-  }
-  return cloned;
+  // Shallow copy only; tab arrays are shared. Callers must replace arrays instead of mutating
+  // them in place or the original state will be modified and change detection can be skipped.
+  return { ...groups };
 }
 
 function countTotalTabs(groups: SavedTabGroups): number {
@@ -76,97 +83,128 @@ function setStatus(message: string): void {
   }, 2200);
 }
 
-function renderGroups(savedGroups: SavedTabGroups): void {
-  if (!groupsEl || !emptyEl) return;
-  const entries = Object.entries(savedGroups).filter(([, tabs]) => tabs.length > 0);
-  const totalCount = entries.reduce((sum, [, tabs]) => sum + tabs.length, 0);
-  if (tabCountEl) tabCountEl.textContent = String(totalCount);
+type GroupView = {
+  card: HTMLElement;
+  titleEl: HTMLDivElement;
+  metaEl: HTMLDivElement;
+  collapseButton: HTMLButtonElement;
+  itemsWrap: HTMLDivElement;
+  list: HTMLUListElement;
+  loadMoreItem?: HTMLLIElement;
+  loadMoreButton?: HTMLButtonElement;
+  renderedCount: number;
+};
 
-  if (totalCount === 0) {
-    emptyEl.style.display = 'block';
-    groupsEl.replaceChildren();
-    updateScrollControls();
+const groupViews = new Map<string, GroupView>();
+
+function isSameGroup(prev: SavedTab[] | undefined, next: SavedTab[]): boolean {
+  // Heuristic: compare first/middle/last IDs to avoid O(n) checks. This can miss reorders
+  // or edits that don't affect these pivot points, so the UI may skip a needed re-render.
+  if (!prev) return false;
+  if (prev.length !== next.length) return false;
+  if (prev.length === 0) return true;
+  const lastIndex = prev.length - 1;
+  const midIndex = Math.floor(prev.length / 2);
+  return (
+    prev[0]?.id === next[0]?.id &&
+    prev[lastIndex]?.id === next[lastIndex]?.id &&
+    prev[midIndex]?.id === next[midIndex]?.id
+  );
+}
+
+function areGroupsEquivalent(prev: SavedTabGroups, next: SavedTabGroups): boolean {
+  const prevKeys = Object.keys(prev);
+  const nextKeys = Object.keys(next);
+  if (prevKeys.length !== nextKeys.length) return false;
+  for (const key of nextKeys) {
+    if (!isSameGroup(prev[key], next[key] ?? [])) return false;
+  }
+  return true;
+}
+
+function getGroupCreatedAt(tabs: SavedTab[]): number {
+  let earliest = Number.POSITIVE_INFINITY;
+  for (const tab of tabs) {
+    const value = typeof tab.savedAt === 'number' ? tab.savedAt : Number.POSITIVE_INFINITY;
+    if (value < earliest) earliest = value;
+  }
+  return Number.isFinite(earliest) ? earliest : Number.NEGATIVE_INFINITY;
+}
+
+function updateGroupHeader(view: GroupView, tabs: SavedTab[], createdAt = getGroupCreatedAt(tabs)): void {
+  view.titleEl.textContent = `${tabs.length} tab${tabs.length === 1 ? '' : 's'}`;
+  view.metaEl.textContent = Number.isFinite(createdAt) ? `Created ${formatCreatedAt(createdAt)}` : 'Created -';
+}
+
+function ensureLoadMore(view: GroupView): void {
+  if (view.loadMoreItem && view.loadMoreButton) return;
+  const item = document.createElement('li');
+  item.className = 'item load-more';
+  const button = document.createElement('button');
+  button.className = 'text-button';
+  button.type = 'button';
+  button.dataset.action = 'load-more';
+  item.appendChild(button);
+  view.loadMoreItem = item;
+  view.loadMoreButton = button;
+}
+
+function updateLoadMore(view: GroupView, groupKey: string, tabs: SavedTab[]): void {
+  const remaining = tabs.length - view.renderedCount;
+  if (remaining <= 0) {
+    if (view.loadMoreItem?.isConnected) view.loadMoreItem.remove();
     return;
   }
+  if (!view.loadMoreItem || !view.loadMoreButton) ensureLoadMore(view);
+  if (!view.loadMoreItem || !view.loadMoreButton) return;
+  view.loadMoreButton.textContent = `Load ${Math.min(RENDER_PAGE_SIZE, remaining)} more (${remaining} remaining)`;
+  view.loadMoreItem.dataset.groupKey = groupKey;
+  if (!view.loadMoreItem.isConnected) view.list.appendChild(view.loadMoreItem);
+}
 
-  emptyEl.style.display = 'none';
+function appendGroupItems(view: GroupView, groupKey: string, tabs: SavedTab[], start: number, end: number): void {
   const fragment = document.createDocumentFragment();
+  for (let i = start; i < end; i += 1) {
+    const tab = tabs[i];
+    if (!tab) continue;
+    const item = document.createElement('li');
+    item.className = 'item';
+    item.dataset.tabId = tab.id;
+    item.dataset.groupKey = groupKey;
 
-  for (const [groupKey, tabs] of entries) {
-    const card = document.createElement('section');
-    card.className = 'group-card';
+    const main = document.createElement('div');
+    main.className = 'item-main';
 
-    const header = document.createElement('div');
-    header.className = 'group-header';
+    const tabTitle = document.createElement('div');
+    tabTitle.className = 'item-title';
+    tabTitle.textContent = tab.title;
 
-    const metaWrap = document.createElement('div');
+    const url = document.createElement('div');
+    url.className = 'item-url';
+    url.textContent = tab.url;
 
-    const title = document.createElement('div');
-    title.className = 'group-title';
-    title.textContent = `${tabs.length} tab${tabs.length === 1 ? '' : 's'}`;
+    const rowActions = document.createElement('div');
+    rowActions.className = 'row-actions';
 
-    const createdAt = tabs.reduce((min, tab) => {
-      const value = typeof tab.savedAt === 'number' ? tab.savedAt : Number.POSITIVE_INFINITY;
-      return value < min ? value : min;
-    }, Number.POSITIVE_INFINITY);
-    const createdLabel = Number.isFinite(createdAt)
-      ? `Created ${formatCreatedAt(createdAt)}`
-      : 'Created -';
-
-    const meta = document.createElement('div');
-    meta.className = 'group-meta';
-    meta.textContent = createdLabel;
-
-    metaWrap.appendChild(title);
-    metaWrap.appendChild(meta);
-
-    const actions = document.createElement('div');
-    actions.className = 'group-actions';
-
-    const collapseButton = document.createElement('button');
-    collapseButton.className = 'icon-button collapse-toggle';
-    collapseButton.setAttribute('aria-label', 'Collapse list');
-    collapseButton.setAttribute('title', 'Collapse list');
-    collapseButton.appendChild(
-      createSvgIcon([
-        {
-          tag: 'path',
-          attrs: {
-            d: 'M6 9l6 6 6-6z',
-            fill: 'currentColor',
-          },
-        },
-      ]),
-    );
-
-    const restoreAllButton = document.createElement('button');
-    restoreAllButton.className = 'icon-button';
-    restoreAllButton.setAttribute('aria-label', 'Restore all tabs');
-    restoreAllButton.setAttribute('title', 'Restore all');
-    restoreAllButton.appendChild(
+    const restoreButton = document.createElement('button');
+    restoreButton.className = 'icon-button row-action';
+    restoreButton.type = 'button';
+    restoreButton.dataset.action = 'restore-single';
+    restoreButton.dataset.tabId = tab.id;
+    restoreButton.setAttribute('aria-label', 'Restore');
+    restoreButton.setAttribute('title', 'Restore');
+    restoreButton.appendChild(
       createSvgIcon([
         {
           tag: 'rect',
           attrs: {
             x: '4',
-            y: '7',
+            y: '6',
             width: '9',
-            height: '8',
+            height: '12',
             rx: '2',
             fill: 'currentColor',
-            opacity: '0.45',
-          },
-        },
-        {
-          tag: 'rect',
-          attrs: {
-            x: '7',
-            y: '5',
-            width: '9',
-            height: '8',
-            rx: '2',
-            fill: 'currentColor',
-            opacity: '0.7',
+            opacity: '0.6',
           },
         },
         {
@@ -189,15 +227,15 @@ function renderGroups(savedGroups: SavedTabGroups): void {
         },
       ]),
     );
-    restoreAllButton.addEventListener('click', () => {
-      void restoreGroup(groupKey);
-    });
 
-    const deleteAllButton = document.createElement('button');
-    deleteAllButton.className = 'icon-button danger';
-    deleteAllButton.setAttribute('aria-label', 'Delete all tabs');
-    deleteAllButton.setAttribute('title', 'Delete all');
-    deleteAllButton.appendChild(
+    const deleteButton = document.createElement('button');
+    deleteButton.className = 'icon-button danger row-action';
+    deleteButton.type = 'button';
+    deleteButton.dataset.action = 'delete-single';
+    deleteButton.dataset.tabId = tab.id;
+    deleteButton.setAttribute('aria-label', 'Delete');
+    deleteButton.setAttribute('title', 'Delete');
+    deleteButton.appendChild(
       createSvgIcon([
         {
           tag: 'rect',
@@ -234,158 +272,323 @@ function renderGroups(savedGroups: SavedTabGroups): void {
         },
       ]),
     );
-    deleteAllButton.addEventListener('click', () => {
-      void deleteGroup(groupKey);
-    });
 
-    collapseButton.addEventListener('click', () => {
-      const isCollapsed = card.classList.toggle('is-collapsed');
-      const label = isCollapsed ? 'Expand list' : 'Collapse list';
-      collapseButton.setAttribute('aria-label', label);
-      collapseButton.setAttribute('title', label);
-      updateScrollControls();
-    });
+    main.appendChild(tabTitle);
+    main.appendChild(url);
+    rowActions.appendChild(restoreButton);
+    rowActions.appendChild(deleteButton);
+    item.appendChild(main);
+    item.appendChild(rowActions);
+    fragment.appendChild(item);
+  }
+  view.list.appendChild(fragment);
+}
 
-    actions.appendChild(collapseButton);
-    actions.appendChild(restoreAllButton);
-    actions.appendChild(deleteAllButton);
+function renderGroupItems(view: GroupView, groupKey: string, tabs: SavedTab[]): void {
+  // Only render the initial chunk of rows; the rest are loaded on demand.
+  view.list.replaceChildren();
+  view.renderedCount = 0;
+  const batchSize = Math.min(RENDER_PAGE_SIZE, tabs.length);
+  appendGroupItems(view, groupKey, tabs, 0, batchSize);
+  view.renderedCount = batchSize;
+  updateLoadMore(view, groupKey, tabs);
+}
 
-    header.appendChild(metaWrap);
-    header.appendChild(actions);
+function renderMoreItems(groupKey: string): void {
+  const view = groupViews.get(groupKey);
+  const tabs = currentGroups[groupKey];
+  if (!view || !tabs) return;
+  const nextCount = Math.min(tabs.length, view.renderedCount + RENDER_PAGE_SIZE);
+  if (view.loadMoreItem?.isConnected) {
+    view.loadMoreItem.remove();
+  }
+  appendGroupItems(view, groupKey, tabs, view.renderedCount, nextCount);
+  view.renderedCount = nextCount;
+  updateLoadMore(view, groupKey, tabs);
+  updateScrollControls();
+}
 
-    const itemsWrap = document.createElement('div');
-    itemsWrap.className = 'group-items';
+function createGroupView(groupKey: string): GroupView {
+  const card = document.createElement('section');
+  card.className = 'group-card';
+  card.dataset.groupKey = groupKey;
 
-    const list = document.createElement('ul');
-    list.className = 'list';
+  const header = document.createElement('div');
+  header.className = 'group-header';
 
-    for (const tab of tabs) {
-      const item = document.createElement('li');
-      item.className = 'item';
+  const metaWrap = document.createElement('div');
 
-      const main = document.createElement('div');
-      main.className = 'item-main';
+  const title = document.createElement('div');
+  title.className = 'group-title';
 
-      const tabTitle = document.createElement('div');
-      tabTitle.className = 'item-title';
-      tabTitle.textContent = tab.title;
+  const meta = document.createElement('div');
+  meta.className = 'group-meta';
 
-      const url = document.createElement('div');
-      url.className = 'item-url';
-      url.textContent = tab.url;
+  metaWrap.appendChild(title);
+  metaWrap.appendChild(meta);
 
-      const rowActions = document.createElement('div');
-      rowActions.className = 'row-actions';
+  const actions = document.createElement('div');
+  actions.className = 'group-actions';
 
-      const restoreButton = document.createElement('button');
-      restoreButton.className = 'icon-button row-action';
-      restoreButton.setAttribute('aria-label', 'Restore');
-      restoreButton.setAttribute('title', 'Restore');
-      restoreButton.appendChild(
-        createSvgIcon([
-          {
-            tag: 'rect',
-            attrs: {
-              x: '4',
-              y: '6',
-              width: '9',
-              height: '12',
-              rx: '2',
-              fill: 'currentColor',
-              opacity: '0.6',
-            },
-          },
-          {
-            tag: 'rect',
-            attrs: {
-              x: '13',
-              y: '11',
-              width: '6',
-              height: '2',
-              rx: '1',
-              fill: 'currentColor',
-            },
-          },
-          {
-            tag: 'path',
-            attrs: {
-              d: 'M18 8l4 4-4 4z',
-              fill: 'currentColor',
-            },
-          },
-        ]),
-      );
-      restoreButton.addEventListener('click', () => {
-        void restoreSingle(groupKey, tab.id);
-      });
+  const collapseButton = document.createElement('button');
+  collapseButton.className = 'icon-button collapse-toggle';
+  collapseButton.type = 'button';
+  collapseButton.dataset.action = 'toggle-collapse';
+  collapseButton.setAttribute('aria-label', 'Collapse list');
+  collapseButton.setAttribute('title', 'Collapse list');
+  collapseButton.appendChild(
+    createSvgIcon([
+      {
+        tag: 'path',
+        attrs: {
+          d: 'M6 9l6 6 6-6z',
+          fill: 'currentColor',
+        },
+      },
+    ]),
+  );
 
-      const deleteButton = document.createElement('button');
-      deleteButton.className = 'icon-button danger row-action';
-      deleteButton.setAttribute('aria-label', 'Delete');
-      deleteButton.setAttribute('title', 'Delete');
-      deleteButton.appendChild(
-        createSvgIcon([
-          {
-            tag: 'rect',
-            attrs: {
-              x: '6',
-              y: '8',
-              width: '12',
-              height: '12',
-              rx: '2',
-              fill: 'currentColor',
-            },
-          },
-          {
-            tag: 'rect',
-            attrs: {
-              x: '5',
-              y: '6',
-              width: '14',
-              height: '2',
-              rx: '1',
-              fill: 'currentColor',
-            },
-          },
-          {
-            tag: 'rect',
-            attrs: {
-              x: '9',
-              y: '4',
-              width: '6',
-              height: '2',
-              rx: '1',
-              fill: 'currentColor',
-            },
-          },
-        ]),
-      );
-      deleteButton.addEventListener('click', () => {
-        void deleteSingle(groupKey, tab.id);
-      });
+  const restoreAllButton = document.createElement('button');
+  restoreAllButton.className = 'icon-button';
+  restoreAllButton.type = 'button';
+  restoreAllButton.dataset.action = 'restore-group';
+  restoreAllButton.setAttribute('aria-label', 'Restore all tabs');
+  restoreAllButton.setAttribute('title', 'Restore all');
+  restoreAllButton.appendChild(
+    createSvgIcon([
+      {
+        tag: 'rect',
+        attrs: {
+          x: '4',
+          y: '7',
+          width: '9',
+          height: '8',
+          rx: '2',
+          fill: 'currentColor',
+          opacity: '0.45',
+        },
+      },
+      {
+        tag: 'rect',
+        attrs: {
+          x: '7',
+          y: '5',
+          width: '9',
+          height: '8',
+          rx: '2',
+          fill: 'currentColor',
+          opacity: '0.7',
+        },
+      },
+      {
+        tag: 'rect',
+        attrs: {
+          x: '13',
+          y: '11',
+          width: '6',
+          height: '2',
+          rx: '1',
+          fill: 'currentColor',
+        },
+      },
+      {
+        tag: 'path',
+        attrs: {
+          d: 'M18 8l4 4-4 4z',
+          fill: 'currentColor',
+        },
+      },
+    ]),
+  );
 
-      main.appendChild(tabTitle);
-      main.appendChild(url);
-      rowActions.appendChild(restoreButton);
-      rowActions.appendChild(deleteButton);
-      item.appendChild(main);
-      item.appendChild(rowActions);
-      list.appendChild(item);
+  const deleteAllButton = document.createElement('button');
+  deleteAllButton.className = 'icon-button danger';
+  deleteAllButton.type = 'button';
+  deleteAllButton.dataset.action = 'delete-group';
+  deleteAllButton.setAttribute('aria-label', 'Delete all tabs');
+  deleteAllButton.setAttribute('title', 'Delete all');
+  deleteAllButton.appendChild(
+    createSvgIcon([
+      {
+        tag: 'rect',
+        attrs: {
+          x: '6',
+          y: '8',
+          width: '12',
+          height: '12',
+          rx: '2',
+          fill: 'currentColor',
+        },
+      },
+      {
+        tag: 'rect',
+        attrs: {
+          x: '5',
+          y: '6',
+          width: '14',
+          height: '2',
+          rx: '1',
+          fill: 'currentColor',
+        },
+      },
+      {
+        tag: 'rect',
+        attrs: {
+          x: '9',
+          y: '4',
+          width: '6',
+          height: '2',
+          rx: '1',
+          fill: 'currentColor',
+        },
+      },
+    ]),
+  );
+
+  actions.appendChild(collapseButton);
+  actions.appendChild(restoreAllButton);
+  actions.appendChild(deleteAllButton);
+
+  header.appendChild(metaWrap);
+  header.appendChild(actions);
+
+  const itemsWrap = document.createElement('div');
+  itemsWrap.className = 'group-items';
+
+  const list = document.createElement('ul');
+  list.className = 'list';
+
+  itemsWrap.appendChild(list);
+  card.appendChild(header);
+  card.appendChild(itemsWrap);
+
+  return {
+    card,
+    titleEl: title,
+    metaEl: meta,
+    collapseButton,
+    itemsWrap,
+    list,
+    renderedCount: 0,
+  };
+}
+
+function renderGroups(savedGroups: SavedTabGroups, previousGroups: SavedTabGroups): void {
+  if (!groupsEl || !emptyEl) return;
+  const entries = Object.entries(savedGroups)
+    .filter(([, tabs]) => tabs.length > 0)
+    .map(([key, tabs]) => ({
+      key,
+      tabs,
+      createdAt: getGroupCreatedAt(tabs),
+    }))
+    .sort((a, b) => b.createdAt - a.createdAt);
+  const totalCount = entries.reduce((sum, entry) => sum + entry.tabs.length, 0);
+  if (tabCountEl) tabCountEl.textContent = String(totalCount);
+
+  if (totalCount === 0) {
+    emptyEl.style.display = 'block';
+    groupsEl.replaceChildren();
+    groupViews.clear();
+    updateScrollControls();
+    return;
+  }
+
+  emptyEl.style.display = 'none';
+  const activeKeys = new Set(entries.map((entry) => entry.key));
+  for (const [key, view] of groupViews.entries()) {
+    if (!activeKeys.has(key)) {
+      view.card.remove();
+      groupViews.delete(key);
     }
+  }
 
-    itemsWrap.appendChild(list);
-    card.appendChild(header);
-    card.appendChild(itemsWrap);
-    fragment.appendChild(card);
+  const fragment = document.createDocumentFragment();
+  for (const entry of entries) {
+    const groupKey = entry.key;
+    const tabs = entry.tabs;
+    let view = groupViews.get(groupKey);
+    if (!view) {
+      view = createGroupView(groupKey);
+      groupViews.set(groupKey, view);
+    }
+    updateGroupHeader(view, tabs, entry.createdAt);
+    view.itemsWrap.hidden = view.card.classList.contains('is-collapsed');
+    const previousTabs = previousGroups[groupKey];
+    if (!isSameGroup(previousTabs, tabs)) {
+      renderGroupItems(view, groupKey, tabs);
+    } else {
+      updateLoadMore(view, groupKey, tabs);
+    }
+    fragment.appendChild(view.card);
   }
 
   groupsEl.replaceChildren(fragment);
   updateScrollControls();
 }
 
+function handleGroupAction(event: Event): void {
+  // Event delegation keeps listeners bounded; relies on data-action attributes and DOM
+  // structure staying in sync. Markup changes can silently break actions.
+  if (!groupsEl) return;
+  const target = event.target as HTMLElement | null;
+  if (!target) return;
+  const button = target.closest<HTMLButtonElement>('button');
+  if (!button || !groupsEl.contains(button)) return;
+  const action = button.dataset.action;
+  if (!action) return;
+  const card = button.closest<HTMLElement>('[data-group-key]');
+  const groupKey = card?.dataset.groupKey;
+
+  switch (action) {
+    case 'toggle-collapse': {
+      if (!card || !groupKey) return;
+      const isCollapsed = card.classList.toggle('is-collapsed');
+      const label = isCollapsed ? 'Expand list' : 'Collapse list';
+      button.setAttribute('aria-label', label);
+      button.setAttribute('title', label);
+      const view = groupViews.get(groupKey);
+      if (view) view.itemsWrap.hidden = isCollapsed;
+      updateScrollControls();
+      break;
+    }
+    case 'restore-group': {
+      if (!groupKey) return;
+      void restoreGroup(groupKey);
+      break;
+    }
+    case 'delete-group': {
+      if (!groupKey) return;
+      void deleteGroup(groupKey);
+      break;
+    }
+    case 'restore-single': {
+      if (!groupKey) return;
+      const tabId = button.dataset.tabId;
+      if (tabId) void restoreSingle(groupKey, tabId);
+      break;
+    }
+    case 'delete-single': {
+      if (!groupKey) return;
+      const tabId = button.dataset.tabId;
+      if (tabId) void deleteSingle(groupKey, tabId);
+      break;
+    }
+    case 'load-more': {
+      if (!groupKey) return;
+      renderMoreItems(groupKey);
+      break;
+    }
+    default:
+      break;
+  }
+}
+
 function applyGroups(savedGroups: SavedTabGroups): void {
+  if (areGroupsEquivalent(currentGroups, savedGroups)) return;
+  const previous = currentGroups;
   currentGroups = savedGroups;
-  renderGroups(savedGroups);
+  renderGroups(savedGroups, previous);
 }
 
 async function refreshList(nextGroups?: SavedTabGroups): Promise<void> {
@@ -394,8 +597,7 @@ async function refreshList(nextGroups?: SavedTabGroups): Promise<void> {
 }
 
 async function restoreSingle(groupKey: string, id: string): Promise<void> {
-  const savedGroups = cloneGroups(currentGroups);
-  const groupTabs = savedGroups[groupKey] ?? [];
+  const groupTabs = currentGroups[groupKey] ?? [];
   const tab = groupTabs.find((entry) => entry.id === id);
   if (!tab) {
     setStatus('Tab not found.');
@@ -418,47 +620,47 @@ async function restoreSingle(groupKey: string, id: string): Promise<void> {
   }
 
   const updatedGroup = groupTabs.filter((entry) => entry.id !== id);
-  if (updatedGroup.length > 0) {
-    savedGroups[groupKey] = updatedGroup;
-  } else {
-    delete savedGroups[groupKey];
-  }
-  const saved = await writeSavedGroups(savedGroups);
+  const saved = await writeSavedGroup(groupKey, updatedGroup);
   if (!saved) {
     setStatus('Failed to save changes.');
     await refreshList();
     return;
   }
-  applyGroups(savedGroups);
+  const nextGroups = cloneGroups(currentGroups);
+  if (updatedGroup.length > 0) {
+    nextGroups[groupKey] = updatedGroup;
+  } else {
+    delete nextGroups[groupKey];
+  }
+  applyGroups(nextGroups);
   setStatus('Restored 1 tab.');
 }
 
 async function deleteSingle(groupKey: string, id: string): Promise<void> {
-  const savedGroups = cloneGroups(currentGroups);
-  const groupTabs = savedGroups[groupKey] ?? [];
+  const groupTabs = currentGroups[groupKey] ?? [];
   const updatedGroup = groupTabs.filter((entry) => entry.id !== id);
   if (updatedGroup.length === groupTabs.length) {
     setStatus('Tab not found.');
     return;
   }
-  if (updatedGroup.length > 0) {
-    savedGroups[groupKey] = updatedGroup;
-  } else {
-    delete savedGroups[groupKey];
-  }
-  const saved = await writeSavedGroups(savedGroups);
+  const saved = await writeSavedGroup(groupKey, updatedGroup);
   if (!saved) {
     setStatus('Failed to save changes.');
     await refreshList();
     return;
   }
-  applyGroups(savedGroups);
+  const nextGroups = cloneGroups(currentGroups);
+  if (updatedGroup.length > 0) {
+    nextGroups[groupKey] = updatedGroup;
+  } else {
+    delete nextGroups[groupKey];
+  }
+  applyGroups(nextGroups);
   setStatus('Deleted 1 tab.');
 }
 
 async function restoreGroup(groupKey: string): Promise<void> {
-  const savedGroups = cloneGroups(currentGroups);
-  const groupTabs = savedGroups[groupKey] ?? [];
+  const groupTabs = currentGroups[groupKey] ?? [];
   if (groupTabs.length === 0) {
     setStatus('No tabs to restore.');
     return;
@@ -467,33 +669,70 @@ async function restoreGroup(groupKey: string): Promise<void> {
   const restored = await restoreTabs(groupTabs);
   if (!restored) return;
 
-  delete savedGroups[groupKey];
-  const saved = await writeSavedGroups(savedGroups);
+  const saved = await writeSavedGroup(groupKey, []);
   if (!saved) {
     setStatus('Failed to save changes.');
     await refreshList();
     return;
   }
-  applyGroups(savedGroups);
+  const nextGroups = cloneGroups(currentGroups);
+  delete nextGroups[groupKey];
+  applyGroups(nextGroups);
   setStatus('Restored all tabs.');
 }
 
 async function deleteGroup(groupKey: string): Promise<void> {
-  const savedGroups = cloneGroups(currentGroups);
-  const groupTabs = savedGroups[groupKey] ?? [];
+  const groupTabs = currentGroups[groupKey] ?? [];
   if (groupTabs.length === 0) {
     setStatus('No tabs to delete.');
     return;
   }
-  delete savedGroups[groupKey];
-  const saved = await writeSavedGroups(savedGroups);
+  const saved = await writeSavedGroup(groupKey, []);
   if (!saved) {
     setStatus('Failed to save changes.');
     await refreshList();
     return;
   }
-  applyGroups(savedGroups);
+  const nextGroups = cloneGroups(currentGroups);
+  delete nextGroups[groupKey];
+  applyGroups(nextGroups);
   setStatus('Deleted tabs.');
+}
+
+async function runWithConcurrency<T>(
+  items: T[],
+  limit: number,
+  task: (item: T) => Promise<void>,
+): Promise<void> {
+  // Executes tasks concurrently for speed; ordering of completion is not guaranteed.
+  if (items.length === 0) return;
+  let index = 0;
+  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (index < items.length) {
+      const current = items[index];
+      index += 1;
+      if (current !== undefined) await task(current);
+    }
+  });
+  await Promise.all(workers);
+}
+
+async function createTabsInWindow(windowId: number, urls: string[], startIndex?: number): Promise<void> {
+  // Uses concurrency-limited creation; tabs may appear slightly out of order versus strict
+  // sequential creation, which is accepted for better restore throughput.
+  const tasks = urls.map((url, offset) => ({
+    url,
+    index: typeof startIndex === 'number' ? startIndex + offset : undefined,
+  }));
+  await runWithConcurrency(tasks, RESTORE_CONCURRENCY, async (task) => {
+    const createOptions: chrome.tabs.CreateProperties = {
+      windowId,
+      url: task.url,
+      active: false,
+    };
+    if (typeof task.index === 'number') createOptions.index = task.index;
+    await chrome.tabs.create(createOptions);
+  });
 }
 
 async function restoreTabs(savedTabs: SavedTab[]): Promise<boolean> {
@@ -507,10 +746,14 @@ async function restoreTabs(savedTabs: SavedTab[]): Promise<boolean> {
     const reuse = await getReuseWindowContext();
     if (reuse.shouldReuse && typeof reuse.tabId === 'number' && typeof reuse.windowId === 'number') {
       const [firstChunk, ...remainingChunks] = chunks;
-      if (firstChunk) {
-        for (const tab of firstChunk) {
-          await chrome.tabs.create({ windowId: reuse.windowId, url: tab.url, active: false });
-        }
+      if (firstChunk && firstChunk.length > 0) {
+        const existingTabs = await chrome.tabs.query({ windowId: reuse.windowId });
+        const startIndex = existingTabs.length;
+        await createTabsInWindow(
+          reuse.windowId,
+          firstChunk.map((tab) => tab.url),
+          startIndex,
+        );
       }
       await chrome.tabs.update(reuse.tabId, { active: true });
       for (const chunk of remainingChunks) {
@@ -521,8 +764,12 @@ async function restoreTabs(savedTabs: SavedTab[]): Promise<boolean> {
         if (typeof windowId !== 'number') {
           throw new Error('Missing window id');
         }
-        for (const tab of rest) {
-          await chrome.tabs.create({ windowId, url: tab.url });
+        if (rest.length > 0) {
+          await createTabsInWindow(
+            windowId,
+            rest.map((tab) => tab.url),
+            1,
+          );
         }
       }
     } else {
@@ -534,8 +781,12 @@ async function restoreTabs(savedTabs: SavedTab[]): Promise<boolean> {
         if (typeof windowId !== 'number') {
           throw new Error('Missing window id');
         }
-        for (const tab of rest) {
-          await chrome.tabs.create({ windowId, url: tab.url });
+        if (rest.length > 0) {
+          await createTabsInWindow(
+            windowId,
+            rest.map((tab) => tab.url),
+            1,
+          );
         }
       }
     }
@@ -730,24 +981,24 @@ async function getCurrentWindowKey(): Promise<string> {
 async function importOneTab(): Promise<void> {
   if (!jsonAreaEl) return;
   const text = jsonAreaEl.value;
-  const totalLines = countOneTabNonEmptyLines(text);
-  const imported = parseOneTabExport(text);
+  const { tabs: imported, totalLines } = parseOneTabExport(text);
   const skipped = Math.max(0, totalLines - imported.length);
   if (imported.length === 0) {
     setStatus(`Imported 0 tabs, skipped ${skipped}.`);
     return;
   }
-  const savedGroups = cloneGroups(currentGroups);
   const groupKey = await getCurrentWindowKey();
-  const existing = savedGroups[groupKey] ?? [];
-  savedGroups[groupKey] = [...existing, ...imported];
-  const saved = await writeSavedGroups(savedGroups);
+  const existing = currentGroups[groupKey] ?? [];
+  const updatedGroup = [...existing, ...imported];
+  const saved = await writeSavedGroup(groupKey, updatedGroup);
   if (!saved) {
     setStatus('Failed to save changes.');
     await refreshList();
     return;
   }
-  applyGroups(savedGroups);
+  const nextGroups = cloneGroups(currentGroups);
+  nextGroups[groupKey] = updatedGroup;
+  applyGroups(nextGroups);
   setStatus(`Imported ${imported.length} tab${imported.length === 1 ? '' : 's'}, skipped ${skipped}.`);
 }
 
@@ -759,6 +1010,8 @@ async function init(): Promise<void> {
     ioPanelEl.hidden = !ioPanelEl.hidden;
     updateScrollControls();
   });
+
+  groupsEl?.addEventListener('click', handleGroupAction);
 
   exportJsonEl?.addEventListener('click', () => {
     void exportJson();
@@ -795,9 +1048,12 @@ async function init(): Promise<void> {
 
   chrome.storage.onChanged.addListener((changes, areaName) => {
     if (areaName !== 'local') return;
-    if (changes.savedTabs) {
-      void refreshList(normalizeSavedGroups(changes.savedTabs.newValue));
-    }
+    const changeKeys = Object.keys(changes);
+    const hasSavedTabsChange =
+      Boolean(changes[STORAGE_KEYS.savedTabsIndex]) ||
+      changeKeys.some((key) => isSavedGroupStorageKey(key));
+    if (!hasSavedTabsChange) return;
+    void refreshList();
   });
 
   document.addEventListener('visibilitychange', () => {

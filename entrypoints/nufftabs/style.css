@@ -162,6 +162,18 @@ h1 {
   border-bottom: 1px solid #eceff1;
 }
 
+.item.load-more {
+  grid-template-columns: 1fr;
+  justify-items: center;
+  background: #f1f3f4;
+}
+
+.item.load-more .text-button {
+  background: #ffffff;
+  color: #1a4fd8;
+  border: 1px solid #d2e3fc;
+}
+
 .item:last-child {
   border-bottom: none;
 }

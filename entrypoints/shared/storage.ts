@@ -18,7 +18,7 @@ export type SettingsInput = {
 };
 
 export const STORAGE_KEYS = {
-  savedTabs: 'savedTabs',
+  savedTabsIndex: 'savedTabsIndex',
   settings: 'settings',
 } as const;
 
@@ -30,6 +30,8 @@ export const DEFAULT_SETTINGS: Settings = {
 export const LIST_PAGE_PATH = 'nufftabs.html';
 
 export const UNKNOWN_GROUP_KEY = 'unknown';
+
+export const GROUP_KEY_PREFIX = 'savedTabs:';
 
 type SavedTabInput = {
   url: string;
@@ -79,6 +81,53 @@ function normalizeSavedTabArray(value: unknown, now = Date.now()): SavedTab[] {
   return normalized;
 }
 
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === 'string' && value.length > 0;
+}
+
+function normalizeIndex(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  const index: string[] = [];
+  for (const entry of value) {
+    if (isNonEmptyString(entry)) index.push(entry);
+  }
+  return Array.from(new Set(index));
+}
+
+function groupStorageKey(groupKey: string): string {
+  return `${GROUP_KEY_PREFIX}${groupKey}`;
+}
+
+export function isSavedGroupStorageKey(key: string): boolean {
+  return key.startsWith(GROUP_KEY_PREFIX);
+}
+
+async function readSavedGroupsIndex(): Promise<string[]> {
+  const result = await chrome.storage.local.get([STORAGE_KEYS.savedTabsIndex]);
+  return normalizeIndex(result[STORAGE_KEYS.savedTabsIndex]);
+}
+
+async function writeAllGroupsInternal(savedTabs: SavedTabGroups, existingIndex: string[]): Promise<void> {
+  const entries = Object.entries(savedTabs).filter(([, tabs]) => tabs.length > 0);
+  const nextIndex = entries.map(([key]) => key);
+  const payload: Record<string, unknown> = {
+    [STORAGE_KEYS.savedTabsIndex]: nextIndex,
+  };
+  for (const [key, tabs] of entries) {
+    payload[groupStorageKey(key)] = tabs;
+  }
+
+  await chrome.storage.local.set(payload);
+
+  const removedKeys: string[] = [];
+  for (const key of existingIndex) {
+    if (!nextIndex.includes(key)) removedKeys.push(groupStorageKey(key));
+  }
+  if (removedKeys.length > 0) {
+    await chrome.storage.local.remove(removedKeys);
+  }
+}
+
 export function normalizeSavedGroups(value: unknown, fallbackKey = UNKNOWN_GROUP_KEY): SavedTabGroups {
   const now = Date.now();
   if (Array.isArray(value)) {
@@ -110,8 +159,17 @@ export function normalizeSettings(value: unknown): Settings {
 
 export async function readSavedGroups(fallbackKey = UNKNOWN_GROUP_KEY): Promise<SavedTabGroups> {
   try {
-    const result = await chrome.storage.local.get([STORAGE_KEYS.savedTabs]);
-    return normalizeSavedGroups(result[STORAGE_KEYS.savedTabs], fallbackKey);
+    const index = await readSavedGroupsIndex();
+    if (index.length === 0) return {};
+    const groupKeys = index.map((key) => groupStorageKey(key));
+    const result = await chrome.storage.local.get(groupKeys);
+    const groups: SavedTabGroups = {};
+    const now = Date.now();
+    for (const key of index) {
+      const tabs = normalizeSavedTabArray(result[groupStorageKey(key)], now);
+      if (tabs.length > 0) groups[key] = tabs;
+    }
+    return groups;
   } catch {
     return {};
   }
@@ -119,7 +177,39 @@ export async function readSavedGroups(fallbackKey = UNKNOWN_GROUP_KEY): Promise<
 
 export async function writeSavedGroups(savedTabs: SavedTabGroups): Promise<boolean> {
   try {
-    await chrome.storage.local.set({ [STORAGE_KEYS.savedTabs]: savedTabs });
+    const existingIndex = await readSavedGroupsIndex();
+    await writeAllGroupsInternal(savedTabs, existingIndex);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export async function readSavedGroup(groupKey: string): Promise<SavedTab[]> {
+  try {
+    const result = await chrome.storage.local.get([groupStorageKey(groupKey)]);
+    return normalizeSavedTabArray(result[groupStorageKey(groupKey)]);
+  } catch {
+    return [];
+  }
+}
+
+export async function writeSavedGroup(groupKey: string, tabs: SavedTab[]): Promise<boolean> {
+  try {
+    const index = await readSavedGroupsIndex();
+    const hasGroup = index.includes(groupKey);
+    let nextIndex = index;
+    if (tabs.length > 0) {
+      if (!hasGroup) nextIndex = [...index, groupKey];
+      await chrome.storage.local.set({
+        [STORAGE_KEYS.savedTabsIndex]: nextIndex,
+        [groupStorageKey(groupKey)]: tabs,
+      });
+    } else {
+      if (hasGroup) nextIndex = index.filter((key) => key !== groupKey);
+      await chrome.storage.local.set({ [STORAGE_KEYS.savedTabsIndex]: nextIndex });
+      await chrome.storage.local.remove(groupStorageKey(groupKey));
+    }
     return true;
   } catch {
     return false;
