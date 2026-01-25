@@ -41,6 +41,62 @@ List UI loads
   → Storage change listener refreshes UI
 ```
 
+## Key flows (pseudo-code)
+
+### Condense (background)
+```
+settings = readSettings()
+tabs = queryTabs(currentWindow)
+eligible = tabs.filter(url is valid and (excludePinned ? !pinned : true) and not listUrl)
+groupKey = String(windowId) or "unknown"
+saved = readSavedGroup(groupKey)
+saved = createSavedTab(eligible) + saved
+writeSavedGroup(groupKey, saved)
+close eligible tabs
+focus or create list tab
+```
+
+### Restore single (list UI)
+```
+tabs = currentGroups[groupKey]
+tab = tabs.find(id)
+open tab in current window (or new window if needed)
+tabs = tabs.filter(id)
+writeSavedGroup(groupKey, tabs)
+render UI
+```
+
+### Restore all (list UI)
+```
+tabs = currentGroups[groupKey]
+chunks = split(tabs, restoreBatchSize)
+if list tab is only tab in window:
+  use current window for first chunk
+else:
+  create new window for each chunk
+writeSavedGroup(groupKey, [])  // delete group
+render UI
+```
+
+### Import JSON
+```
+parsed = JSON.parse(text)
+normalized = normalizeImportedGroups(parsed)
+nextGroups = mode === replace ? normalized : mergeGroups(currentGroups, normalized)
+writeSavedGroups(nextGroups)
+render UI
+```
+
+### Import OneTab
+```
+lines = text.split("\n")
+tabs = parseOneTab(lines)
+groupKey = current window id
+existing = currentGroups[groupKey]
+writeSavedGroup(groupKey, existing + tabs)
+render UI
+```
+
 ## Why groups exist
 Each “condense” action creates a **group** of tabs. The group is keyed by the
 current `windowId` (stringified). This keeps the UI organized and makes “Restore all”
@@ -78,6 +134,16 @@ The list UI holds an in‑memory `currentGroups` object and updates the DOM when
 
 Groups are rendered as cards. Each group can be collapsed without deleting data.
 
+## UI behavior reference
+- **Collapse group:** hides rows but does not delete data.
+- **Restore all:** restores all tabs in the group, then deletes the group.
+- **Delete all:** deletes the entire group without opening tabs.
+- **Restore single:** opens one tab, then removes it from the group.
+- **Export JSON:** writes `{ savedTabs: ... }` to the textarea and downloads it.
+- **Import JSON:** validates and appends (or replaces) groups.
+- **Import OneTab:** parses OneTab text and appends to current group.
+- **Load more:** renders the next chunk of rows for large groups.
+
 ## Storage schema
 For the full schema and reasoning, see `docs/storage.md`.
 
@@ -106,6 +172,20 @@ For the full schema and reasoning, see `docs/storage.md`.
 - **List UI not updating:** `entrypoints/nufftabs/index.ts`
 - **Storage format issues:** `entrypoints/shared/storage.ts`
 - **Settings not respected:** `entrypoints/options/index.ts`
+
+## Troubleshooting matrix
+- **Condense closes tabs but list is empty:** storage write failed; check background console
+  and verify `savedTabsIndex`/`savedTabs:<groupKey>` keys exist.
+- **List UI doesn’t refresh:** check storage listener and `isSameGroup` heuristic.
+- **Restore all opens many windows:** verify `restoreBatchSize` and list‑tab reuse logic.
+- **Import JSON fails:** validate schema; ensure each entry has a string `url`.
+
+## Glossary
+- **Group:** a collection of tabs saved together (keyed by window ID string).
+- **List tab:** the `nufftabs.html` page that shows saved tabs.
+- **Chunk:** a batch of tabs restored into a single window (size = `restoreBatchSize`).
+- **Restore batch size:** number of tabs to open per window during “Restore all”.
+- **Index:** `savedTabsIndex`, the list of group keys in storage.
 
 ## Future changes
 If you add new features:

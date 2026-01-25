@@ -38,6 +38,21 @@ settings: {
 ```
 Settings are stored locally (not sync) for simplicity and to avoid conflicts.
 
+## Example storage snapshot
+This is what storage might look like after two condense actions:
+
+```
+savedTabsIndex: ["123", "456"]
+savedTabs:123: [
+  { "id": "uuid-1", "url": "https://example.com", "title": "Example", "savedAt": 1737860000000 },
+  { "id": "uuid-2", "url": "https://news.ycombinator.com", "title": "Hacker News", "savedAt": 1737860000000 }
+]
+savedTabs:456: [
+  { "id": "uuid-3", "url": "https://openai.com", "title": "OpenAI", "savedAt": 1737860100000 }
+]
+settings: { "excludePinned": true, "restoreBatchSize": 100 }
+```
+
 ## Data model
 
 ### SavedTab
@@ -54,6 +69,27 @@ type SavedTab = {
 `groupKey` is currently the **stringified window ID** at the time of condense.
 This is not a permanent identifier (window IDs can be reused), but it is stable
 enough for "save tabs from this window now".
+
+## Common write patterns (pseudo-code)
+
+### Append tabs to a group (condense)
+```
+tabs = readSavedGroup(groupKey)
+tabs = newTabs + tabs
+writeSavedGroup(groupKey, tabs)
+```
+
+### Remove a single tab
+```
+tabs = readSavedGroup(groupKey)
+tabs = tabs.filter(t => t.id !== id)
+writeSavedGroup(groupKey, tabs)
+```
+
+### Delete a whole group
+```
+writeSavedGroup(groupKey, [])
+```
 
 ## Read flow
 1. Read `savedTabsIndex`.
@@ -106,6 +142,14 @@ If you need to add fields:
 2. Update `createSavedTab(...)` to set defaults.
 3. Update normalization to tolerate missing/unknown fields.
 4. Update any export/import logic that serializes tabs.
+
+## Troubleshooting storage issues
+- **Saved list empty after condense:** check that `savedTabsIndex` is populated and
+  that each `savedTabs:<groupKey>` exists.
+- **Group not showing in UI:** confirm the group key is present in `savedTabsIndex`
+  and the stored array contains valid objects with `url`.
+- **Unexpected ordering:** check whether `savedAt` values are identical (same timestamp
+  is used for all tabs in a condense action).
 
 ## Useful file references
 - `entrypoints/shared/storage.ts` — schema, normalization, read/write helpers.
