@@ -45,6 +45,14 @@ h1 {
   font-weight: 600;
 }
 
+.setting input[type="number"] {
+  width: 120px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  border: 1px solid #dadce0;
+  font-size: 13px;
+}
+
 .status {
   margin-top: 16px;
   min-height: 20px;

@@ -9,6 +9,12 @@ export type SavedTabGroups = Record<string, SavedTab[]>;
 
 export type Settings = {
   excludePinned: boolean;
+  restoreBatchSize: number;
+};
+
+export type SettingsInput = {
+  excludePinned: boolean;
+  restoreBatchSize?: number;
 };
 
 export const STORAGE_KEYS = {
@@ -18,6 +24,7 @@ export const STORAGE_KEYS = {
 
 export const DEFAULT_SETTINGS: Settings = {
   excludePinned: true,
+  restoreBatchSize: 100,
 };
 
 export const LIST_PAGE_PATH = 'nufftabs.html';
@@ -90,8 +97,14 @@ export function normalizeSavedGroups(value: unknown, fallbackKey = UNKNOWN_GROUP
 export function normalizeSettings(value: unknown): Settings {
   if (!value || typeof value !== 'object') return { ...DEFAULT_SETTINGS };
   const excludePinned = (value as { excludePinned?: unknown }).excludePinned;
+  const restoreBatchSize = (value as { restoreBatchSize?: unknown }).restoreBatchSize;
+  const parsedBatchSize =
+    typeof restoreBatchSize === 'number' && Number.isFinite(restoreBatchSize)
+      ? Math.floor(restoreBatchSize)
+      : DEFAULT_SETTINGS.restoreBatchSize;
   return {
     excludePinned: typeof excludePinned === 'boolean' ? excludePinned : DEFAULT_SETTINGS.excludePinned,
+    restoreBatchSize: parsedBatchSize > 0 ? parsedBatchSize : DEFAULT_SETTINGS.restoreBatchSize,
   };
 }
 
@@ -122,9 +135,17 @@ export async function readSettings(): Promise<Settings> {
   }
 }
 
-export async function writeSettings(settings: Settings): Promise<boolean> {
+export async function writeSettings(settings: SettingsInput): Promise<boolean> {
   try {
-    await chrome.storage.local.set({ [STORAGE_KEYS.settings]: settings });
+    const payload: SettingsInput = { excludePinned: settings.excludePinned };
+    if (
+      typeof settings.restoreBatchSize === 'number' &&
+      Number.isFinite(settings.restoreBatchSize) &&
+      settings.restoreBatchSize > 0
+    ) {
+      payload.restoreBatchSize = Math.floor(settings.restoreBatchSize);
+    }
+    await chrome.storage.local.set({ [STORAGE_KEYS.settings]: payload });
     return true;
   } catch {
     return false;
