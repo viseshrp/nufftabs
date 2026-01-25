@@ -93,6 +93,7 @@ type GroupView = {
 const groupViews = new Map<string, GroupView>();
 
 function isSameGroup(prev: SavedTab[] | undefined, next: SavedTab[]): boolean {
+  // Heuristic: compare first/middle/last IDs to avoid O(n) checks; can miss reorders.
   if (!prev) return false;
   if (prev.length !== next.length) return false;
   if (prev.length === 0) return true;
