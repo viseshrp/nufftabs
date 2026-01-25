@@ -41,6 +41,21 @@ tradeoffs. These are documented in code comments, but summarized here for mainta
 - **Shallow group cloning:** `cloneGroups()` only shallow-copies the groups map. Callers
   must replace arrays rather than mutating them in place to avoid accidental shared state.
 
+### Gotchas
+- **Group key = window ID string.** Window IDs can be reused over time, so groups represent
+  "tabs saved from that window at the time of condense," not a stable long-lived window identity.
+- **Created-at ordering.** Group "Created" timestamps use the earliest `savedAt` in the group.
+  Imports (including OneTab) stamp `savedAt` with "now," which can make imported groups
+  appear newest.
+- **Restore order.** Concurrency-limited restore favors throughput; tab ordering can differ
+  slightly from list order for large restores.
+- **Paged rendering.** Large groups only render the first `RENDER_PAGE_SIZE` items until
+  the user clicks "Load more," which can look like missing tabs.
+- **Local settings.** Settings are stored in `chrome.storage.local`, not sync, so they
+  do not follow the user across machines.
+- **List tab reuse.** Condense may focus an existing list tab in another window and pins it,
+  which can feel surprising if multiple windows are open.
+
 ### Restore rules
 - **Restore single:** always opens the tab in the current window (the window that contains the list tab) and keeps the list tab open and pinned.
 - **Restore all:** opens a new window by default. Exception: if the list tab is the only tab in the current window, all restored tabs open in that same window (list tab remains open and active).
