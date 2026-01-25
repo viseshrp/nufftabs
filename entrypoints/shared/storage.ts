@@ -9,6 +9,7 @@ export type SavedTabGroups = Record<string, SavedTab[]>;
 
 export type Settings = {
   excludePinned: boolean;
+  restoreBatchSize: number;
 };
 
 export const STORAGE_KEYS = {
@@ -18,6 +19,7 @@ export const STORAGE_KEYS = {
 
 export const DEFAULT_SETTINGS: Settings = {
   excludePinned: true,
+  restoreBatchSize: 100,
 };
 
 export const LIST_PAGE_PATH = 'nufftabs.html';
@@ -90,8 +92,14 @@ export function normalizeSavedGroups(value: unknown, fallbackKey = UNKNOWN_GROUP
 export function normalizeSettings(value: unknown): Settings {
   if (!value || typeof value !== 'object') return { ...DEFAULT_SETTINGS };
   const excludePinned = (value as { excludePinned?: unknown }).excludePinned;
+  const restoreBatchSize = (value as { restoreBatchSize?: unknown }).restoreBatchSize;
+  const parsedBatchSize =
+    typeof restoreBatchSize === 'number' && Number.isFinite(restoreBatchSize)
+      ? Math.floor(restoreBatchSize)
+      : DEFAULT_SETTINGS.restoreBatchSize;
   return {
     excludePinned: typeof excludePinned === 'boolean' ? excludePinned : DEFAULT_SETTINGS.excludePinned,
+    restoreBatchSize: parsedBatchSize > 0 ? parsedBatchSize : DEFAULT_SETTINGS.restoreBatchSize,
   };
 }
 

@@ -5,6 +5,7 @@ import {
   LIST_PAGE_PATH,
   normalizeSavedGroups,
   readSavedGroups,
+  readSettings,
   UNKNOWN_GROUP_KEY,
   writeSavedGroups,
   type SavedTab,
@@ -496,7 +497,8 @@ async function deleteGroup(groupKey: string): Promise<void> {
 }
 
 async function restoreTabs(savedTabs: SavedTab[]): Promise<boolean> {
-  const chunkSize = 100;
+  const settings = await readSettings();
+  const chunkSize = settings.restoreBatchSize > 0 ? settings.restoreBatchSize : 100;
   const chunks: SavedTab[][] = [];
   for (let i = 0; i < savedTabs.length; i += chunkSize) {
     chunks.push(savedTabs.slice(i, i + chunkSize));
