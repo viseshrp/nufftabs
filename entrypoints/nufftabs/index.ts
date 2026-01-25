@@ -37,7 +37,11 @@ const SVG_NS = 'http://www.w3.org/2000/svg';
 let snackbarTimer: number | undefined;
 let currentGroups: SavedTabGroups = {};
 
+// Render only a subset of each group at first paint to keep DOM size bounded; users can
+// load additional rows in chunks via the "Load more" control.
 const RENDER_PAGE_SIZE = 200;
+// Restore tabs in limited parallel batches to improve throughput; this can relax strict
+// tab ordering compared to fully sequential creation.
 const RESTORE_CONCURRENCY = 6;
 
 type SvgElementSpec = {
@@ -60,7 +64,8 @@ function createSvgIcon(elements: SvgElementSpec[]): SVGSVGElement {
 }
 
 function cloneGroups(groups: SavedTabGroups): SavedTabGroups {
-  // Shallow copy only; callers must replace arrays instead of mutating in place.
+  // Shallow copy only; tab arrays are shared. Callers must replace arrays instead of mutating
+  // them in place or the original state will be modified and change detection can be skipped.
   return { ...groups };
 }
 
@@ -93,7 +98,8 @@ type GroupView = {
 const groupViews = new Map<string, GroupView>();
 
 function isSameGroup(prev: SavedTab[] | undefined, next: SavedTab[]): boolean {
-  // Heuristic: compare first/middle/last IDs to avoid O(n) checks; can miss reorders.
+  // Heuristic: compare first/middle/last IDs to avoid O(n) checks. This can miss reorders
+  // or edits that don't affect these pivot points, so the UI may skip a needed re-render.
   if (!prev) return false;
   if (prev.length !== next.length) return false;
   if (prev.length === 0) return true;
@@ -279,6 +285,7 @@ function appendGroupItems(view: GroupView, groupKey: string, tabs: SavedTab[], s
 }
 
 function renderGroupItems(view: GroupView, groupKey: string, tabs: SavedTab[]): void {
+  // Only render the initial chunk of rows; the rest are loaded on demand.
   view.list.replaceChildren();
   view.renderedCount = 0;
   const batchSize = Math.min(RENDER_PAGE_SIZE, tabs.length);
@@ -521,6 +528,8 @@ function renderGroups(savedGroups: SavedTabGroups, previousGroups: SavedTabGroup
 }
 
 function handleGroupAction(event: Event): void {
+  // Event delegation keeps listeners bounded; relies on data-action attributes and DOM
+  // structure staying in sync. Markup changes can silently break actions.
   if (!groupsEl) return;
   const target = event.target as HTMLElement | null;
   if (!target) return;
@@ -695,6 +704,7 @@ async function runWithConcurrency<T>(
   limit: number,
   task: (item: T) => Promise<void>,
 ): Promise<void> {
+  // Executes tasks concurrently for speed; ordering of completion is not guaranteed.
   if (items.length === 0) return;
   let index = 0;
   const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
@@ -708,6 +718,8 @@ async function runWithConcurrency<T>(
 }
 
 async function createTabsInWindow(windowId: number, urls: string[], startIndex?: number): Promise<void> {
+  // Uses concurrency-limited creation; tabs may appear slightly out of order versus strict
+  // sequential creation, which is accepted for better restore throughput.
   const tasks = urls.map((url, offset) => ({
     url,
     index: typeof startIndex === 'number' ? startIndex + offset : undefined,

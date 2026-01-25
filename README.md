@@ -23,6 +23,24 @@ nufftabs is a minimal Chrome (MV3) extension to condense all tabs from the curre
 - Renders saved tabs from `chrome.storage.local`.
 - Refreshes on storage changes and when the tab becomes visible.
 
+### Performance tradeoffs (intentional)
+To keep the list UI responsive with large tab counts, the code makes a few deliberate
+tradeoffs. These are documented in code comments, but summarized here for maintainers:
+
+- **Group diff heuristic:** group changes are detected by comparing the first, middle, and
+  last tab IDs instead of a full deep comparison. This avoids O(n) checks but can miss
+  reorders or mid-list edits, resulting in a skipped re-render.
+- **Incremental list rendering:** only the first `RENDER_PAGE_SIZE` items render initially.
+  Remaining tabs require a "Load more" click to render additional chunks. This bounds DOM
+  size but means not all tabs are immediately visible.
+- **Event delegation:** a single click handler on the list container routes actions via
+  `data-action`. This reduces per-row listeners, but action handling depends on markup and
+  attributes staying in sync.
+- **Concurrency-limited restore:** tab creation runs in parallel batches for speed. This
+  can relax strict creation order compared to fully sequential creation.
+- **Shallow group cloning:** `cloneGroups()` only shallow-copies the groups map. Callers
+  must replace arrays rather than mutating them in place to avoid accidental shared state.
+
 ### Restore rules
 - **Restore single:** always opens the tab in the current window (the window that contains the list tab) and keeps the list tab open and pinned.
 - **Restore all:** opens a new window by default. Exception: if the list tab is the only tab in the current window, all restored tabs open in that same window (list tab remains open and active).
