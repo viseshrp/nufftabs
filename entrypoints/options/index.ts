@@ -1,5 +1,12 @@
 import './style.css';
-import { DEFAULT_SETTINGS, STORAGE_KEYS, readSettings, writeSettings, type Settings, type SettingsInput } from '../shared/storage';
+import {
+  DEFAULT_SETTINGS,
+  STORAGE_KEYS,
+  normalizeSettings,
+  writeSettings,
+  type Settings,
+  type SettingsInput,
+} from '../shared/storage';
 
 const excludePinnedEl = document.querySelector<HTMLInputElement>('#excludePinned');
 const restoreBatchSizeEl = document.querySelector<HTMLInputElement>('#restoreBatchSize');
@@ -19,7 +26,7 @@ async function init(): Promise<void> {
     typeof (rawSettings as { restoreBatchSize?: unknown }).restoreBatchSize === 'number' &&
     Number.isFinite((rawSettings as { restoreBatchSize?: unknown }).restoreBatchSize);
 
-  let settings: Settings = await readSettings();
+  let settings: Settings = normalizeSettings(rawSettings);
   excludePinnedEl.checked = settings.excludePinned;
   restoreBatchSizeEl.value = hasCustomBatchSize ? String(settings.restoreBatchSize) : '';
 

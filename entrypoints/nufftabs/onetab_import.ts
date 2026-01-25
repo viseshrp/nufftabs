@@ -4,18 +4,16 @@ function isAllowedUrl(value: string): boolean {
   return /^(https?|file|chrome|chrome-extension):\/\//i.test(value);
 }
 
-export function countOneTabNonEmptyLines(text: string): number {
-  return text.split(/\r?\n/).filter((line) => line.trim().length > 0).length;
-}
-
-export function parseOneTabExport(text: string): SavedTab[] {
+export function parseOneTabExport(text: string): { tabs: SavedTab[]; totalLines: number } {
   const lines = text.split(/\r?\n/);
   const savedTabs: SavedTab[] = [];
+  let totalLines = 0;
   const now = Date.now();
 
   for (const rawLine of lines) {
     const line = rawLine.trim();
     if (!line) continue;
+    totalLines += 1;
 
     const pipeIndex = line.indexOf('|');
     const urlPart = pipeIndex >= 0 ? line.slice(0, pipeIndex).trim() : line;
@@ -32,5 +30,5 @@ export function parseOneTabExport(text: string): SavedTab[] {
     );
   }
 
-  return savedTabs;
+  return { tabs: savedTabs, totalLines };
 }

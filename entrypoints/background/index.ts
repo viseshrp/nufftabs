@@ -1,10 +1,10 @@
 import {
   createSavedTab,
   LIST_PAGE_PATH,
-  readSavedGroups,
+  readSavedGroup,
   readSettings,
   UNKNOWN_GROUP_KEY,
-  writeSavedGroups,
+  writeSavedGroup,
   type SavedTab,
 } from '../shared/storage';
 
@@ -57,15 +57,13 @@ async function condenseCurrentWindow(targetWindowId?: number): Promise<void> {
   }
 
   const groupKey = typeof resolvedWindowId === 'number' ? String(resolvedWindowId) : UNKNOWN_GROUP_KEY;
-  const [existingGroups, tabIds] = await Promise.all([
-    readSavedGroups(groupKey),
+  const [existingGroup, tabIds] = await Promise.all([
+    readSavedGroup(groupKey),
     Promise.resolve(eligibleTabs.map((tab) => tab.id).filter((id): id is number => typeof id === 'number')),
   ]);
 
-  const existingGroup = existingGroups[groupKey] ?? [];
   const updatedGroup = saveTabsToList(eligibleTabs, existingGroup);
-  existingGroups[groupKey] = updatedGroup;
-  const saved = await writeSavedGroups(existingGroups);
+  const saved = await writeSavedGroup(groupKey, updatedGroup);
   if (!saved) {
     await focusExistingListTabOrCreate(listTabs, listUrl, resolvedWindowId);
     return;
