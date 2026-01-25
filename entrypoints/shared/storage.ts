@@ -12,6 +12,11 @@ export type Settings = {
   restoreBatchSize: number;
 };
 
+export type SettingsInput = {
+  excludePinned: boolean;
+  restoreBatchSize?: number;
+};
+
 export const STORAGE_KEYS = {
   savedTabs: 'savedTabs',
   settings: 'settings',
@@ -130,9 +135,17 @@ export async function readSettings(): Promise<Settings> {
   }
 }
 
-export async function writeSettings(settings: Settings): Promise<boolean> {
+export async function writeSettings(settings: SettingsInput): Promise<boolean> {
   try {
-    await chrome.storage.local.set({ [STORAGE_KEYS.settings]: settings });
+    const payload: SettingsInput = { excludePinned: settings.excludePinned };
+    if (
+      typeof settings.restoreBatchSize === 'number' &&
+      Number.isFinite(settings.restoreBatchSize) &&
+      settings.restoreBatchSize > 0
+    ) {
+      payload.restoreBatchSize = Math.floor(settings.restoreBatchSize);
+    }
+    await chrome.storage.local.set({ [STORAGE_KEYS.settings]: payload });
     return true;
   } catch {
     return false;

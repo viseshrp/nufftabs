@@ -1,5 +1,5 @@
 import './style.css';
-import { readSettings, writeSettings, type Settings } from '../shared/storage';
+import { DEFAULT_SETTINGS, STORAGE_KEYS, readSettings, writeSettings, type Settings, type SettingsInput } from '../shared/storage';
 
 const excludePinnedEl = document.querySelector<HTMLInputElement>('#excludePinned');
 const restoreBatchSizeEl = document.querySelector<HTMLInputElement>('#restoreBatchSize');
@@ -11,33 +11,52 @@ function setStatus(message: string): void {
 
 async function init(): Promise<void> {
   if (!excludePinnedEl || !restoreBatchSizeEl) return;
+  const raw = await chrome.storage.local.get([STORAGE_KEYS.settings]);
+  const rawSettings = raw[STORAGE_KEYS.settings];
+  const hasCustomBatchSize =
+    rawSettings &&
+    typeof rawSettings === 'object' &&
+    typeof (rawSettings as { restoreBatchSize?: unknown }).restoreBatchSize === 'number' &&
+    Number.isFinite((rawSettings as { restoreBatchSize?: unknown }).restoreBatchSize);
+
   let settings: Settings = await readSettings();
   excludePinnedEl.checked = settings.excludePinned;
-  restoreBatchSizeEl.value = String(settings.restoreBatchSize);
+  restoreBatchSizeEl.value = hasCustomBatchSize ? String(settings.restoreBatchSize) : '';
 
-  const saveSettings = async (nextSettings: Settings) => {
+  let customBatchSize = hasCustomBatchSize;
+
+  const saveSettings = async (nextSettings: SettingsInput) => {
     const saved = await writeSettings(nextSettings);
     if (!saved) {
       excludePinnedEl.checked = settings.excludePinned;
-      restoreBatchSizeEl.value = String(settings.restoreBatchSize);
+      restoreBatchSizeEl.value = customBatchSize ? String(settings.restoreBatchSize) : '';
       setStatus('Failed to save settings.');
       return;
     }
-    settings = nextSettings;
+    settings = {
+      excludePinned: nextSettings.excludePinned,
+      restoreBatchSize:
+        typeof nextSettings.restoreBatchSize === 'number' && Number.isFinite(nextSettings.restoreBatchSize)
+          ? Math.floor(nextSettings.restoreBatchSize)
+          : DEFAULT_SETTINGS.restoreBatchSize,
+    };
+    customBatchSize = typeof nextSettings.restoreBatchSize === 'number' && Number.isFinite(nextSettings.restoreBatchSize);
     setStatus('Settings saved.');
   };
 
   const getBatchSizeInput = (): number | null => {
-    const raw = Number(restoreBatchSizeEl.value);
-    if (!Number.isFinite(raw)) return null;
-    const parsed = Math.floor(raw);
+    const rawValue = restoreBatchSizeEl.value.trim();
+    if (rawValue.length === 0) return null;
+    const rawNumber = Number(rawValue);
+    if (!Number.isFinite(rawNumber)) return null;
+    const parsed = Math.floor(rawNumber);
     return parsed > 0 ? parsed : null;
   };
 
   excludePinnedEl.addEventListener('change', async () => {
-    const nextSettings: Settings = {
+    const nextSettings: SettingsInput = {
       excludePinned: excludePinnedEl.checked,
-      restoreBatchSize: settings.restoreBatchSize,
+      restoreBatchSize: customBatchSize ? settings.restoreBatchSize : undefined,
     };
     await saveSettings(nextSettings);
   });
@@ -45,11 +64,15 @@ async function init(): Promise<void> {
   const handleBatchSizeChange = async () => {
     const parsed = getBatchSizeInput();
     if (!parsed) {
-      restoreBatchSizeEl.value = String(settings.restoreBatchSize);
-      setStatus('Enter a value of 1 or higher.');
+      const nextSettings: SettingsInput = {
+        excludePinned: excludePinnedEl.checked,
+        restoreBatchSize: undefined,
+      };
+      await saveSettings(nextSettings);
+      restoreBatchSizeEl.value = '';
       return;
     }
-    const nextSettings: Settings = {
+    const nextSettings: SettingsInput = {
       excludePinned: excludePinnedEl.checked,
       restoreBatchSize: parsed,
     };
