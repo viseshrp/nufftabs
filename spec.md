@@ -24,7 +24,7 @@ This spec is written to support an agentic implementation loop (Codex/Copilot/Ge
 - No explicit support requirements for Firefox/Safari etc.
 
 ### 1.3 Storage and permissions
-- Persist state via `chrome.storage.local`.
+- Persist saved tabs via `chrome.storage.local` and settings via `chrome.storage.sync`.
 - Only required permissions:
   - `tabs`
   - `storage`
@@ -118,7 +118,7 @@ When user clicks Delete all:
 - No keyboard shortcut.
 - No context menu.
 - No special casing for `chrome://` or internal tabs beyond basic validation.
-- No sync (`storage.sync`) and no cloud backend.
+- Settings use `storage.sync`; saved tabs remain local-only.
 - No attempt to match OneTab UX.
 
 ---
@@ -130,7 +130,7 @@ When user clicks Delete all:
 - Type: boolean
 - Default: `true`
 - UI: checkbox in the Options page
-- Storage: `chrome.storage.local` under a `settings` object
+- Storage: `chrome.storage.sync` under a `settings` object
 
 ---
 

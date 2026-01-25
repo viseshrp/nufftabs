@@ -1,6 +1,6 @@
 # nufftabs
 
-nufftabs is a minimal Chrome (MV3) extension to condense all tabs from the current window into a saved list, then restore them later. It uses WXT for build/dev and stores state in `chrome.storage.local`.
+nufftabs is a minimal Chrome (MV3) extension to condense all tabs from the current window into a saved list, then restore them later. It uses WXT for build/dev and stores saved tabs in `chrome.storage.local`, with settings in `chrome.storage.sync`.
 
 ## Core features
 - Condense tabs from the current window (optionally excluding pinned tabs).
@@ -13,7 +13,7 @@ nufftabs is a minimal Chrome (MV3) extension to condense all tabs from the curre
 
 ### Condense
 - Triggered by clicking the extension action icon.
-- Reads settings (`excludePinned`) from `chrome.storage.local`.
+- Reads settings (`excludePinned`) from `chrome.storage.sync`.
 - Saves eligible tabs (URL + title + timestamp) to `savedTabs`.
 - Closes eligible tabs.
 - Focuses an existing nufftabs list tab if one exists anywhere (most recently active), or creates a new one if none exist. The list tab is pinned.
@@ -107,7 +107,7 @@ pnpm build
 
 ## Permissions
 - `tabs`: required to query, create, update, move, and close tabs/windows.
-- `storage`: required to persist `savedTabs` and settings in `chrome.storage.local`.
+- `storage`: required to persist `savedTabs` in `chrome.storage.local` and settings in `chrome.storage.sync`.
 
 ## Troubleshooting
 - **List doesn’t update after condense:** reload the list tab or check the service worker console for errors.
@@ -120,7 +120,7 @@ pnpm build
 If any list tab exists, nufftabs reuses the most recently active one instead of creating duplicates.
 
 **Where is data stored?**  
-In `chrome.storage.local` under `savedTabs` and `settings`.
+In `chrome.storage.local` under `savedTabs` and in `chrome.storage.sync` under `settings`.
 
 **Why are pinned tabs excluded by default?**  
 It’s a safety default so pinned tabs are not closed unless you turn the setting off.
