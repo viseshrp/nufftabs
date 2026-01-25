@@ -30,7 +30,7 @@ Notes:
 ## Coverage requirements
 - Enforced in Vitest with >= 90% for statements, branches, functions, and lines.
 - Coverage is collected from the TypeScript source in `entrypoints/`.
-- Exclusion: `entrypoints/nufftabs/index.ts` is excluded from unit/integration coverage because it is DOM-heavy glue code best validated via E2E; logic is covered in `list_logic.ts`/`restore_logic.ts`.
+- Exclusion: `entrypoints/nufftabs/index.ts` is excluded from unit/integration coverage because it is DOM-heavy glue code best validated via E2E; logic is covered in `list.ts`/`restore.ts`.
 
 ## CI structure (GitHub Actions)
 1. Install dependencies

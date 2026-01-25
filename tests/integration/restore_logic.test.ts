@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { LIST_PAGE_PATH } from '../../entrypoints/shared/storage';
-import { restoreTabs } from '../../entrypoints/nufftabs/restore_logic';
+import { restoreTabs } from '../../entrypoints/nufftabs/restore';
 import { writeSettings } from '../../entrypoints/shared/storage';
 import { createMockChrome } from '../helpers/mock_chrome';
 

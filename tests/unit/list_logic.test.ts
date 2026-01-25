@@ -8,14 +8,14 @@ import {
   mergeGroups,
   normalizeImportedGroups,
   normalizeTabArray,
-} from '../../entrypoints/nufftabs/list_logic';
+} from '../../entrypoints/nufftabs/list';
 
 const sampleTabs = [
   { id: '1', url: 'https://a.com', title: 'A', savedAt: 10 },
   { id: '2', url: 'https://b.com', title: 'B', savedAt: 20 },
 ];
 
-describe('list_logic', () => {
+describe('list', () => {
   it('counts total tabs across groups', () => {
     expect(countTotalTabs({})).toBe(0);
     expect(countTotalTabs({ one: sampleTabs, two: [sampleTabs[0]!] })).toBe(3);

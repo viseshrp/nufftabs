@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { filterEligibleTabs, resolveWindowId, saveTabsToList } from '../../entrypoints/shared/condense_logic';
+import { filterEligibleTabs, resolveWindowId, saveTabsToList } from '../../entrypoints/shared/condense';
 
-describe('condense_logic', () => {
+describe('condense', () => {
   it('filters pinned and list tab URLs', () => {
     const listUrl = 'chrome-extension://mock/nufftabs.html';
     const tabs = [

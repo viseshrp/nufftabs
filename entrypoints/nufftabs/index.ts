@@ -9,8 +9,8 @@ import {
   isSameGroup,
   mergeGroups,
   normalizeImportedGroups,
-} from './list_logic';
-import { getReuseWindowContext, restoreTabs } from './restore_logic';
+} from './list';
+import { getReuseWindowContext, restoreTabs } from './restore';
 import {
   LIST_PAGE_PATH,
   readSavedGroups,

@@ -1,5 +1,5 @@
 import { LIST_PAGE_PATH, readSavedGroup, readSettings, UNKNOWN_GROUP_KEY, writeSavedGroup } from '../shared/storage';
-import { filterEligibleTabs, resolveWindowId, saveTabsToList } from '../shared/condense_logic';
+import { filterEligibleTabs, resolveWindowId, saveTabsToList } from '../shared/condense';
 import { focusExistingListTabOrCreate } from './list_tab';
 
 export async function condenseCurrentWindow(targetWindowId?: number): Promise<void> {
