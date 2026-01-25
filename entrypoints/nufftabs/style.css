@@ -296,7 +296,7 @@ button {
 }
 
 .io-panel {
-  margin-top: 16px;
+  margin-bottom: 16px;
 }
 
 .io-panel[hidden] {
@@ -371,7 +371,7 @@ textarea {
 
 @media (max-width: 600px) {
   .io-panel {
-    margin-top: 12px;
+    margin-bottom: 12px;
   }
 
   textarea {
