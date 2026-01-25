@@ -21,6 +21,7 @@ const tabCountEl = document.querySelector<HTMLSpanElement>('#tabCount');
 const toggleIoEl = document.querySelector<HTMLButtonElement>('#toggleIo');
 const exportJsonEl = document.querySelector<HTMLButtonElement>('#exportJson');
 const importJsonEl = document.querySelector<HTMLButtonElement>('#importJson');
+const importJsonReplaceEl = document.querySelector<HTMLButtonElement>('#importJsonReplace');
 const importFileEl = document.querySelector<HTMLButtonElement>('#importFile');
 const importFileInputEl = document.querySelector<HTMLInputElement>('#importFileInput');
 const importOneTabEl = document.querySelector<HTMLButtonElement>('#importOneTab');
@@ -623,6 +624,16 @@ function normalizeImportedGroups(data: unknown, fallbackKey: string): SavedTabGr
   return null;
 }
 
+function mergeGroups(existing: SavedTabGroups, incoming: SavedTabGroups): SavedTabGroups {
+  const merged = cloneGroups(existing);
+  for (const [groupKey, tabs] of Object.entries(incoming)) {
+    if (tabs.length === 0) continue;
+    const existingTabs = merged[groupKey];
+    merged[groupKey] = existingTabs ? [...existingTabs, ...tabs] : tabs.slice();
+  }
+  return merged;
+}
+
 async function exportJson(): Promise<void> {
   if (!jsonAreaEl) return;
   const savedGroups = currentGroups;
@@ -657,7 +668,7 @@ async function exportJson(): Promise<void> {
   setStatus(`Exported ${total} tab${total === 1 ? '' : 's'}${extras ? ` (${extras})` : ''}.`);
 }
 
-async function importJsonText(text: string): Promise<void> {
+async function importJsonText(text: string, mode: 'append' | 'replace'): Promise<void> {
   try {
     const parsed = JSON.parse(text);
     const fallbackKey = await getCurrentWindowKey();
@@ -666,15 +677,17 @@ async function importJsonText(text: string): Promise<void> {
       setStatus('Invalid JSON: expected array, { savedTabs: [] }, or grouped object.');
       return;
     }
-    const saved = await writeSavedGroups(normalized);
+    const importedCount = countTotalTabs(normalized);
+    const nextGroups =
+      mode === 'replace' ? normalized : mergeGroups(cloneGroups(currentGroups), normalized);
+    const saved = await writeSavedGroups(nextGroups);
     if (!saved) {
       setStatus('Failed to save changes.');
       await refreshList();
       return;
     }
-    applyGroups(normalized);
-    const total = countTotalTabs(normalized);
-    setStatus(`Imported ${total} tab${total === 1 ? '' : 's'}, skipped 0.`);
+    applyGroups(nextGroups);
+    setStatus(`Imported ${importedCount} tab${importedCount === 1 ? '' : 's'}, skipped 0.`);
   } catch {
     setStatus('Invalid JSON: could not parse.');
   }
@@ -682,14 +695,19 @@ async function importJsonText(text: string): Promise<void> {
 
 async function importJson(): Promise<void> {
   if (!jsonAreaEl) return;
-  await importJsonText(jsonAreaEl.value);
+  await importJsonText(jsonAreaEl.value, 'append');
+}
+
+async function importJsonReplace(): Promise<void> {
+  if (!jsonAreaEl) return;
+  await importJsonText(jsonAreaEl.value, 'replace');
 }
 
 async function importJsonFile(file: File): Promise<void> {
   try {
     const text = await file.text();
     if (jsonAreaEl) jsonAreaEl.value = text;
-    await importJsonText(text);
+    await importJsonText(text, 'append');
   } catch {
     setStatus('Failed to read file.');
   }
@@ -746,6 +764,10 @@ async function init(): Promise<void> {
 
   importJsonEl?.addEventListener('click', () => {
     void importJson();
+  });
+
+  importJsonReplaceEl?.addEventListener('click', () => {
+    void importJsonReplace();
   });
 
   importFileEl?.addEventListener('click', () => {
