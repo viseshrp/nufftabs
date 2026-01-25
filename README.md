@@ -54,7 +54,7 @@ pnpm build
 3. Enable **Developer mode** (top right).
 4. Click **Load unpacked**.
 5. Select the build output directory:
-   - Dev: `.output/chrome-mv3/`
+   - Dev: `.output/chrome-mv3-dev/`
    - Build: `.output/chrome-mv3/`
 
 ## Usage guide
