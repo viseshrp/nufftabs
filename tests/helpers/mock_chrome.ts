@@ -1,0 +1,222 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
+export type MockTab = chrome.tabs.Tab;
+export type MockWindow = chrome.windows.Window;
+
+type StorageRecord = Record<string, any>;
+
+type StorageListener = (
+  changes: Record<string, { oldValue?: unknown; newValue?: unknown }>,
+  areaName: 'local' | 'sync' | 'managed' | 'session',
+) => void;
+
+export function createMockChrome(options?: { initialStorage?: StorageRecord }) {
+  const storageData: StorageRecord = { ...(options?.initialStorage ?? {}) };
+  const storageListeners = new Set<StorageListener>();
+
+  const windows = new Map<number, MockWindow>();
+  const tabs = new Map<number, MockTab>();
+  let nextWindowId = 1;
+  let nextTabId = 1;
+  let currentWindowId: number | undefined;
+  let currentTabId: number | undefined;
+
+  const ensureWindow = (windowId?: number) => {
+    if (typeof windowId === 'number' && windows.has(windowId)) return windowId;
+    const id = nextWindowId++;
+    windows.set(id, { id, focused: true } as MockWindow);
+    if (typeof currentWindowId !== 'number') currentWindowId = id;
+    return id;
+  };
+
+  const addTabToWindow = (tab: MockTab, windowId: number) => {
+    tab.windowId = windowId;
+    tabs.set(tab.id as number, tab);
+  };
+
+  const createTab = (params: chrome.tabs.CreateProperties): MockTab => {
+    const windowId = ensureWindow(params.windowId);
+    const tab: MockTab = {
+      id: nextTabId++,
+      windowId,
+      url: params.url ?? 'about:blank',
+      title: params.url ?? 'about:blank',
+      pinned: Boolean(params.pinned),
+      active: params.active !== false,
+      lastAccessed: Date.now(),
+    } as MockTab;
+
+    if (tab.active) {
+      for (const existing of tabs.values()) {
+        if (existing.windowId === windowId) existing.active = false;
+      }
+      currentWindowId = windowId;
+      currentTabId = tab.id as number;
+    }
+
+    addTabToWindow(tab, windowId);
+    return tab;
+  };
+
+  const createWindow = (urls?: string | string[]) => {
+    const id = ensureWindow();
+    currentWindowId = id;
+    windows.set(id, { id, focused: true } as MockWindow);
+    const urlList = typeof urls === 'string' ? [urls] : Array.isArray(urls) ? urls : ['about:blank'];
+    const createdTabs = urlList.map((url, index) =>
+      createTab({ windowId: id, url, active: index === 0 }),
+    );
+    return { id, tabs: createdTabs } as MockWindow;
+  };
+
+  const storageArea = {
+    async get(keys: any) {
+      if (Array.isArray(keys)) {
+        return keys.reduce((acc, key) => {
+          acc[key] = storageData[key];
+          return acc;
+        }, {} as StorageRecord);
+      }
+      if (typeof keys === 'string') {
+        return { [keys]: storageData[keys] } as StorageRecord;
+      }
+      if (keys && typeof keys === 'object') {
+        return Object.keys(keys).reduce((acc, key) => {
+          acc[key] = storageData[key] ?? (keys as StorageRecord)[key];
+          return acc;
+        }, {} as StorageRecord);
+      }
+      return { ...storageData } as StorageRecord;
+    },
+    async set(payload: StorageRecord) {
+      const changes: Record<string, { oldValue?: unknown; newValue?: unknown }> = {};
+      for (const [key, value] of Object.entries(payload)) {
+        changes[key] = { oldValue: storageData[key], newValue: value };
+        storageData[key] = value;
+      }
+      for (const listener of storageListeners) {
+        listener(changes, 'local');
+      }
+    },
+    async remove(keys: string | string[]) {
+      const keysToRemove = Array.isArray(keys) ? keys : [keys];
+      const changes: Record<string, { oldValue?: unknown; newValue?: unknown }> = {};
+      for (const key of keysToRemove) {
+        if (key in storageData) {
+          changes[key] = { oldValue: storageData[key], newValue: undefined };
+          delete storageData[key];
+        }
+      }
+      for (const listener of storageListeners) {
+        listener(changes, 'local');
+      }
+    },
+  };
+
+  const chrome = {
+    runtime: {
+      getURL: (path: string) => `chrome-extension://mock/${path}`,
+      onMessage: {
+        addListener: () => undefined,
+      },
+    },
+    action: {
+      onClicked: {
+        addListener: () => undefined,
+      },
+    },
+    storage: {
+      local: storageArea,
+      sync: storageArea,
+      onChanged: {
+        addListener: (listener: StorageListener) => {
+          storageListeners.add(listener);
+        },
+        removeListener: (listener: StorageListener) => {
+          storageListeners.delete(listener);
+        },
+      },
+    },
+    tabs: {
+      async query(queryInfo: chrome.tabs.QueryInfo) {
+        let results = Array.from(tabs.values());
+        if (queryInfo.url) {
+          const urls = Array.isArray(queryInfo.url) ? queryInfo.url : [queryInfo.url];
+          results = results.filter((tab) => typeof tab.url === 'string' && urls.includes(tab.url));
+        }
+        if (typeof queryInfo.windowId === 'number') {
+          results = results.filter((tab) => tab.windowId === queryInfo.windowId);
+        }
+        if (queryInfo.currentWindow) {
+          results = results.filter((tab) => tab.windowId === currentWindowId);
+        }
+        return results;
+      },
+      async create(createProperties: chrome.tabs.CreateProperties) {
+        return createTab(createProperties);
+      },
+      async update(tabId: number, updateProperties: chrome.tabs.UpdateProperties) {
+        const tab = tabs.get(tabId);
+        if (!tab) throw new Error('Tab not found');
+        if (typeof updateProperties.active === 'boolean') {
+          if (updateProperties.active) {
+            for (const existing of tabs.values()) {
+              if (existing.windowId === tab.windowId) existing.active = false;
+            }
+            tab.active = true;
+            currentWindowId = tab.windowId as number;
+            currentTabId = tab.id as number;
+            tab.lastAccessed = Date.now();
+          } else {
+            tab.active = false;
+          }
+        }
+        if (typeof updateProperties.pinned === 'boolean') {
+          tab.pinned = updateProperties.pinned;
+        }
+        return tab;
+      },
+      async remove(tabIds: number | number[]) {
+        const ids = Array.isArray(tabIds) ? tabIds : [tabIds];
+        for (const id of ids) {
+          tabs.delete(id);
+        }
+      },
+      async getCurrent() {
+        if (typeof currentTabId === 'number') return tabs.get(currentTabId) ?? null;
+        return null;
+      },
+    },
+    windows: {
+      async create(createData?: chrome.windows.CreateData) {
+        const window = createWindow(createData?.url as string | string[] | undefined);
+        return window;
+      },
+      async update(windowId: number, updateInfo: chrome.windows.UpdateInfo) {
+        const window = windows.get(windowId);
+        if (!window) throw new Error('Window not found');
+        if (typeof updateInfo.focused === 'boolean') window.focused = updateInfo.focused;
+        if (updateInfo.focused) currentWindowId = windowId;
+        return window;
+      },
+    },
+  } as any;
+
+  const api = {
+    chrome,
+    storageData,
+    tabs,
+    windows,
+    createTab,
+    createWindow,
+    setCurrentTab(tabId: number) {
+      currentTabId = tabId;
+      const tab = tabs.get(tabId);
+      if (tab?.windowId) currentWindowId = tab.windowId;
+    },
+    getCurrentWindowId() {
+      return currentWindowId;
+    },
+  };
+
+  return api;
+}
