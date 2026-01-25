@@ -114,12 +114,17 @@ function areGroupsEquivalent(prev: SavedTabGroups, next: SavedTabGroups): boolea
   return true;
 }
 
-function updateGroupHeader(view: GroupView, tabs: SavedTab[]): void {
-  view.titleEl.textContent = `${tabs.length} tab${tabs.length === 1 ? '' : 's'}`;
-  const createdAt = tabs.reduce((min, tab) => {
+function getGroupCreatedAt(tabs: SavedTab[]): number {
+  let earliest = Number.POSITIVE_INFINITY;
+  for (const tab of tabs) {
     const value = typeof tab.savedAt === 'number' ? tab.savedAt : Number.POSITIVE_INFINITY;
-    return value < min ? value : min;
-  }, Number.POSITIVE_INFINITY);
+    if (value < earliest) earliest = value;
+  }
+  return Number.isFinite(earliest) ? earliest : Number.NEGATIVE_INFINITY;
+}
+
+function updateGroupHeader(view: GroupView, tabs: SavedTab[], createdAt = getGroupCreatedAt(tabs)): void {
+  view.titleEl.textContent = `${tabs.length} tab${tabs.length === 1 ? '' : 's'}`;
   view.metaEl.textContent = Number.isFinite(createdAt) ? `Created ${formatCreatedAt(createdAt)}` : 'Created -';
 }
 
@@ -461,8 +466,15 @@ function createGroupView(groupKey: string): GroupView {
 
 function renderGroups(savedGroups: SavedTabGroups, previousGroups: SavedTabGroups): void {
   if (!groupsEl || !emptyEl) return;
-  const entries = Object.entries(savedGroups).filter(([, tabs]) => tabs.length > 0);
-  const totalCount = entries.reduce((sum, [, tabs]) => sum + tabs.length, 0);
+  const entries = Object.entries(savedGroups)
+    .filter(([, tabs]) => tabs.length > 0)
+    .map(([key, tabs]) => ({
+      key,
+      tabs,
+      createdAt: getGroupCreatedAt(tabs),
+    }))
+    .sort((a, b) => b.createdAt - a.createdAt);
+  const totalCount = entries.reduce((sum, entry) => sum + entry.tabs.length, 0);
   if (tabCountEl) tabCountEl.textContent = String(totalCount);
 
   if (totalCount === 0) {
@@ -474,7 +486,7 @@ function renderGroups(savedGroups: SavedTabGroups, previousGroups: SavedTabGroup
   }
 
   emptyEl.style.display = 'none';
-  const activeKeys = new Set(entries.map(([key]) => key));
+  const activeKeys = new Set(entries.map((entry) => entry.key));
   for (const [key, view] of groupViews.entries()) {
     if (!activeKeys.has(key)) {
       view.card.remove();
@@ -483,13 +495,15 @@ function renderGroups(savedGroups: SavedTabGroups, previousGroups: SavedTabGroup
   }
 
   const fragment = document.createDocumentFragment();
-  for (const [groupKey, tabs] of entries) {
+  for (const entry of entries) {
+    const groupKey = entry.key;
+    const tabs = entry.tabs;
     let view = groupViews.get(groupKey);
     if (!view) {
       view = createGroupView(groupKey);
       groupViews.set(groupKey, view);
     }
-    updateGroupHeader(view, tabs);
+    updateGroupHeader(view, tabs, entry.createdAt);
     view.itemsWrap.hidden = view.card.classList.contains('is-collapsed');
     const previousTabs = previousGroups[groupKey];
     if (!isSameGroup(previousTabs, tabs)) {
