@@ -33,6 +33,10 @@ const ioPanelEl = document.querySelector<HTMLElement>('#ioPanel');
 
 let snackbarTimer: number | undefined;
 
+function countTotalTabs(groups: SavedTabGroups): number {
+  return Object.values(groups).reduce((sum, tabs) => sum + tabs.length, 0);
+}
+
 function setStatus(message: string): void {
   if (!snackbarEl) return;
   snackbarEl.textContent = message;
@@ -431,14 +435,18 @@ function normalizeImportedGroups(data: unknown, fallbackKey: string): SavedTabGr
 async function exportJson(): Promise<void> {
   if (!jsonAreaEl) return;
   const savedGroups = await getSavedGroups();
+  const total = countTotalTabs(savedGroups);
   jsonAreaEl.value = JSON.stringify({ savedTabs: savedGroups }, null, 2);
+
+  let copied = false;
   try {
     await navigator.clipboard.writeText(jsonAreaEl.value);
-    setStatus('Exported and copied.');
+    copied = true;
   } catch {
-    setStatus('Exported JSON.');
+    // Ignore; we'll report status below.
   }
 
+  let downloaded = false;
   try {
     const blob = new Blob([jsonAreaEl.value], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
@@ -449,10 +457,13 @@ async function exportJson(): Promise<void> {
     link.click();
     link.remove();
     URL.revokeObjectURL(url);
-    setStatus('Exported backup file.');
+    downloaded = true;
   } catch {
     // Keep existing status if download fails.
   }
+
+  const extras = [copied ? 'copied' : null, downloaded ? 'downloaded' : null].filter(Boolean).join(', ');
+  setStatus(`Exported ${total} tab${total === 1 ? '' : 's'}${extras ? ` (${extras})` : ''}.`);
 }
 
 async function importJsonText(text: string): Promise<void> {
@@ -466,7 +477,8 @@ async function importJsonText(text: string): Promise<void> {
     }
     await setSavedGroups(normalized);
     renderGroups(normalized);
-    setStatus('Imported JSON.');
+    const total = countTotalTabs(normalized);
+    setStatus(`Imported ${total} tab${total === 1 ? '' : 's'}, skipped 0.`);
   } catch {
     setStatus('Invalid JSON: could not parse.');
   }
@@ -506,7 +518,7 @@ async function importOneTab(): Promise<void> {
   const imported = parseOneTabExport(text);
   const skipped = Math.max(0, totalLines - imported.length);
   if (imported.length === 0) {
-    setStatus(`Imported 0, skipped ${skipped}.`);
+    setStatus(`Imported 0 tabs, skipped ${skipped}.`);
     return;
   }
   const savedGroups = await getSavedGroups();
@@ -515,7 +527,7 @@ async function importOneTab(): Promise<void> {
   savedGroups[groupKey] = [...existing, ...imported];
   await setSavedGroups(savedGroups);
   renderGroups(savedGroups);
-  setStatus(`Imported ${imported.length}, skipped ${skipped}.`);
+  setStatus(`Imported ${imported.length} tab${imported.length === 1 ? '' : 's'}, skipped ${skipped}.`);
 }
 
 async function init(): Promise<void> {
