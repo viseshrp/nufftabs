@@ -19,7 +19,8 @@ nufftabs is an offline Chrome extension that saves and restores your tabs. It do
 - To import or export saved tabs when you choose to do so.
 
 ## Storage and retention
-- Data is stored locally in chrome.storage.local on your device.
+- Saved tabs are stored locally in chrome.storage.local on your device.
+- Settings are stored in chrome.storage.sync.
 - Data remains until you delete it or restore tabs, or until you clear extension storage.
 - If you export data, the file/clipboard contents are under your control and remain wherever you save them.
 
@@ -29,4 +30,3 @@ nufftabs is an offline Chrome extension that saves and restores your tabs. It do
 
 ## Network access
 - The extension does not make network requests for its core functionality.
-
