@@ -45,7 +45,7 @@ export function createSavedTab(input: SavedTabInput): SavedTab {
   };
 }
 
-export function normalizeSavedTab(value: unknown, now = Date.now()): SavedTab | null {
+function normalizeSavedTab(value: unknown, now = Date.now()): SavedTab | null {
   if (!value || typeof value !== 'object') return null;
   const url = (value as { url?: unknown }).url;
   if (typeof url !== 'string' || url.length === 0) return null;
@@ -62,7 +62,7 @@ export function normalizeSavedTab(value: unknown, now = Date.now()): SavedTab | 
   });
 }
 
-export function normalizeSavedTabArray(value: unknown, now = Date.now()): SavedTab[] {
+function normalizeSavedTabArray(value: unknown, now = Date.now()): SavedTab[] {
   if (!Array.isArray(value)) return [];
   const normalized: SavedTab[] = [];
   for (const entry of value) {
