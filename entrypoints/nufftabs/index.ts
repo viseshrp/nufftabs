@@ -28,8 +28,29 @@ const clearJsonEl = document.querySelector<HTMLButtonElement>('#clearJson');
 const jsonAreaEl = document.querySelector<HTMLTextAreaElement>('#jsonArea');
 const ioPanelEl = document.querySelector<HTMLElement>('#ioPanel');
 
+const SVG_NS = 'http://www.w3.org/2000/svg';
+
 let snackbarTimer: number | undefined;
 let currentGroups: SavedTabGroups = {};
+
+type SvgElementSpec = {
+  tag: 'path' | 'rect';
+  attrs: Record<string, string>;
+};
+
+function createSvgIcon(elements: SvgElementSpec[]): SVGSVGElement {
+  const svg = document.createElementNS(SVG_NS, 'svg');
+  svg.setAttribute('viewBox', '0 0 24 24');
+  svg.setAttribute('aria-hidden', 'true');
+  for (const { tag, attrs } of elements) {
+    const el = document.createElementNS(SVG_NS, tag);
+    for (const [key, value] of Object.entries(attrs)) {
+      el.setAttribute(key, value);
+    }
+    svg.appendChild(el);
+  }
+  return svg;
+}
 
 function cloneGroups(groups: SavedTabGroups): SavedTabGroups {
   const cloned: SavedTabGroups = {};
@@ -104,15 +125,68 @@ function renderGroups(savedGroups: SavedTabGroups): void {
     collapseButton.className = 'icon-button collapse-toggle';
     collapseButton.setAttribute('aria-label', 'Collapse list');
     collapseButton.setAttribute('title', 'Collapse list');
-    collapseButton.innerHTML =
-      '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6z" fill="currentColor"/></svg>';
+    collapseButton.appendChild(
+      createSvgIcon([
+        {
+          tag: 'path',
+          attrs: {
+            d: 'M6 9l6 6 6-6z',
+            fill: 'currentColor',
+          },
+        },
+      ]),
+    );
 
     const restoreAllButton = document.createElement('button');
     restoreAllButton.className = 'icon-button';
     restoreAllButton.setAttribute('aria-label', 'Restore all tabs');
     restoreAllButton.setAttribute('title', 'Restore all');
-    restoreAllButton.innerHTML =
-      '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="7" width="9" height="8" rx="2" fill="currentColor" opacity="0.45"/><rect x="7" y="5" width="9" height="8" rx="2" fill="currentColor" opacity="0.7"/><rect x="13" y="11" width="6" height="2" rx="1" fill="currentColor"/><path d="M18 8l4 4-4 4z" fill="currentColor"/></svg>';
+    restoreAllButton.appendChild(
+      createSvgIcon([
+        {
+          tag: 'rect',
+          attrs: {
+            x: '4',
+            y: '7',
+            width: '9',
+            height: '8',
+            rx: '2',
+            fill: 'currentColor',
+            opacity: '0.45',
+          },
+        },
+        {
+          tag: 'rect',
+          attrs: {
+            x: '7',
+            y: '5',
+            width: '9',
+            height: '8',
+            rx: '2',
+            fill: 'currentColor',
+            opacity: '0.7',
+          },
+        },
+        {
+          tag: 'rect',
+          attrs: {
+            x: '13',
+            y: '11',
+            width: '6',
+            height: '2',
+            rx: '1',
+            fill: 'currentColor',
+          },
+        },
+        {
+          tag: 'path',
+          attrs: {
+            d: 'M18 8l4 4-4 4z',
+            fill: 'currentColor',
+          },
+        },
+      ]),
+    );
     restoreAllButton.addEventListener('click', () => {
       void restoreGroup(groupKey);
     });
@@ -121,8 +195,43 @@ function renderGroups(savedGroups: SavedTabGroups): void {
     deleteAllButton.className = 'icon-button danger';
     deleteAllButton.setAttribute('aria-label', 'Delete all tabs');
     deleteAllButton.setAttribute('title', 'Delete all');
-    deleteAllButton.innerHTML =
-      '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="8" width="12" height="12" rx="2" fill="currentColor"/><rect x="5" y="6" width="14" height="2" rx="1" fill="currentColor"/><rect x="9" y="4" width="6" height="2" rx="1" fill="currentColor"/></svg>';
+    deleteAllButton.appendChild(
+      createSvgIcon([
+        {
+          tag: 'rect',
+          attrs: {
+            x: '6',
+            y: '8',
+            width: '12',
+            height: '12',
+            rx: '2',
+            fill: 'currentColor',
+          },
+        },
+        {
+          tag: 'rect',
+          attrs: {
+            x: '5',
+            y: '6',
+            width: '14',
+            height: '2',
+            rx: '1',
+            fill: 'currentColor',
+          },
+        },
+        {
+          tag: 'rect',
+          attrs: {
+            x: '9',
+            y: '4',
+            width: '6',
+            height: '2',
+            rx: '1',
+            fill: 'currentColor',
+          },
+        },
+      ]),
+    );
     deleteAllButton.addEventListener('click', () => {
       void deleteGroup(groupKey);
     });
@@ -170,8 +279,40 @@ function renderGroups(savedGroups: SavedTabGroups): void {
       restoreButton.className = 'icon-button row-action';
       restoreButton.setAttribute('aria-label', 'Restore');
       restoreButton.setAttribute('title', 'Restore');
-      restoreButton.innerHTML =
-        '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="6" width="9" height="12" rx="2" fill="currentColor" opacity="0.6"/><rect x="13" y="11" width="6" height="2" rx="1" fill="currentColor"/><path d="M18 8l4 4-4 4z" fill="currentColor"/></svg>';
+      restoreButton.appendChild(
+        createSvgIcon([
+          {
+            tag: 'rect',
+            attrs: {
+              x: '4',
+              y: '6',
+              width: '9',
+              height: '12',
+              rx: '2',
+              fill: 'currentColor',
+              opacity: '0.6',
+            },
+          },
+          {
+            tag: 'rect',
+            attrs: {
+              x: '13',
+              y: '11',
+              width: '6',
+              height: '2',
+              rx: '1',
+              fill: 'currentColor',
+            },
+          },
+          {
+            tag: 'path',
+            attrs: {
+              d: 'M18 8l4 4-4 4z',
+              fill: 'currentColor',
+            },
+          },
+        ]),
+      );
       restoreButton.addEventListener('click', () => {
         void restoreSingle(groupKey, tab.id);
       });
@@ -180,8 +321,43 @@ function renderGroups(savedGroups: SavedTabGroups): void {
       deleteButton.className = 'icon-button danger row-action';
       deleteButton.setAttribute('aria-label', 'Delete');
       deleteButton.setAttribute('title', 'Delete');
-      deleteButton.innerHTML =
-        '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="8" width="12" height="12" rx="2" fill="currentColor"/><rect x="5" y="6" width="14" height="2" rx="1" fill="currentColor"/><rect x="9" y="4" width="6" height="2" rx="1" fill="currentColor"/></svg>';
+      deleteButton.appendChild(
+        createSvgIcon([
+          {
+            tag: 'rect',
+            attrs: {
+              x: '6',
+              y: '8',
+              width: '12',
+              height: '12',
+              rx: '2',
+              fill: 'currentColor',
+            },
+          },
+          {
+            tag: 'rect',
+            attrs: {
+              x: '5',
+              y: '6',
+              width: '14',
+              height: '2',
+              rx: '1',
+              fill: 'currentColor',
+            },
+          },
+          {
+            tag: 'rect',
+            attrs: {
+              x: '9',
+              y: '4',
+              width: '6',
+              height: '2',
+              rx: '1',
+              fill: 'currentColor',
+            },
+          },
+        ]),
+      );
       deleteButton.addEventListener('click', () => {
         void deleteSingle(groupKey, tab.id);
       });
