@@ -58,13 +58,22 @@ async function getOrOpenListPage(context: BrowserContext, listUrl: string): Prom
 }
 
 async function createWindowWithTabs(page: Page, urls: string[]) {
-  return page.evaluate(async (targetUrls) => {
+  const windowId = await page.evaluate(async (targetUrls) => {
     const created = await chrome.windows.create({ url: targetUrls });
     if (!created || typeof created.id !== 'number') {
       throw new Error('Missing window id');
     }
     return created.id;
   }, urls);
+  await page.waitForFunction(
+    async ({ id, expected }) => {
+      const tabs = await chrome.tabs.query({ windowId: id });
+      const withUrls = tabs.filter((tab) => typeof tab.url === 'string' && tab.url.length > 0);
+      return tabs.length >= expected && withUrls.length >= expected;
+    },
+    { id: windowId, expected: urls.length },
+  );
+  return windowId;
 }
 
 async function getListTabCount(page: Page, listUrl: string) {
