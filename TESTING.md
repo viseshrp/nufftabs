@@ -14,6 +14,7 @@ pnpm test:e2e
 - **Vitest** for unit/integration tests and coverage (`vitest.config.ts`).
 - **Playwright** for end-to-end extension tests (`playwright.config.ts`).
 - **jsdom** for DOM-focused unit/integration tests (list/options UI logic).
+- **WXT** for building the extension outputs used by E2E (`tests/e2e/wxt.e2e.config.ts`).
 
 ## Project test layout (where to look)
 ```
@@ -38,18 +39,30 @@ tests/
     storage.test.ts             # storage read/write + error cases
   e2e/
     extension.spec.ts           # real browser extension tests
+    wxt.e2e.config.ts           # test-only WXT config for E2E builds
+    entrypoints/
+      background/index.ts       # test-only background entrypoint (adds E2E hook)
+      nufftabs/index.ts         # proxy entrypoint to real list UI
+      options/index.ts          # proxy entrypoint to real options UI
 ```
 
 ## Refactored code paths for testability (what changed)
 To keep runtime behavior the same but improve testability, logic is now separated into focused modules:
-- `entrypoints/shared/condense.ts` — pure condense filtering/transform helpers.
-- `entrypoints/background/condense.ts` — background flow orchestration.
-- `entrypoints/background/list_tab.ts` — list-tab focus/pin logic.
-- `entrypoints/nufftabs/list.ts` — list grouping/merge/normalize helpers.
-- `entrypoints/nufftabs/restore.ts` — restore rules + window reuse logic.
-- `entrypoints/options/settings_page.ts` — options page orchestration.
+- `entrypoints/shared/condense.ts` - pure condense filtering/transform helpers.
+- `entrypoints/background/condense.ts` - background flow orchestration.
+- `entrypoints/background/list_tab.ts` - list-tab focus/pin logic.
+- `entrypoints/nufftabs/list.ts` - list grouping/merge/normalize helpers.
+- `entrypoints/nufftabs/restore.ts` - restore rules + window reuse logic.
+- `entrypoints/options/settings_page.ts` - options page orchestration.
 
 Entry-point files (`entrypoints/*/index.ts`) now delegate to these modules.
+
+## E2E build configuration (important)
+E2E tests use a test-only WXT config so the production extension code remains unchanged:
+- `tests/e2e/wxt.e2e.config.ts` points WXT at `tests/e2e/entrypoints/`.
+- The E2E background entrypoint mirrors production behavior but adds a small test hook
+  so Playwright can trigger "Condense" without changing the shipped extension.
+- The output is written to `.output/chrome-mv3-e2e/` and is not shipped.
 
 ## Unit + integration tests (with coverage)
 ```bash
@@ -72,15 +85,14 @@ pnpm test:watch
 
 ## E2E tests (Playwright)
 ```bash
-pnpm build
 pnpm test:e2e
 ```
 What this does:
-- Builds the extension (`.output/chrome-mv3/`) via WXT.
+- Builds the test-only extension (`.output/chrome-mv3-e2e/`) via WXT.
 - Launches Chromium with the unpacked MV3 build and drives real user flows.
 
 Notes:
-- E2E tests load the built MV3 extension from `.output/chrome-mv3/`.
+- E2E tests load the built MV3 extension from `.output/chrome-mv3-e2e/`.
 - On Linux/CI, run headed mode under Xvfb:
   ```bash
   xvfb-run -a pnpm test:e2e
@@ -123,9 +135,10 @@ Artifacts:
 - Screenshots, videos, and traces are stored in `test-results/` on failures.
 
 ## Common troubleshooting
-- **E2E tests fail to find the extension**: run `pnpm build` and confirm `.output/chrome-mv3/` exists.
+- **E2E tests fail to find the extension**: run `pnpm build:e2e` and confirm `.output/chrome-mv3-e2e/` exists.
 - **Timeouts in E2E**: re-run with `pnpm test:e2e -- --headed` and inspect trace:
   ```bash
   pnpm exec playwright show-trace test-results/<test>/trace.zip
   ```
 - **Coverage drops**: run `pnpm test`, open `coverage/index.html`, and inspect uncovered branches/lines.
+
