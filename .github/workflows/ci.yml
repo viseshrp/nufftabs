@@ -109,13 +109,18 @@ jobs:
       - run: pnpm install
       - name: Build Zip
         run: pnpm package
-      - name: Enforce size budget
+      - name: Resolve zip path
+        id: zip_path
         run: |
           ZIP=$(find .output -name "*.zip" -print -quit)
           if [ -z "$ZIP" ]; then
             echo "No zip file found in .output."
             exit 1
           fi
+          echo "path=$ZIP" >> "$GITHUB_OUTPUT"
+      - name: Enforce size budget
+        run: |
+          ZIP="${{ steps.zip_path.outputs.path }}"
           max_kb=1024
           size_kb=$(du -k "$ZIP" | cut -f1)
           echo "Package size: ${size_kb} KB (limit ${max_kb} KB) at ${ZIP}"
@@ -127,7 +132,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: nufftabs-extension
-          path: .output/*.zip
+          path: ${{ steps.zip_path.outputs.path }}
           if-no-files-found: error
 
   release:
