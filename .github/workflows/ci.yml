@@ -27,7 +27,7 @@ jobs:
           cache-dependency-path: pnpm-lock.yaml
 
       - run: pnpm install
-      - run: pnpm compile
+      - run: pnpm quality
 
   smoke:
     name: Smoke Tests
@@ -50,9 +50,9 @@ jobs:
           cache-dependency-path: pnpm-lock.yaml
 
       - run: pnpm install
-      - run: pnpm build
+      - run: pnpm smoke
       - run: pnpm exec playwright install --with-deps chromium
-      - run: xvfb-run -a pnpm test:e2e
+      - run: xvfb-run -a pnpm smoke:e2e
 
       - name: Upload Playwright artifacts on failure
         if: failure()
@@ -107,7 +107,7 @@ jobs:
 
       - run: pnpm install
       - name: Build Zip
-        run: pnpm zip
+        run: pnpm package
       - name: Enforce size budget
         run: |
           ZIP=$(ls .output/**/*.zip | head -n 1)
