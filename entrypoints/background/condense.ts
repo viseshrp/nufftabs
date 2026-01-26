@@ -32,7 +32,7 @@ export async function condenseCurrentWindow(targetWindowId?: number): Promise<vo
   const groupKey = typeof resolvedWindowId === 'number' ? String(resolvedWindowId) : UNKNOWN_GROUP_KEY;
   const [existingGroup, tabIds] = await Promise.all([
     readSavedGroup(groupKey),
-    Promise.resolve(eligibleTabs.map((tab) => tab.id).filter((id): id is number => typeof id === 'number')),
+    eligibleTabs.map((tab) => tab.id).filter((id): id is number => typeof id === 'number'),
   ]);
 
   const updatedGroup = saveTabsToList(eligibleTabs, existingGroup);
