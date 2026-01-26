@@ -113,7 +113,8 @@ test.describe('nufftabs extension e2e', () => {
     await sendCondense(page, windowB);
     await waitForSavedGroupCount(page, 2);
 
-    const listPage = await getOrOpenListPage(context, listUrl);
+    const listPage = await context.newPage();
+    await listPage.goto(listUrl);
 
     await expect(listPage.locator('.group-card')).toHaveCount(2, { timeout: 15000 });
 
