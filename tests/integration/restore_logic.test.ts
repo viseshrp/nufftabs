@@ -7,7 +7,7 @@ import { createMockChrome } from '../helpers/mock_chrome';
 describe('restore logic', () => {
   it('reuses list window when it is the only tab', async () => {
     const mock = createMockChrome();
-    // @ts-expect-error - test shim
+    // @ts-ignore - test shim
     globalThis.chrome = mock.chrome;
 
     await writeSettings({ excludePinned: true, restoreBatchSize: 2 });
@@ -34,7 +34,7 @@ describe('restore logic', () => {
 
   it('creates new windows when reuse is not allowed', async () => {
     const mock = createMockChrome();
-    // @ts-expect-error - test shim
+    // @ts-ignore - test shim
     globalThis.chrome = mock.chrome;
 
     await writeSettings({ excludePinned: true, restoreBatchSize: 2 });
@@ -56,7 +56,7 @@ describe('restore logic', () => {
 
   it('returns false when restoration fails', async () => {
     const mock = createMockChrome();
-    // @ts-expect-error - test shim
+    // @ts-ignore - test shim
     globalThis.chrome = mock.chrome;
 
     mock.chrome.windows.create = async () => {
@@ -73,7 +73,7 @@ describe('restore logic', () => {
 
   it('handles empty restore lists', async () => {
     const mock = createMockChrome();
-    // @ts-expect-error - test shim
+    // @ts-ignore - test shim
     globalThis.chrome = mock.chrome;
 
     const restored = await restoreTabs([]);
@@ -82,7 +82,7 @@ describe('restore logic', () => {
 
   it('fails when window id is missing', async () => {
     const mock = createMockChrome();
-    // @ts-expect-error - test shim
+    // @ts-ignore - test shim
     globalThis.chrome = mock.chrome;
 
     await writeSettings({ excludePinned: true, restoreBatchSize: 1 });
@@ -101,7 +101,7 @@ describe('restore logic', () => {
 
   it('covers reuse branch window creation and rest tabs', async () => {
     const mock = createMockChrome();
-    // @ts-expect-error - test shim
+    // @ts-ignore - test shim
     globalThis.chrome = mock.chrome;
 
     await writeSettings({ excludePinned: true, restoreBatchSize: 2 });
@@ -123,7 +123,7 @@ describe('restore logic', () => {
 
   it('handles getCurrent errors', async () => {
     const mock = createMockChrome();
-    // @ts-expect-error - test shim
+    // @ts-ignore - test shim
     globalThis.chrome = mock.chrome;
 
     mock.chrome.tabs.getCurrent = async () => {
@@ -136,7 +136,7 @@ describe('restore logic', () => {
 
   it('fails when window id is missing without reuse', async () => {
     const mock = createMockChrome();
-    // @ts-expect-error - test shim
+    // @ts-ignore - test shim
     globalThis.chrome = mock.chrome;
 
     mock.chrome.windows.create = async () => ({});

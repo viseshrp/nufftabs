@@ -5,7 +5,7 @@ import { createMockChrome } from '../helpers/mock_chrome';
 describe('options entrypoint', () => {
   it('initializes the settings page module', async () => {
     const mock = createMockChrome();
-    // @ts-expect-error - test shim
+    // @ts-ignore - test shim
     globalThis.chrome = mock.chrome;
 
     document.body.innerHTML = `

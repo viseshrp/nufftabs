@@ -6,7 +6,7 @@ import { createMockChrome } from '../helpers/mock_chrome';
 describe('background condense', () => {
   it('saves eligible tabs and focuses list tab', async () => {
     const mock = createMockChrome();
-    // @ts-expect-error - test shim
+    // @ts-ignore - test shim
     globalThis.chrome = mock.chrome;
 
     const window = mock.createWindow(['https://a.com']);
@@ -28,7 +28,7 @@ describe('background condense', () => {
 
   it('focuses existing list tab when no eligible tabs', async () => {
     const mock = createMockChrome();
-    // @ts-expect-error - test shim
+    // @ts-ignore - test shim
     globalThis.chrome = mock.chrome;
 
     const listUrl = mock.chrome.runtime.getURL(LIST_PAGE_PATH);
@@ -45,7 +45,7 @@ describe('background condense', () => {
 
   it('creates a list tab when all tabs are eligible', async () => {
     const mock = createMockChrome();
-    // @ts-expect-error - test shim
+    // @ts-ignore - test shim
     globalThis.chrome = mock.chrome;
 
     const window = mock.createWindow(['https://a.com', 'https://b.com']);
@@ -59,7 +59,7 @@ describe('background condense', () => {
 
   it('returns early when tabs query fails', async () => {
     const mock = createMockChrome();
-    // @ts-expect-error - test shim
+    // @ts-ignore - test shim
     globalThis.chrome = mock.chrome;
     mock.chrome.tabs.query = async () => {
       throw new Error('boom');
@@ -71,7 +71,7 @@ describe('background condense', () => {
 
   it('handles storage write failures by focusing list tab', async () => {
     const mock = createMockChrome();
-    // @ts-expect-error - test shim
+    // @ts-ignore - test shim
     globalThis.chrome = mock.chrome;
     mock.chrome.storage.local.set = async () => {
       throw new Error('boom');
@@ -88,7 +88,7 @@ describe('background condense', () => {
 
   it('handles list tab query failures gracefully', async () => {
     const mock = createMockChrome();
-    // @ts-expect-error - test shim
+    // @ts-ignore - test shim
     globalThis.chrome = mock.chrome;
 
     const originalQuery = mock.chrome.tabs.query;
@@ -108,7 +108,7 @@ describe('background condense', () => {
 
   it('handles tab creation and removal failures', async () => {
     const mock = createMockChrome();
-    // @ts-expect-error - test shim
+    // @ts-ignore - test shim
     globalThis.chrome = mock.chrome;
 
     const window = mock.createWindow(['https://a.com']);

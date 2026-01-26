@@ -30,7 +30,7 @@ describe('list tab focus', () => {
 
   it('creates a list tab when none exists', async () => {
     const mock = createMockChrome();
-    // @ts-expect-error - test shim
+    // @ts-ignore - test shim
     globalThis.chrome = mock.chrome;
 
     const window = mock.createWindow(['https://a.com']);
@@ -45,7 +45,7 @@ describe('list tab focus', () => {
 
   it('reuses and focuses an existing list tab', async () => {
     const mock = createMockChrome();
-    // @ts-expect-error - test shim
+    // @ts-ignore - test shim
     globalThis.chrome = mock.chrome;
 
     const window = mock.createWindow(['https://a.com']);
@@ -63,7 +63,7 @@ describe('list tab focus', () => {
 
   it('creates a new tab if focusing existing one fails', async () => {
     const mock = createMockChrome();
-    // @ts-expect-error - test shim
+    // @ts-ignore - test shim
     globalThis.chrome = mock.chrome;
 
     const window = mock.createWindow(['https://a.com']);
@@ -81,7 +81,7 @@ describe('list tab focus', () => {
 
   it('handles create tab without id', async () => {
     const mock = createMockChrome();
-    // @ts-expect-error - test shim
+    // @ts-ignore - test shim
     globalThis.chrome = mock.chrome;
 
     const window = mock.createWindow(['https://a.com']);

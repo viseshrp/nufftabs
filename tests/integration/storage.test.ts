@@ -16,7 +16,7 @@ const makeTab = (id: string) => ({ id, url: `https://example.com/${id}`, title: 
 describe('storage integration', () => {
   beforeEach(() => {
     const mock = createMockChrome();
-    // @ts-expect-error - test shim
+    // @ts-ignore - test shim
     globalThis.chrome = mock.chrome;
   });
 
@@ -59,7 +59,7 @@ describe('storage integration', () => {
 
   it('returns safe defaults when storage throws', async () => {
     const mock = createMockChrome();
-    // @ts-expect-error - test shim
+    // @ts-ignore - test shim
     globalThis.chrome = mock.chrome;
 
     mock.chrome.storage.local.get = async () => {

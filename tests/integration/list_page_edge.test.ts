@@ -7,7 +7,7 @@ describe('list page edge cases', () => {
     vi.resetModules();
     document.body.innerHTML = '';
     const mock = createMockChrome();
-    // @ts-expect-error - test shim
+    // @ts-ignore - test shim
     globalThis.chrome = mock.chrome;
 
     await import('../../entrypoints/nufftabs/index');
@@ -22,7 +22,7 @@ describe('list page edge cases', () => {
       <div id="snackbar"></div>
     `;
     const mock = createMockChrome();
-    // @ts-expect-error - test shim
+    // @ts-ignore - test shim
     globalThis.chrome = mock.chrome;
 
     await import('../../entrypoints/nufftabs/index');

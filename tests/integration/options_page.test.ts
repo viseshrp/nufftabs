@@ -11,7 +11,7 @@ describe('options settings page', () => {
         [STORAGE_KEYS.settings]: { excludePinned: true, restoreBatchSize: 25 },
       },
     });
-    // @ts-expect-error - test shim
+    // @ts-ignore - test shim
     globalThis.chrome = mock.chrome;
 
     document.body.innerHTML = `
@@ -45,7 +45,7 @@ describe('options settings page', () => {
         [STORAGE_KEYS.settings]: { excludePinned: true, restoreBatchSize: 5 },
       },
     });
-    // @ts-expect-error - test shim
+    // @ts-ignore - test shim
     globalThis.chrome = mock.chrome;
 
     document.body.innerHTML = `
@@ -69,7 +69,7 @@ describe('options settings page', () => {
         [STORAGE_KEYS.settings]: { excludePinned: true },
       },
     });
-    // @ts-expect-error - test shim
+    // @ts-ignore - test shim
     globalThis.chrome = mock.chrome;
     mock.chrome.storage.local.set = async () => {
       throw new Error('fail');

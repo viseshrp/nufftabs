@@ -18,7 +18,7 @@ async function setupListPage(groups: Record<string, unknown[]>) {
   }
 
   const mock = createMockChrome({ initialStorage: storagePayload });
-  // @ts-expect-error - test shim
+  // @ts-ignore - test shim
   globalThis.chrome = mock.chrome;
 
   const listUrl = mock.chrome.runtime.getURL(LIST_PAGE_PATH);

@@ -8,7 +8,7 @@ describe('background entrypoint', () => {
 
     let clickHandler: ((tab?: chrome.tabs.Tab) => void) | undefined;
 
-    // @ts-expect-error - test shim
+    // @ts-ignore - test shim
     globalThis.chrome = {
       ...mock.chrome,
       action: {
@@ -20,7 +20,7 @@ describe('background entrypoint', () => {
         },
       },
     };
-    // @ts-expect-error - test shim
+    // @ts-ignore - test shim
     globalThis.defineBackground = (callback: () => void) => callback();
 
     vi.resetModules();

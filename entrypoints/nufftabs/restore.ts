@@ -89,7 +89,7 @@ export async function restoreTabs(savedTabs: SavedTab[]): Promise<boolean> {
         const [first, ...rest] = chunk;
         if (!first) continue;
         const window = await chrome.windows.create({ url: first.url });
-        const windowId = window.id;
+        const windowId = window?.id;
         if (typeof windowId !== 'number') {
           throw new Error('Missing window id');
         }
@@ -106,7 +106,7 @@ export async function restoreTabs(savedTabs: SavedTab[]): Promise<boolean> {
         const [first, ...rest] = chunk;
         if (!first) continue;
         const window = await chrome.windows.create({ url: first.url });
-        const windowId = window.id;
+        const windowId = window?.id;
         if (typeof windowId !== 'number') {
           throw new Error('Missing window id');
         }
