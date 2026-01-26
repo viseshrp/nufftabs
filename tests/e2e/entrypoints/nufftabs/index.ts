@@ -1,1 +1,1 @@
-import '../../../entrypoints/nufftabs/index';
+import '../../../../entrypoints/nufftabs/index';

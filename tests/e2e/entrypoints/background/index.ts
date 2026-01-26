@@ -1,4 +1,4 @@
-import { condenseCurrentWindow } from '../../../entrypoints/background/condense';
+import { condenseCurrentWindow } from '../../../../entrypoints/background/condense';
 
 export default defineBackground(() => {
   chrome.action.onClicked.addListener((tab) => {

@@ -1,1 +1,1 @@
-import '../../../entrypoints/options/index';
+import '../../../../entrypoints/options/index';
