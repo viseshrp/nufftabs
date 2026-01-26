@@ -1,6 +1,6 @@
 {
-  "name": "wxt-starter",
-  "description": "manifest.json description",
+  "name": "nufftabs",
+  "description": "Enough tabs. Condense and restore.",
   "private": true,
   "version": "1.0.0",
   "type": "module",
