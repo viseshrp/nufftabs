@@ -27,7 +27,9 @@ jobs:
           cache-dependency-path: pnpm-lock.yaml
 
       - run: pnpm install
-      - run: pnpm quality
+      - run: pnpm lint
+      - run: pnpm lint:webext
+      - run: pnpm biome
 
   smoke:
     name: Smoke Tests
