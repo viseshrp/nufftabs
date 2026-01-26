@@ -72,16 +72,23 @@ export function createMockChrome(options?: { initialStorage?: StorageRecord }) {
     async get(keys: any) {
       if (Array.isArray(keys)) {
         return keys.reduce((acc, key) => {
-          acc[key] = storageData[key];
+          if (Object.prototype.hasOwnProperty.call(storageData, key)) {
+            acc[key] = storageData[key];
+          }
           return acc;
         }, {} as StorageRecord);
       }
       if (typeof keys === 'string') {
-        return { [keys]: storageData[keys] } as StorageRecord;
+        if (Object.prototype.hasOwnProperty.call(storageData, keys)) {
+          return { [keys]: storageData[keys] } as StorageRecord;
+        }
+        return {} as StorageRecord;
       }
       if (keys && typeof keys === 'object') {
         return Object.keys(keys).reduce((acc, key) => {
-          acc[key] = storageData[key] ?? (keys as StorageRecord)[key];
+          acc[key] = Object.prototype.hasOwnProperty.call(storageData, key)
+            ? storageData[key]
+            : (keys as StorageRecord)[key];
           return acc;
         }, {} as StorageRecord);
       }
