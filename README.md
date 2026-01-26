@@ -1,6 +1,6 @@
 # nufftabs
 
-13 10 [![Codecov](https://codecov.io/gh/viseshrp/nufftabs/branch/master/graph/badge.svg)](https://codecov.io/gh/viseshrp/nufftabs)
+[![Codecov](https://codecov.io/gh/viseshrp/nufftabs/branch/master/graph/badge.svg)](https://codecov.io/gh/viseshrp/nufftabs)
 
 nufftabs is a minimal Chrome (MV3) extension to condense all tabs from the current window into a saved list, then restore them later. It uses WXT for build/dev and stores saved tabs in `chrome.storage.local`, with settings in `chrome.storage.sync`.
 
