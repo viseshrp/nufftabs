@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { condenseCurrentWindow } from '../../entrypoints/background/condense';
-import { LIST_PAGE_PATH, readSavedGroup } from '../../entrypoints/shared/storage';
+import { LIST_PAGE_PATH, readSavedGroup, UNKNOWN_GROUP_KEY } from '../../entrypoints/shared/storage';
 import { createMockChrome } from '../helpers/mock_chrome';
 
 describe('background condense', () => {
@@ -104,6 +104,45 @@ describe('background condense', () => {
     const tabs = await originalQuery({ windowId: window.id as number });
     const listTabs = tabs.filter((tab: chrome.tabs.Tab) => tab.url === listUrl);
     expect(listTabs.length).toBe(1);
+  });
+
+  it('uses the unknown group key when window id cannot be resolved', async () => {
+    const mock = createMockChrome();
+    // @ts-ignore - test shim
+    globalThis.chrome = mock.chrome;
+
+    mock.chrome.tabs.query = async (queryInfo: chrome.tabs.QueryInfo) => {
+      if (queryInfo.url) return [];
+      return [{ id: 1, url: 'https://a.com', title: 'A', pinned: false } as chrome.tabs.Tab];
+    };
+
+    await condenseCurrentWindow();
+
+    const savedGroup = await readSavedGroup(UNKNOWN_GROUP_KEY);
+    expect(savedGroup).toHaveLength(1);
+    expect(savedGroup[0]?.url).toBe('https://a.com');
+  });
+
+  it('handles list tab creation returning undefined', async () => {
+    const mock = createMockChrome();
+    // @ts-ignore - test shim
+    globalThis.chrome = mock.chrome;
+
+    const window = mock.createWindow(['https://a.com']);
+    const originalCreate = mock.chrome.tabs.create;
+    let createCount = 0;
+    mock.chrome.tabs.create = async (createProperties: chrome.tabs.CreateProperties) => {
+      createCount += 1;
+      if (createCount === 1) return undefined as unknown as chrome.tabs.Tab;
+      return originalCreate(createProperties);
+    };
+
+    await condenseCurrentWindow(window.id as number);
+
+    const listUrl = mock.chrome.runtime.getURL(LIST_PAGE_PATH);
+    const tabs = await mock.chrome.tabs.query({ windowId: window.id as number });
+    const listTabs = tabs.filter((tab: chrome.tabs.Tab) => tab.url === listUrl);
+    expect(listTabs.length).toBeGreaterThan(0);
   });
 
   it('handles tab creation and removal failures', async () => {

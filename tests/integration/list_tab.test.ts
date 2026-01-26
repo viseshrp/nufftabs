@@ -43,6 +43,19 @@ describe('list tab focus', () => {
     expect(listTabs[0]?.pinned).toBe(true);
   });
 
+  it('creates a list tab when no preferred window is provided', async () => {
+    const mock = createMockChrome();
+    // @ts-ignore - test shim
+    globalThis.chrome = mock.chrome;
+
+    mock.createWindow(['https://a.com']);
+    const listUrl = mock.chrome.runtime.getURL(LIST_PAGE_PATH);
+    await focusExistingListTabOrCreate([], listUrl);
+
+    const tabs = await mock.chrome.tabs.query({ url: listUrl });
+    expect(tabs).toHaveLength(1);
+  });
+
   it('reuses and focuses an existing list tab', async () => {
     const mock = createMockChrome();
     // @ts-ignore - test shim
