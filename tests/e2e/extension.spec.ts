@@ -10,7 +10,7 @@ async function launchExtension(): Promise<{ context: BrowserContext; extensionId
   }
 
   const context = await chromium.launchPersistentContext('', {
-    headless: process.env.PW_HEADLESS !== 'false',
+    headless: process.env.PW_HEADLESS === 'true',
     args: [
       `--disable-extensions-except=${extensionPath}`,
       `--load-extension=${extensionPath}`,
