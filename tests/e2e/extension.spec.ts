@@ -2,11 +2,11 @@ import { test, expect, chromium, type BrowserContext, type Page } from '@playwri
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 
-const extensionPath = resolve(process.cwd(), '.output', 'chrome-mv3');
+const extensionPath = resolve(process.cwd(), '.output', 'chrome-mv3-e2e');
 
 async function launchExtension(): Promise<{ context: BrowserContext; extensionId: string; page: Page }> {
   if (!existsSync(extensionPath)) {
-    throw new Error('Extension build not found. Run `pnpm build` before e2e tests.');
+    throw new Error('Extension build not found. Run `pnpm build:e2e` before e2e tests.');
   }
 
   const context = await chromium.launchPersistentContext('', {
