@@ -15,6 +15,7 @@ export default defineConfig({
         lines: 90,
       },
       include: ['entrypoints/**/*.ts'],
+      // Exclude DOM-heavy glue code; behavior is validated via Playwright E2E coverage.
       exclude: ['**/*.d.ts', 'entrypoints/nufftabs/index.ts'],
     },
   },
