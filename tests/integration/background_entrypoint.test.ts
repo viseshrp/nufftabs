@@ -2,20 +2,20 @@ import { describe, it, expect, vi } from 'vitest';
 import { createMockChrome } from '../helpers/mock_chrome';
 
 describe('background entrypoint', () => {
-  it('registers listeners without throwing', async () => {
+  it('registers action click listener without throwing', async () => {
     const mock = createMockChrome();
     const window = mock.createWindow(['https://example.com']);
 
-    let messageHandler: ((message: unknown, sender: chrome.runtime.MessageSender, sendResponse: () => void) => void) | undefined;
+    let clickHandler: ((tab?: chrome.tabs.Tab) => void) | undefined;
 
     // @ts-expect-error - test shim
     globalThis.chrome = {
       ...mock.chrome,
-      runtime: {
-        ...mock.chrome.runtime,
-        onMessage: {
-          addListener: (handler: typeof messageHandler) => {
-            messageHandler = handler ?? undefined;
+      action: {
+        ...mock.chrome.action,
+        onClicked: {
+          addListener: (handler: typeof clickHandler) => {
+            clickHandler = handler ?? undefined;
           },
         },
       },
@@ -26,20 +26,7 @@ describe('background entrypoint', () => {
     vi.resetModules();
     await import('../../entrypoints/background/index');
 
-    expect(messageHandler).toBeTypeOf('function');
-
-    await new Promise<void>((resolve) => {
-      messageHandler?.({ type: 'condense', windowId: window.id }, { tab: { windowId: window.id } }, () => {
-        resolve();
-      });
-    });
-
-    messageHandler?.({ type: 'noop' }, { tab: { windowId: window.id } }, () => undefined);
-    messageHandler?.(null, { tab: { windowId: window.id } }, () => undefined);
-    await new Promise<void>((resolve) => {
-      messageHandler?.({ type: 'condense' }, { tab: { windowId: window.id } }, () => {
-        resolve();
-      });
-    });
+    expect(clickHandler).toBeTypeOf('function');
+    clickHandler?.({ windowId: window.id } as chrome.tabs.Tab);
   });
 });
