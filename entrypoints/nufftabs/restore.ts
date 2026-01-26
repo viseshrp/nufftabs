@@ -1,5 +1,7 @@
 import { LIST_PAGE_PATH, readSettings, type SavedTab } from '../shared/storage';
 
+// Restore tabs in limited parallel batches to improve throughput; this can relax strict
+// tab ordering compared to fully sequential creation.
 export const RESTORE_CONCURRENCY = 6;
 
 export async function runWithConcurrency<T>(
@@ -7,6 +9,7 @@ export async function runWithConcurrency<T>(
   limit: number,
   task: (item: T) => Promise<void>,
 ): Promise<void> {
+  // Executes tasks concurrently for speed; ordering of completion is not guaranteed.
   if (items.length === 0) return;
   let index = 0;
   const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
@@ -20,6 +23,8 @@ export async function runWithConcurrency<T>(
 }
 
 export async function createTabsInWindow(windowId: number, urls: string[], startIndex?: number): Promise<void> {
+  // Uses concurrency-limited creation; tabs may appear slightly out of order versus strict
+  // sequential creation, which is accepted for better restore throughput.
   const tasks = urls.map((url, offset) => ({
     url,
     index: typeof startIndex === 'number' ? startIndex + offset : undefined,

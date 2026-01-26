@@ -1,6 +1,8 @@
 import { createSavedTab, type SavedTab, type SavedTabGroups } from '../shared/storage';
 
 export function cloneGroups(groups: SavedTabGroups): SavedTabGroups {
+  // Shallow copy only; tab arrays are shared. Callers must replace arrays instead of mutating
+  // them in place or the original state will be modified and change detection can be skipped.
   return { ...groups };
 }
 
@@ -9,6 +11,8 @@ export function countTotalTabs(groups: SavedTabGroups): number {
 }
 
 export function isSameGroup(prev: SavedTab[] | undefined, next: SavedTab[]): boolean {
+  // Heuristic: compare first/middle/last IDs to avoid O(n) checks. This can miss reorders
+  // or edits that don't affect these pivot points, so the UI may skip a needed re-render.
   if (!prev) return false;
   if (prev.length !== next.length) return false;
   if (prev.length === 0) return true;
