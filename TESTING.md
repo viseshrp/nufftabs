@@ -15,6 +15,8 @@ pnpm test:e2e
 - **Playwright** for end-to-end extension tests (`playwright.config.ts`).
 - **jsdom** for DOM-focused unit/integration tests (list/options UI logic).
 - **WXT** for building the extension outputs used by E2E (`tests/e2e/wxt.e2e.config.ts`).
+- **Biome** for lint checks (`biome.json`).
+- **web-ext** for manifest validation against the built extension (`pnpm lint:webext`).
 
 ## Project test layout (where to look)
 ```
@@ -142,3 +144,12 @@ Artifacts:
   ```
 - **Coverage drops**: run `pnpm test`, open `coverage/index.html`, and inspect uncovered branches/lines.
 
+## Linting and manifest validation
+```bash
+pnpm lint
+pnpm biome
+pnpm lint:webext
+```
+What this does:
+- `lint`/`biome`: Biome lint checks (formatter disabled).
+- `lint:webext`: builds the Firefox MV2 bundle and runs `web-ext lint` against `.output/firefox-mv2/`.
