@@ -111,7 +111,7 @@ jobs:
         run: pnpm package
       - name: Enforce size budget
         run: |
-          ZIP=$(ls .output/**/*.zip | head -n 1)
+          ZIP=$(find .output -name "*.zip" -print -quit)
           if [ -z "$ZIP" ]; then
             echo "No zip file found in .output."
             exit 1
