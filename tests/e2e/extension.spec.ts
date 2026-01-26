@@ -210,7 +210,8 @@ test.describe('nufftabs extension e2e', () => {
     const jsonArea = listPage.locator('#jsonArea');
     await jsonArea.fill(JSON.stringify([{ url: 'https://example.com/imported' }]));
     await listPage.locator('#importJson').click();
-    await expect(listPage.locator('.group-card')).toHaveCount(1);
+    await waitForSavedGroupCount(page, 2);
+    await expect(listPage.locator('.group-card')).toHaveCount(2);
 
     // Import OneTab with skipped lines
     const oneTabText = [
