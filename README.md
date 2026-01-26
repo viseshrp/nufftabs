@@ -1,5 +1,7 @@
 # nufftabs
 
+13 10 [![Codecov](https://codecov.io/gh/viseshrp/nufftabs/branch/master/graph/badge.svg)](https://codecov.io/gh/viseshrp/nufftabs)
+
 nufftabs is a minimal Chrome (MV3) extension to condense all tabs from the current window into a saved list, then restore them later. It uses WXT for build/dev and stores saved tabs in `chrome.storage.local`, with settings in `chrome.storage.sync`.
 
 ## Core features
@@ -7,7 +9,7 @@ nufftabs is a minimal Chrome (MV3) extension to condense all tabs from the curre
 - List UI with restore single, restore all, delete all, export/import JSON.
 - Restore rules: single restore uses the current window; restore all opens a new window unless the list tab is the only tab.
 - List tab is pinned and reused if it already exists.
-- Settings page for ‚ÄúExclude pinned tabs‚Äù.
+- Settings page for ìExclude pinned tabsî.
 
 ## How it works
 
@@ -129,12 +131,12 @@ pnpm build
 3. **Import (replace)** reads the textarea and replaces the saved list if valid.
 
 ### Import from OneTab
-1. In OneTab, open ‚ÄúExport / Import URLs‚Äù and copy the text.
+1. In OneTab, open ìExport / Import URLsî and copy the text.
 2. Paste it into the nufftabs Import panel textarea.
 3. Click **Import OneTab** to append those tabs to the current list.
 
 ### Exclude pinned tabs
-1. Open the options page (Extension details ‚Üí ‚ÄúExtension options‚Äù).
+1. Open the options page (Extension details ? ìExtension optionsî).
 2. Toggle **Exclude pinned tabs**.
 3. When enabled, pinned tabs are not saved or closed during condense.
 
@@ -143,20 +145,20 @@ pnpm build
 - If none exists, a new list tab is created and pinned.
 
 ## Project structure
-- `entrypoints/background/index.ts` ‚Äî action handler, condense logic, list tab focus/pin.
-- `entrypoints/nufftabs/` ‚Äî list UI (`index.html`, `index.ts`, `style.css`).
-- `entrypoints/options/` ‚Äî settings UI for exclude pinned.
-- `public/icon/` ‚Äî PNG icons (16/19/32/38/48/96/128).
-- `wxt.config.ts` ‚Äî manifest config and permissions.
+- `entrypoints/background/index.ts` ó action handler, condense logic, list tab focus/pin.
+- `entrypoints/nufftabs/` ó list UI (`index.html`, `index.ts`, `style.css`).
+- `entrypoints/options/` ó settings UI for exclude pinned.
+- `public/icon/` ó PNG icons (16/19/32/38/48/96/128).
+- `wxt.config.ts` ó manifest config and permissions.
 
 ## Permissions
 - `tabs`: required to query, create, update, move, and close tabs/windows.
 - `storage`: required to persist `savedTabs` in `chrome.storage.local` and settings in `chrome.storage.sync`.
 
 ## Troubleshooting
-- **List doesn‚Äôt update after condense:** reload the list tab or check the service worker console for errors.
+- **List doesnít update after condense:** reload the list tab or check the service worker console for errors.
 - **Condense closes tabs but list is empty:** check `chrome.storage.local` in DevTools and ensure the list tab is open.
-- **No action when clicking icon:** open `chrome://extensions`, click ‚Äúservice worker‚Äù for nufftabs, and check logs.
+- **No action when clicking icon:** open `chrome://extensions`, click ìservice workerî for nufftabs, and check logs.
 
 ## FAQ
 
@@ -167,7 +169,7 @@ If any list tab exists, nufftabs reuses the most recently active one instead of 
 In `chrome.storage.local` under `savedTabs` and in `chrome.storage.sync` under `settings`.
 
 **Why are pinned tabs excluded by default?**  
-It‚Äôs a safety default so pinned tabs are not closed unless you turn the setting off.
+Itís a safety default so pinned tabs are not closed unless you turn the setting off.
 
 ## License
 MIT. See `LICENSE`.
