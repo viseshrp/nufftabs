@@ -12,7 +12,6 @@ import {
 } from './list';
 import { getReuseWindowContext, restoreTabs } from './restore';
 import {
-  LIST_PAGE_PATH,
   readSavedGroups,
   STORAGE_KEYS,
   isSavedGroupStorageKey,

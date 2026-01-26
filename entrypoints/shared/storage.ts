@@ -157,7 +157,7 @@ export function normalizeSettings(value: unknown): Settings {
   };
 }
 
-export async function readSavedGroups(fallbackKey = UNKNOWN_GROUP_KEY): Promise<SavedTabGroups> {
+export async function readSavedGroups(_fallbackKey = UNKNOWN_GROUP_KEY): Promise<SavedTabGroups> {
   try {
     const index = await readSavedGroupsIndex();
     if (index.length === 0) return {};
