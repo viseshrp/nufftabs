@@ -27,7 +27,13 @@ describe('storage utilities', () => {
   });
 
   it('normalizes settings and storage keys', () => {
-    expect(normalizeSettings({ excludePinned: false, restoreBatchSize: -1 }).restoreBatchSize).toBeGreaterThan(0);
+    const normalized = normalizeSettings({
+      excludePinned: false,
+      restoreBatchSize: -1,
+      discardRestoredTabs: 'nope',
+    });
+    expect(normalized.restoreBatchSize).toBeGreaterThan(0);
+    expect(normalized.discardRestoredTabs).toBe(false);
     expect(isSavedGroupStorageKey('savedTabs:123')).toBe(true);
     expect(isSavedGroupStorageKey('settings')).toBe(false);
   });

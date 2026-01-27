@@ -48,12 +48,13 @@ describe('storage integration', () => {
     const settings = await readSettings();
     expect(settings).toEqual(DEFAULT_SETTINGS);
 
-    const saved = await writeSettings({ excludePinned: false, restoreBatchSize: 42 });
+    const saved = await writeSettings({ excludePinned: false, restoreBatchSize: 42, discardRestoredTabs: true });
     expect(saved).toBe(true);
 
     const updated = await readSettings();
     expect(updated.excludePinned).toBe(false);
     expect(updated.restoreBatchSize).toBe(42);
+    expect(updated.discardRestoredTabs).toBe(true);
   });
 
   it('returns safe defaults when storage throws', async () => {
