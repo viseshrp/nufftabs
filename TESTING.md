@@ -126,12 +126,11 @@ E2E:
 
 ## CI structure (GitHub Actions)
 CI lives in `.github/workflows/ci.yml` and runs on PR + push.
-1. Install dependencies
-2. Build extension (`pnpm build`)
-3. Unit + integration tests with coverage (`pnpm test`)
-4. Install Playwright Chromium
-5. E2E tests (`pnpm test:e2e` under Xvfb)
-6. Upload Playwright artifacts on failure (`test-results/`)
+1. **Code Quality**: `pnpm install`, `pnpm lint:webext`, `pnpm quality` (tsc + biome lint).
+2. **Smoke Tests**: `pnpm install`, `pnpm smoke`, Playwright install, `xvfb-run -a pnpm smoke:e2e`.
+3. **Unit Tests**: `pnpm install`, `pnpm test`, upload Codecov (`coverage/lcov.info`).
+4. **Build & Package**: `pnpm install`, `pnpm package`, size budget check (1 MB), upload zip artifact.
+5. **Release** (tags `v*` only): download artifact and create a draft GitHub release.
 
 Artifacts:
 - Screenshots, videos, and traces are stored in `test-results/` on failures.
@@ -153,4 +152,5 @@ pnpm lint:webext
 What this does:
 - `lint`/`biome`: Biome lint checks. The formatter is enabled in `biome.json` for local use,
   but CI only runs `biome lint` (it does not apply formatting).
+- Lint rules apply uniformly across source and tests (no test-only relaxations).
 - `lint:webext`: builds the Firefox MV2 bundle and runs `web-ext lint` against `.output/firefox-mv2/`.
