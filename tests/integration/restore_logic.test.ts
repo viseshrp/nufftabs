@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { LIST_PAGE_PATH } from '../../entrypoints/shared/storage';
-import { restoreTabs } from '../../entrypoints/nufftabs/restore';
+import { createDiscardSession, discardTabsBestEffort, restoreTabs } from '../../entrypoints/nufftabs/restore';
 import { writeSettings } from '../../entrypoints/shared/storage';
 import { createMockChrome, setMockChrome } from '../helpers/mock_chrome';
 
@@ -170,7 +170,7 @@ describe('restore logic', () => {
       { id: '2', url: 'https://b.com', title: 'B', savedAt: 1 },
     ]);
     expect(restored).toBe(true);
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await new Promise((resolve) => setTimeout(resolve, 20));
 
     const tabsInWindow = await mock.chrome.tabs.query({ windowId: window.id as number });
     const restoredTabs = tabsInWindow.filter((tab: chrome.tabs.Tab) => tab.url !== listUrl);
@@ -178,6 +178,113 @@ describe('restore logic', () => {
     for (const tab of restoredTabs) {
       expect(tab.discarded).toBe(true);
     }
+  });
+
+  it('waits for real URL before discarding', async () => {
+    const mock = createMockChrome();
+    setMockChrome(mock.chrome);
+
+    const tab = await mock.chrome.tabs.create({ url: 'about:blank' });
+    const tabId = tab.id as number;
+
+    const discardPromise = discardTabsBestEffort([tabId]);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await mock.chrome.tabs.update(tabId, { url: 'https://example.com' });
+    await discardPromise;
+
+    const updated = await mock.chrome.tabs.get(tabId);
+    expect(updated.discarded).toBe(true);
+  });
+
+  it('skips discards when setting is toggled off mid-restore', async () => {
+    const mock = createMockChrome({
+      initialStorage: {
+        settings: { excludePinned: true, restoreBatchSize: 2, discardRestoredTabs: true },
+      },
+    });
+    setMockChrome(mock.chrome);
+
+    const tab = await mock.chrome.tabs.create({ url: 'about:blank' });
+    const tabId = tab.id as number;
+
+    const session = createDiscardSession();
+    session.schedule([tabId]);
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await writeSettings({ excludePinned: true, restoreBatchSize: 2, discardRestoredTabs: false });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    await mock.chrome.tabs.update(tabId, { url: 'https://example.com' });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const updated = await mock.chrome.tabs.get(tabId);
+    expect(updated.discarded).toBe(false);
+  });
+
+  it('uses fallback discard ids when window tabs are missing (reuse branch)', async () => {
+    const mock = createMockChrome();
+    setMockChrome(mock.chrome);
+
+    await writeSettings({ excludePinned: true, restoreBatchSize: 1, discardRestoredTabs: true });
+
+    const listUrl = mock.chrome.runtime.getURL(LIST_PAGE_PATH);
+    const window = mock.createWindow([listUrl]);
+    const listTabId = window.tabs?.[0]?.id as number;
+    mock.setCurrentTab(listTabId);
+
+    mock.chrome.windows.create = async () => ({ id: 999 } as chrome.windows.Window);
+
+    const restored = await restoreTabs([
+      { id: '1', url: 'https://a.com', title: 'A', savedAt: 1 },
+      { id: '2', url: 'https://b.com', title: 'B', savedAt: 1 },
+    ]);
+    expect(restored).toBe(true);
+  });
+
+  it('handles fallback discard lookup failures', async () => {
+    const mock = createMockChrome();
+    setMockChrome(mock.chrome);
+
+    await writeSettings({ excludePinned: true, restoreBatchSize: 1, discardRestoredTabs: true });
+    mock.chrome.windows.create = async () => ({ id: 7 } as chrome.windows.Window);
+    mock.chrome.tabs.query = async () => {
+      throw new Error('boom');
+    };
+
+    const restored = await restoreTabs([{ id: '1', url: 'https://a.com', title: 'A', savedAt: 1 }]);
+    expect(restored).toBe(true);
+  });
+
+  it('ignores tab lookup failures during discard', async () => {
+    const mock = createMockChrome();
+    setMockChrome(mock.chrome);
+
+    const tab = await mock.chrome.tabs.create({ url: 'about:blank' });
+    const tabId = tab.id as number;
+    const originalGet = mock.chrome.tabs.get;
+    mock.chrome.tabs.get = async () => {
+      throw new Error('boom');
+    };
+
+    await discardTabsBestEffort([tabId]);
+    mock.chrome.tabs.get = originalGet;
+    const updated = await mock.chrome.tabs.get(tabId);
+    expect(updated.discarded).toBe(false);
+  });
+
+  it('ignores discard errors', async () => {
+    const mock = createMockChrome();
+    setMockChrome(mock.chrome);
+
+    const tab = await mock.chrome.tabs.create({ url: 'https://example.com' });
+    const tabId = tab.id as number;
+    mock.chrome.tabs.discard = async () => {
+      throw new Error('boom');
+    };
+
+    await discardTabsBestEffort([tabId]);
+    const updated = await mock.chrome.tabs.get(tabId);
+    expect(updated.discarded).toBe(false);
   });
 
   it('fails when window id is missing without reuse', async () => {

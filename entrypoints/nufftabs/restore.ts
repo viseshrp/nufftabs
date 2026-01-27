@@ -11,9 +11,12 @@ type PendingDiscard = {
   timeoutId: ReturnType<typeof setTimeout>;
 };
 
+type TabChangeInfo = {
+  url?: string;
+};
+
 const pendingDiscards = new Map<number, PendingDiscard>();
-let onUpdatedListener: ((tabId: number, changeInfo: chrome.tabs.TabChangeInfo, tab: chrome.tabs.Tab) => void) | null =
-  null;
+let onUpdatedListener: ((tabId: number, changeInfo: TabChangeInfo, tab: chrome.tabs.Tab) => void) | null = null;
 
 function isPlaceholderUrl(url?: string | null): boolean {
   return !url || url === 'about:blank';
@@ -258,12 +261,12 @@ export async function restoreTabs(savedTabs: SavedTab[]): Promise<boolean> {
       for (const chunk of remainingChunks) {
         const [first, ...rest] = chunk;
         if (!first) continue;
-        const window = await chrome.windows.create({ url: first.url });
-        const windowId = window?.id;
+        const createdWindow = await chrome.windows.create({ url: first.url });
+        const windowId = createdWindow?.id;
         if (typeof windowId !== 'number') {
           throw new Error('Missing window id');
         }
-        const firstTabId = window.tabs?.[0]?.id;
+        const firstTabId = createdWindow?.tabs?.[0]?.id;
         let createdIds: number[] = [];
         if (rest.length > 0) {
           createdIds = await createTabsInWindow(
@@ -283,12 +286,12 @@ export async function restoreTabs(savedTabs: SavedTab[]): Promise<boolean> {
       for (const chunk of chunks) {
         const [first, ...rest] = chunk;
         if (!first) continue;
-        const window = await chrome.windows.create({ url: first.url });
-        const windowId = window?.id;
+        const createdWindow = await chrome.windows.create({ url: first.url });
+        const windowId = createdWindow?.id;
         if (typeof windowId !== 'number') {
           throw new Error('Missing window id');
         }
-        const firstTabId = window.tabs?.[0]?.id;
+        const firstTabId = createdWindow?.tabs?.[0]?.id;
         let createdIds: number[] = [];
         if (rest.length > 0) {
           createdIds = await createTabsInWindow(

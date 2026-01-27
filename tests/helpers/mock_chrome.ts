@@ -1,5 +1,6 @@
 export type MockTab = chrome.tabs.Tab;
 export type MockWindow = chrome.windows.Window;
+type TabChangeInfo = { url?: string };
 
 type StorageValue = unknown;
 type StorageRecord = Record<string, StorageValue>;
@@ -41,8 +42,8 @@ export type MockChrome = {
     discard: (tabId: number) => Promise<MockTab>;
     get: (tabId: number) => Promise<MockTab>;
     onUpdated: {
-      addListener: (listener: (tabId: number, changeInfo: chrome.tabs.TabChangeInfo, tab: MockTab) => void) => void;
-      removeListener: (listener: (tabId: number, changeInfo: chrome.tabs.TabChangeInfo, tab: MockTab) => void) => void;
+      addListener: (listener: (tabId: number, changeInfo: TabChangeInfo, tab: MockTab) => void) => void;
+      removeListener: (listener: (tabId: number, changeInfo: TabChangeInfo, tab: MockTab) => void) => void;
     };
   };
   windows: {
@@ -72,9 +73,7 @@ export function setMockDefineBackground(handler: MockDefineBackground): void {
 export function createMockChrome(options?: { initialStorage?: StorageRecord }) {
   const storageData: StorageRecord = { ...(options?.initialStorage ?? {}) };
   const storageListeners = new Set<StorageListener>();
-  const tabUpdatedListeners = new Set<
-    (tabId: number, changeInfo: chrome.tabs.TabChangeInfo, tab: MockTab) => void
-  >();
+  const tabUpdatedListeners = new Set<(tabId: number, changeInfo: TabChangeInfo, tab: MockTab) => void>();
 
   const windows = new Map<number, MockWindow>();
   const tabs = new Map<number, MockTab>();
@@ -231,7 +230,7 @@ export function createMockChrome(options?: { initialStorage?: StorageRecord }) {
       async update(tabId: number, updateProperties: chrome.tabs.UpdateProperties) {
         const tab = tabs.get(tabId);
         if (!tab) throw new Error('Tab not found');
-        const changeInfo: chrome.tabs.TabChangeInfo = {};
+        const changeInfo: TabChangeInfo = {};
         if (typeof updateProperties.active === 'boolean') {
           if (updateProperties.active) {
             for (const existing of tabs.values()) {

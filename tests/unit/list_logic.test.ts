@@ -41,6 +41,9 @@ describe('list', () => {
   it('calculates group created at timestamps', () => {
     expect(getGroupCreatedAt(sampleTabs)).toBe(10);
     expect(Number.isFinite(getGroupCreatedAt([]))).toBe(false);
+    expect(getGroupCreatedAt([{ id: 'x', url: 'https://x.com', title: 'X' } as const])).toBe(
+      Number.NEGATIVE_INFINITY,
+    );
     expect(formatCreatedAt(1700000000000)).toContain('2023');
   });
 
@@ -56,6 +59,7 @@ describe('list', () => {
     expect(normalizeImportedGroups({ invalid: true }, 'fallback')).toBeNull();
     expect(normalizeImportedGroups([], 'fallback')).toEqual({});
     expect(normalizeImportedGroups({ savedTabs: { empty: [] } }, 'fallback')).toEqual({});
+    expect(normalizeImportedGroups([{ title: 'Missing URL' }], 'fallback')).toBeNull();
     expect(normalizeImportedGroups('bad', 'fallback')).toBeNull();
   });
 
@@ -65,6 +69,8 @@ describe('list', () => {
     expect(normalizeTabArray('nope')).toBeNull();
     const normalized = normalizeTabArray([{ url: 'https://ok.com', savedAt: 'bad' }]);
     expect(normalized?.[0]?.url).toBe('https://ok.com');
+    const normalizedWithFallbacks = normalizeTabArray([{ url: 'https://fallback.com', id: '', title: '' }]);
+    expect(normalizedWithFallbacks?.[0]?.title).toBe('https://fallback.com');
   });
 
   it('merges groups by appending', () => {
@@ -78,5 +84,8 @@ describe('list', () => {
 
     const mergedNew = mergeGroups({}, { two: [firstTab] });
     expect(mergedNew.two).toHaveLength(1);
+
+    const mergedSkip = mergeGroups({ one: sampleTabs }, { empty: [] });
+    expect(mergedSkip.empty).toBeUndefined();
   });
 });

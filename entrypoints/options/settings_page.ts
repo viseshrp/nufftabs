@@ -40,6 +40,11 @@ export async function initSettingsPage(documentRef: Document = document): Promis
     const selected = discardRadios.find((radio) => radio.checked);
     return selected?.value === 'true';
   };
+
+  const getRestoreBatchSizeSetting = () => {
+    const parsed = getBatchSizeInput(restoreBatchSizeEl);
+    return parsed ?? undefined;
+  };
   const raw = await chrome.storage.local.get([STORAGE_KEYS.settings]);
   const rawSettings = raw[STORAGE_KEYS.settings];
   const hasCustomBatchSize =
@@ -83,7 +88,7 @@ export async function initSettingsPage(documentRef: Document = document): Promis
   excludePinnedEl.addEventListener('change', async () => {
     const nextSettings: SettingsInput = {
       excludePinned: excludePinnedEl.checked,
-      restoreBatchSize: customBatchSize ? settings.restoreBatchSize : undefined,
+      restoreBatchSize: getRestoreBatchSizeSetting(),
       discardRestoredTabs: getDiscardSelection(),
     };
     await saveSettings(nextSettings);
@@ -120,7 +125,7 @@ export async function initSettingsPage(documentRef: Document = document): Promis
   const handleDiscardChange = async () => {
     const nextSettings: SettingsInput = {
       excludePinned: excludePinnedEl.checked,
-      restoreBatchSize: customBatchSize ? settings.restoreBatchSize : undefined,
+      restoreBatchSize: getRestoreBatchSizeSetting(),
       discardRestoredTabs: getDiscardSelection(),
     };
     await saveSettings(nextSettings);
