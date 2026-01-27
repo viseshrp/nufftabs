@@ -155,7 +155,7 @@ test.describe('nufftabs extension e2e', () => {
     await seedSavedGroup(page, 'restore-group', ['https://example.com/1', 'https://example.com/2']);
     await waitForSavedGroupCount(page, 1);
 
-    const listPage = await getOrOpenListPage(context, listUrl);
+    let listPage = await getOrOpenListPage(context, listUrl);
 
     await expect(listPage.locator('.group-card')).toHaveCount(1, { timeout: 15000 });
 
@@ -223,7 +223,9 @@ test.describe('nufftabs extension e2e', () => {
 
     const listTabCount = await getListTabCount(page, listUrl);
     expect(listTabCount).toBe(1);
-    await listPage.reload();
+    await listPage.close();
+    listPage = await context.newPage();
+    await listPage.goto(listUrl);
     await expect(listPage.locator('.group-card')).toHaveCount(1, { timeout: 15000 });
 
     // Import JSON append
