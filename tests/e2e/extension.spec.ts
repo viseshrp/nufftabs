@@ -214,7 +214,7 @@ test.describe('nufftabs extension e2e', () => {
 
     await page.goto(extensionUrl(extensionId, 'options.html'));
 
-    const listPage = await getOrOpenListPage(context, listUrl);
+    let listPage = await getOrOpenListPage(context, listUrl);
 
     // Focus existing list tab behavior: condense from another window should reuse list tab.
     const windowId = await createWindowWithTabs(page, ['https://example.com/x']);
