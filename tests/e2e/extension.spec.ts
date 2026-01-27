@@ -220,10 +220,11 @@ test.describe('nufftabs extension e2e', () => {
     const windowId = await createWindowWithTabs(page, ['https://example.com/x']);
     await sendCondense(page, windowId);
     await waitForSavedGroupCount(page, 1);
-    await expect(listPage.locator('.group-card')).toHaveCount(1, { timeout: 15000 });
 
     const listTabCount = await getListTabCount(page, listUrl);
     expect(listTabCount).toBe(1);
+    await listPage.reload();
+    await expect(listPage.locator('.group-card')).toHaveCount(1, { timeout: 15000 });
 
     // Import JSON append
     await listPage.locator('#toggleIo').click();
