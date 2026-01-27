@@ -1,4 +1,7 @@
-import { createSavedTab, type SavedTab } from './storage';
+import { UNKNOWN_GROUP_KEY, createSavedTab, type SavedTab } from './storage';
+
+let lastGroupKeyTimestamp = 0;
+let groupKeyCounter = 0;
 
 export function resolveWindowId(
   tabs: chrome.tabs.Tab[],
@@ -6,6 +9,17 @@ export function resolveWindowId(
 ): number | undefined {
   if (typeof targetWindowId === 'number') return targetWindowId;
   return tabs.find((tab) => typeof tab.windowId === 'number')?.windowId;
+}
+
+export function createCondenseGroupKey(windowId?: number, now = Date.now()): string {
+  const baseKey = typeof windowId === 'number' ? String(windowId) : UNKNOWN_GROUP_KEY;
+  if (now === lastGroupKeyTimestamp) {
+    groupKeyCounter += 1;
+  } else {
+    lastGroupKeyTimestamp = now;
+    groupKeyCounter = 0;
+  }
+  return `${baseKey}-${now}-${groupKeyCounter}`;
 }
 
 export function filterEligibleTabs(

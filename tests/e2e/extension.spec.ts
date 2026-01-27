@@ -138,10 +138,10 @@ test.describe('nufftabs extension e2e', () => {
     await expect(listPage.locator('.group-card')).toHaveCount(2, { timeout: 15000 });
 
     const groupKeys = await listPage.$$eval('.group-card', (cards) =>
-      cards.map((card) => (card as HTMLElement).dataset.groupKey),
+      cards.map((card) => (card as HTMLElement).dataset.groupKey).filter(Boolean),
     );
-    expect(groupKeys).toContain(String(windowA));
-    expect(groupKeys).toContain(String(windowB));
+    expect(groupKeys.some((key) => key.startsWith(`${windowA}-`))).toBe(true);
+    expect(groupKeys.some((key) => key.startsWith(`${windowB}-`))).toBe(true);
 
     await context.close();
   });

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { condenseCurrentWindow } from '../../entrypoints/background/condense';
-import { LIST_PAGE_PATH, readSavedGroup, UNKNOWN_GROUP_KEY } from '../../entrypoints/shared/storage';
+import { LIST_PAGE_PATH, readSavedGroups } from '../../entrypoints/shared/storage';
 import { createMockChrome, setMockChrome } from '../helpers/mock_chrome';
 
 describe('background condense', () => {
@@ -14,7 +14,11 @@ describe('background condense', () => {
 
     await condenseCurrentWindow(windowId);
 
-    const savedGroup = await readSavedGroup(String(windowId));
+    const savedGroups = await readSavedGroups();
+    const groupKeys = Object.keys(savedGroups);
+    expect(groupKeys).toHaveLength(1);
+    expect(groupKeys[0]?.startsWith(`${windowId}-`)).toBe(true);
+    const savedGroup = savedGroups[groupKeys[0] ?? ''] ?? [];
     expect(savedGroup).toHaveLength(1);
     expect(savedGroup[0]?.url).toBe('https://a.com');
 
@@ -119,7 +123,11 @@ describe('background condense', () => {
 
     await condenseCurrentWindow();
 
-    const savedGroup = await readSavedGroup(UNKNOWN_GROUP_KEY);
+    const savedGroups = await readSavedGroups();
+    const groupKeys = Object.keys(savedGroups);
+    expect(groupKeys).toHaveLength(1);
+    expect(groupKeys[0]?.startsWith('unknown-')).toBe(true);
+    const savedGroup = savedGroups[groupKeys[0] ?? ''] ?? [];
     expect(savedGroup).toHaveLength(1);
     expect(savedGroup[0]?.url).toBe('https://a.com');
   });
@@ -159,12 +167,31 @@ describe('background condense', () => {
     };
 
     await condenseCurrentWindow(window.id as number);
-    const savedGroup = await readSavedGroup(String(window.id));
+    const savedGroups = await readSavedGroups();
+    const groupKey = Object.keys(savedGroups).find((key) => key.startsWith(`${window.id}-`));
+    expect(groupKey).toBeTruthy();
+    const savedGroup = groupKey ? savedGroups[groupKey] : [];
     expect(savedGroup).toHaveLength(1);
-    expect(savedGroup[0]?.url).toBe('https://a.com');
+    expect(savedGroup?.[0]?.url).toBe('https://a.com');
     expect(mock.tabs.size).toBe(1);
     const listTabs = Array.from(mock.tabs.values()).filter((tab) => tab.url === listUrl);
     expect(listTabs).toHaveLength(0);
+  });
+
+  it('creates a new group for each condense in the same window', async () => {
+    const mock = createMockChrome();
+    setMockChrome(mock.chrome);
+
+    const window = mock.createWindow(['https://a.com']);
+    const windowId = window.id as number;
+
+    await condenseCurrentWindow(windowId);
+    mock.createTab({ windowId, url: 'https://b.com', active: false });
+    await condenseCurrentWindow(windowId);
+
+    const savedGroups = await readSavedGroups();
+    const windowKeys = Object.keys(savedGroups).filter((key) => key.startsWith(`${windowId}-`));
+    expect(windowKeys).toHaveLength(2);
   });
 });
 

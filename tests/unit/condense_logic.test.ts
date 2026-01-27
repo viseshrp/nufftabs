@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { filterEligibleTabs, resolveWindowId, saveTabsToList } from '../../entrypoints/shared/condense';
+import {
+  createCondenseGroupKey,
+  filterEligibleTabs,
+  resolveWindowId,
+  saveTabsToList,
+} from '../../entrypoints/shared/condense';
 
 describe('condense', () => {
   it('filters pinned and list tab URLs', () => {
@@ -23,6 +28,17 @@ describe('condense', () => {
     expect(resolveWindowId(tabs, 3)).toBe(3);
     expect(resolveWindowId(tabs)).toBe(4);
     expect(resolveWindowId([])).toBeUndefined();
+  });
+
+  it('creates unique condense group keys per window', () => {
+    const keyA = createCondenseGroupKey(8, 1700000000000);
+    const keyB = createCondenseGroupKey(8, 1700000000000);
+    const keyUnknown = createCondenseGroupKey(undefined, 1700000001000);
+
+    expect(keyA).not.toBe(keyB);
+    expect(keyA.startsWith('8-1700000000000-')).toBe(true);
+    expect(keyB.startsWith('8-1700000000000-')).toBe(true);
+    expect(keyUnknown.startsWith('unknown-1700000001000-')).toBe(true);
   });
 
   it('saves tabs with consistent timestamps and prepends existing', () => {
