@@ -2,20 +2,20 @@
 
 [![Codecov](https://codecov.io/gh/viseshrp/nufftabs/branch/main/graph/badge.svg)](https://codecov.io/gh/viseshrp/nufftabs)
 
-nufftabs is a minimal Chrome (MV3) extension to condense all tabs from the current window into a saved list, then restore them later. It uses WXT for build/dev and stores saved tabs in `chrome.storage.local`, with settings in `chrome.storage.sync`.
+nufftabs is a minimal Chrome (MV3) extension to condense all tabs from the current window into a saved list, then restore them later. It uses WXT for build/dev and stores saved tabs and settings in `chrome.storage.local`.
 
 ## Core features
 - Condense tabs from the current window (optionally excluding pinned tabs).
 - List UI with restore single, restore all, delete all, export/import JSON.
 - Restore rules: single restore uses the current window; restore all opens a new window unless the list tab is the only tab.
 - List tab is pinned and reused if it already exists.
-- Settings page for “Exclude pinned tabs”.
+- Settings page for “Exclude pinned tabs” and optional memory-saving restore.
 
 ## How it works
 
 ### Condense
 - Triggered by clicking the extension action icon.
-- Reads settings (`excludePinned`) from `chrome.storage.sync`.
+- Reads settings (`excludePinned`, `restoreBatchSize`, `discardRestoredTabs`) from `chrome.storage.local`.
 - Saves eligible tabs (URL + title + timestamp) to `savedTabs`.
 - Closes eligible tabs.
 - Focuses an existing nufftabs list tab if one exists anywhere (most recently active), or creates a new one if none exist. The list tab is pinned.
@@ -62,7 +62,7 @@ tradeoffs. These are documented in code comments, but summarized here for mainta
 - **Storage schema:** saved tabs are stored per group under `savedTabs:<groupKey>` with a
   `savedTabsIndex` array listing active group keys. This avoids full-blob rewrites.
 - **Data shapes:** `SavedTab` requires a UUID `id`, non-empty `url`, `title`, and `savedAt`
-  epoch ms. Settings are `{ excludePinned, restoreBatchSize }`.
+  epoch ms. Settings are `{ excludePinned, restoreBatchSize, discardRestoredTabs }`.
 - **Restore chunking:** `restoreBatchSize` controls how many tabs open per window during
   "Restore all" (one window per chunk, after any reused list window).
 - **Permissions:** only `tabs` + `storage` are required; no host permissions are used.
@@ -72,6 +72,7 @@ tradeoffs. These are documented in code comments, but summarized here for mainta
 ### Restore rules
 - **Restore single:** always opens the tab in the current window (the window that contains the list tab) and keeps the list tab open and pinned.
 - **Restore all:** opens a new window by default. Exception: if the list tab is the only tab in the current window, all restored tabs open in that same window (list tab remains open and active).
+- **Save memory on restore:** when enabled, restored tabs are discarded after their URLs are set (best-effort) and will load when clicked.
 
 ## Development setup (WXT)
 
@@ -140,6 +141,12 @@ pnpm build
 2. Toggle **Exclude pinned tabs**.
 3. When enabled, pinned tabs are not saved or closed during condense.
 
+### Save memory on restore
+1. Open the options page.
+2. Set **Save memory when restoring tabs** to **Enabled**.
+3. Restored tabs are unloaded after their URLs are set and will load when clicked.
+4. If you turn the setting off, no discard scheduling runs (pending discards are skipped).
+
 ### Existing list tab reuse
 - If a list tab already exists anywhere, condense focuses the most recently active one.
 - If none exists, a new list tab is created and pinned.
@@ -153,7 +160,7 @@ pnpm build
 
 ## Permissions
 - `tabs`: required to query, create, update, move, and close tabs/windows.
-- `storage`: required to persist `savedTabs` in `chrome.storage.local` and settings in `chrome.storage.sync`.
+- `storage`: required to persist `savedTabs` and settings in `chrome.storage.local`.
 
 ## Troubleshooting
 - **List doesn’t update after condense:** reload the list tab or check the service worker console for errors.
@@ -166,7 +173,7 @@ pnpm build
 If any list tab exists, nufftabs reuses the most recently active one instead of creating duplicates.
 
 **Where is data stored?**  
-In `chrome.storage.local` under `savedTabs` and in `chrome.storage.sync` under `settings`.
+In `chrome.storage.local` under `savedTabs` and `settings`.
 
 **Why are pinned tabs excluded by default?**  
 It’s a safety default so pinned tabs are not closed unless you turn the setting off.

@@ -23,9 +23,28 @@ export function getBatchSizeInput(input: HTMLInputElement): number | null {
 export async function initSettingsPage(documentRef: Document = document): Promise<void> {
   const excludePinnedEl = documentRef.querySelector<HTMLInputElement>('#excludePinned');
   const restoreBatchSizeEl = documentRef.querySelector<HTMLInputElement>('#restoreBatchSize');
+  const discardRadios = Array.from(
+    documentRef.querySelectorAll<HTMLInputElement>('input[name="discardRestoredTabs"]'),
+  );
   const statusEl = documentRef.querySelector<HTMLDivElement>('#status');
 
-  if (!excludePinnedEl || !restoreBatchSizeEl) return;
+  if (!excludePinnedEl || !restoreBatchSizeEl || discardRadios.length === 0) return;
+
+  const setDiscardRadios = (enabled: boolean) => {
+    for (const radio of discardRadios) {
+      radio.checked = radio.value === String(enabled);
+    }
+  };
+
+  const getDiscardSelection = () => {
+    const selected = discardRadios.find((radio) => radio.checked);
+    return selected?.value === 'true';
+  };
+
+  const getRestoreBatchSizeSetting = () => {
+    const parsed = getBatchSizeInput(restoreBatchSizeEl);
+    return parsed ?? undefined;
+  };
   const raw = await chrome.storage.local.get([STORAGE_KEYS.settings]);
   const rawSettings = raw[STORAGE_KEYS.settings];
   const hasCustomBatchSize =
@@ -37,6 +56,7 @@ export async function initSettingsPage(documentRef: Document = document): Promis
   let settings: Settings = normalizeSettings(rawSettings);
   excludePinnedEl.checked = settings.excludePinned;
   restoreBatchSizeEl.value = hasCustomBatchSize ? String(settings.restoreBatchSize) : '';
+  setDiscardRadios(settings.discardRestoredTabs);
 
   let customBatchSize = hasCustomBatchSize;
 
@@ -45,6 +65,7 @@ export async function initSettingsPage(documentRef: Document = document): Promis
     if (!saved) {
       excludePinnedEl.checked = settings.excludePinned;
       restoreBatchSizeEl.value = customBatchSize ? String(settings.restoreBatchSize) : '';
+      setDiscardRadios(settings.discardRestoredTabs);
       setStatus(statusEl, 'Failed to save settings.');
       return;
     }
@@ -54,6 +75,10 @@ export async function initSettingsPage(documentRef: Document = document): Promis
         typeof nextSettings.restoreBatchSize === 'number' && Number.isFinite(nextSettings.restoreBatchSize)
           ? Math.floor(nextSettings.restoreBatchSize)
           : DEFAULT_SETTINGS.restoreBatchSize,
+      discardRestoredTabs:
+        typeof nextSettings.discardRestoredTabs === 'boolean'
+          ? nextSettings.discardRestoredTabs
+          : DEFAULT_SETTINGS.discardRestoredTabs,
     };
     customBatchSize =
       typeof nextSettings.restoreBatchSize === 'number' && Number.isFinite(nextSettings.restoreBatchSize);
@@ -63,7 +88,8 @@ export async function initSettingsPage(documentRef: Document = document): Promis
   excludePinnedEl.addEventListener('change', async () => {
     const nextSettings: SettingsInput = {
       excludePinned: excludePinnedEl.checked,
-      restoreBatchSize: customBatchSize ? settings.restoreBatchSize : undefined,
+      restoreBatchSize: getRestoreBatchSizeSetting(),
+      discardRestoredTabs: getDiscardSelection(),
     };
     await saveSettings(nextSettings);
   });
@@ -74,6 +100,7 @@ export async function initSettingsPage(documentRef: Document = document): Promis
       const nextSettings: SettingsInput = {
         excludePinned: excludePinnedEl.checked,
         restoreBatchSize: undefined,
+        discardRestoredTabs: getDiscardSelection(),
       };
       await saveSettings(nextSettings);
       restoreBatchSizeEl.value = '';
@@ -82,6 +109,7 @@ export async function initSettingsPage(documentRef: Document = document): Promis
     const nextSettings: SettingsInput = {
       excludePinned: excludePinnedEl.checked,
       restoreBatchSize: parsed,
+      discardRestoredTabs: getDiscardSelection(),
     };
     await saveSettings(nextSettings);
   };
@@ -93,4 +121,19 @@ export async function initSettingsPage(documentRef: Document = document): Promis
   restoreBatchSizeEl.addEventListener('blur', () => {
     void handleBatchSizeChange();
   });
+
+  const handleDiscardChange = async () => {
+    const nextSettings: SettingsInput = {
+      excludePinned: excludePinnedEl.checked,
+      restoreBatchSize: getRestoreBatchSizeSetting(),
+      discardRestoredTabs: getDiscardSelection(),
+    };
+    await saveSettings(nextSettings);
+  };
+
+  for (const radio of discardRadios) {
+    radio.addEventListener('change', () => {
+      void handleDiscardChange();
+    });
+  }
 }

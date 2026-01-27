@@ -8,7 +8,7 @@ describe('options settings page', () => {
   it('loads and saves settings', async () => {
     const mock = createMockChrome({
       initialStorage: {
-        [STORAGE_KEYS.settings]: { excludePinned: true, restoreBatchSize: 25 },
+        [STORAGE_KEYS.settings]: { excludePinned: true, restoreBatchSize: 25, discardRestoredTabs: true },
       },
     });
     setMockChrome(mock.chrome);
@@ -16,6 +16,8 @@ describe('options settings page', () => {
     document.body.innerHTML = `
       <input id="excludePinned" type="checkbox" />
       <input id="restoreBatchSize" type="number" />
+      <input id="discardRestoredTabsDisabled" type="radio" name="discardRestoredTabs" value="false" />
+      <input id="discardRestoredTabsEnabled" type="radio" name="discardRestoredTabs" value="true" />
       <div id="status"></div>
     `;
 
@@ -23,12 +25,15 @@ describe('options settings page', () => {
 
     const excludePinnedEl = document.querySelector<HTMLInputElement>('#excludePinned');
     const restoreBatchSizeEl = document.querySelector<HTMLInputElement>('#restoreBatchSize');
-    if (!excludePinnedEl || !restoreBatchSizeEl) {
+    const discardDisabledEl = document.querySelector<HTMLInputElement>('#discardRestoredTabsDisabled');
+    const discardEnabledEl = document.querySelector<HTMLInputElement>('#discardRestoredTabsEnabled');
+    if (!excludePinnedEl || !restoreBatchSizeEl || !discardDisabledEl || !discardEnabledEl) {
       throw new Error('Missing settings inputs');
     }
 
     expect(excludePinnedEl.checked).toBe(true);
     expect(restoreBatchSizeEl.value).toBe('25');
+    expect(discardEnabledEl.checked).toBe(true);
 
     excludePinnedEl.checked = false;
     excludePinnedEl.dispatchEvent(new Event('change'));
@@ -36,12 +41,17 @@ describe('options settings page', () => {
     restoreBatchSizeEl.value = '50';
     restoreBatchSizeEl.dispatchEvent(new Event('change'));
 
+    discardDisabledEl.checked = true;
+    discardDisabledEl.dispatchEvent(new Event('change'));
+
     const saved = mock.storageData[STORAGE_KEYS.settings] as {
       excludePinned?: boolean;
       restoreBatchSize?: number;
+      discardRestoredTabs?: boolean;
     };
     expect(saved.excludePinned).toBe(false);
     expect(saved.restoreBatchSize).toBe(50);
+    expect(saved.discardRestoredTabs).toBe(false);
   });
 
   it('clears custom batch size when input is empty', async () => {
@@ -55,6 +65,8 @@ describe('options settings page', () => {
     document.body.innerHTML = `
       <input id="excludePinned" type="checkbox" />
       <input id="restoreBatchSize" type="number" />
+      <input id="discardRestoredTabsDisabled" type="radio" name="discardRestoredTabs" value="false" />
+      <input id="discardRestoredTabsEnabled" type="radio" name="discardRestoredTabs" value="true" />
       <div id="status"></div>
     `;
 
@@ -86,6 +98,8 @@ describe('options settings page', () => {
     document.body.innerHTML = `
       <input id="excludePinned" type="checkbox" />
       <input id="restoreBatchSize" type="number" />
+      <input id="discardRestoredTabsDisabled" type="radio" name="discardRestoredTabs" value="false" />
+      <input id="discardRestoredTabsEnabled" type="radio" name="discardRestoredTabs" value="true" />
       <div id="status"></div>
     `;
 

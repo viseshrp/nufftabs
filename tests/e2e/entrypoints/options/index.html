@@ -20,6 +20,26 @@
           <span>Tabs per restore window</span>
           <input id="restoreBatchSize" type="number" min="1" step="1" placeholder="100" />
         </label>
+        <div class="setting-group" role="group" aria-labelledby="discardRestoredTabsLabel">
+          <div id="discardRestoredTabsLabel" class="setting-label">Save memory when restoring tabs</div>
+          <p class="setting-help">
+            When enabled, restored tabs are immediately unloaded to save RAM and will load when you click them.
+          </p>
+          <label class="setting-radio">
+            <input
+              id="discardRestoredTabsDisabled"
+              type="radio"
+              name="discardRestoredTabs"
+              value="false"
+              checked
+            />
+            <span>Disabled</span>
+          </label>
+          <label class="setting-radio">
+            <input id="discardRestoredTabsEnabled" type="radio" name="discardRestoredTabs" value="true" />
+            <span>Enabled</span>
+          </label>
+        </div>
       </section>
       <div id="status" class="status" role="status" aria-live="polite"></div>
     </main>

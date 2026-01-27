@@ -10,6 +10,8 @@ describe('options entrypoint', () => {
     document.body.innerHTML = `
       <input id="excludePinned" type="checkbox" />
       <input id="restoreBatchSize" type="number" />
+      <input id="discardRestoredTabsDisabled" type="radio" name="discardRestoredTabs" value="false" />
+      <input id="discardRestoredTabsEnabled" type="radio" name="discardRestoredTabs" value="true" />
       <div id="status"></div>
     `;
 

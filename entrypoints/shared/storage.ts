@@ -10,11 +10,13 @@ export type SavedTabGroups = Record<string, SavedTab[]>;
 export type Settings = {
   excludePinned: boolean;
   restoreBatchSize: number;
+  discardRestoredTabs: boolean;
 };
 
 export type SettingsInput = {
   excludePinned: boolean;
   restoreBatchSize?: number;
+  discardRestoredTabs?: boolean;
 };
 
 export const STORAGE_KEYS = {
@@ -25,6 +27,7 @@ export const STORAGE_KEYS = {
 export const DEFAULT_SETTINGS: Settings = {
   excludePinned: true,
   restoreBatchSize: 100,
+  discardRestoredTabs: false,
 };
 
 export const LIST_PAGE_PATH = 'nufftabs.html';
@@ -147,6 +150,7 @@ export function normalizeSettings(value: unknown): Settings {
   if (!value || typeof value !== 'object') return { ...DEFAULT_SETTINGS };
   const excludePinned = (value as { excludePinned?: unknown }).excludePinned;
   const restoreBatchSize = (value as { restoreBatchSize?: unknown }).restoreBatchSize;
+  const discardRestoredTabs = (value as { discardRestoredTabs?: unknown }).discardRestoredTabs;
   const parsedBatchSize =
     typeof restoreBatchSize === 'number' && Number.isFinite(restoreBatchSize)
       ? Math.floor(restoreBatchSize)
@@ -154,6 +158,8 @@ export function normalizeSettings(value: unknown): Settings {
   return {
     excludePinned: typeof excludePinned === 'boolean' ? excludePinned : DEFAULT_SETTINGS.excludePinned,
     restoreBatchSize: parsedBatchSize > 0 ? parsedBatchSize : DEFAULT_SETTINGS.restoreBatchSize,
+    discardRestoredTabs:
+      typeof discardRestoredTabs === 'boolean' ? discardRestoredTabs : DEFAULT_SETTINGS.discardRestoredTabs,
   };
 }
 
@@ -234,6 +240,9 @@ export async function writeSettings(settings: SettingsInput): Promise<boolean> {
       settings.restoreBatchSize > 0
     ) {
       payload.restoreBatchSize = Math.floor(settings.restoreBatchSize);
+    }
+    if (typeof settings.discardRestoredTabs === 'boolean') {
+      payload.discardRestoredTabs = settings.discardRestoredTabs;
     }
     await chrome.storage.local.set({ [STORAGE_KEYS.settings]: payload });
     return true;
