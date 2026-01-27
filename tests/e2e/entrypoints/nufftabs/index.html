@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>nufftabs</title>
+  </head>
+  <body>
+    <div class="page">
+      <header class="app-bar">
+        <div>
+          <h1>nufftabs</h1>
+          <p class="subtitle"><span id="tabCount">0</span> saved tabs</p>
+        </div>
+        <div class="app-actions">
+          <button
+            id="scrollTop"
+            type="button"
+            class="icon-button"
+            aria-label="Scroll to top"
+            title="Scroll to top"
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M12 4l5 5h-3v11h-4V9H7z" fill="currentColor"/>
+            </svg>
+          </button>
+          <button
+            id="scrollBottom"
+            type="button"
+            class="icon-button"
+            aria-label="Scroll to bottom"
+            title="Scroll to bottom"
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M12 20l-5-5h3V4h4v11h3z" fill="currentColor"/>
+            </svg>
+          </button>
+          <button
+            id="toggleIo"
+            type="button"
+            class="icon-button"
+            aria-label="Export and import"
+            title="Export and import"
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <rect x="4" y="5" width="12" height="3" rx="1.5" fill="currentColor"/>
+              <rect x="4" y="11" width="16" height="3" rx="1.5" fill="currentColor"/>
+              <rect x="4" y="17" width="12" height="3" rx="1.5" fill="currentColor"/>
+            </svg>
+          </button>
+        </div>
+      </header>
+      <main class="content">
+        <section id="ioPanel" class="io-panel" hidden>
+          <div class="io-header">Export / Import</div>
+          <textarea id="jsonArea" rows="8" spellcheck="false"></textarea>
+          <div class="io-actions">
+            <button id="exportJson" type="button" class="text-button">Export</button>
+            <button id="importJson" type="button" class="text-button">Import</button>
+            <button id="importJsonReplace" type="button" class="text-button danger">Import (replace)</button>
+            <button id="importFile" type="button" class="text-button">Import file</button>
+            <button id="importOneTab" type="button" class="text-button">Import OneTab</button>
+            <button id="clearJson" type="button" class="text-button">Clear</button>
+          </div>
+          <input id="importFileInput" type="file" accept="application/json" hidden />
+        </section>
+        <section class="list-section">
+          <div id="empty" class="empty">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <rect x="4" y="6" width="14" height="10" rx="2" />
+              <path d="M7 9h8M7 12h5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+            </svg>
+            <div>No saved tabs</div>
+          </div>
+          <div id="groups" class="group-list"></div>
+        </section>
+        <div id="snackbar" class="snackbar" role="status" aria-live="polite"></div>
+      </main>
+    </div>
+    <script type="module" src="./index.ts"></script>
+  </body>
+</html>
