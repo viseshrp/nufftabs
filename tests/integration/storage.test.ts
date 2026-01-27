@@ -1,6 +1,7 @@
 import { describe, expect, it, beforeEach } from 'vitest';
 import {
   DEFAULT_SETTINGS,
+  appendSavedGroup,
   readSavedGroup,
   readSavedGroups,
   readSettings,
@@ -44,6 +45,29 @@ describe('storage integration', () => {
     expect(Object.keys(groups).sort()).toEqual(['one', 'two']);
   });
 
+  it('removes stale groups when overwriting saved groups', async () => {
+    const payload: SavedTabGroups = {
+      one: [makeTab('1')],
+      two: [makeTab('2')],
+    };
+    expect(await writeSavedGroups(payload)).toBe(true);
+    expect(await writeSavedGroups({ one: [makeTab('1')] })).toBe(true);
+    const groups = await readSavedGroups();
+    expect(Object.keys(groups)).toEqual(['one']);
+  });
+
+  it('appends groups without clobbering existing ones', async () => {
+    expect(await writeSavedGroup('one', [makeTab('1')])).toBe(true);
+    expect(await appendSavedGroup('two', [makeTab('2')])).toBe(true);
+    expect(await appendSavedGroup('two', [makeTab('2')])).toBe(true);
+    const groups = await readSavedGroups();
+    expect(Object.keys(groups).sort()).toEqual(['one', 'two']);
+  });
+
+  it('returns false when appending an empty group', async () => {
+    expect(await appendSavedGroup('empty', [])).toBe(false);
+  });
+
   it('reads and writes settings with defaults', async () => {
     const settings = await readSettings();
     expect(settings).toEqual(DEFAULT_SETTINGS);
@@ -74,6 +98,8 @@ describe('storage integration', () => {
     expect(await readSavedGroups()).toEqual({});
     expect(await readSavedGroup('1')).toEqual([]);
     expect(await writeSavedGroup('1', [makeTab('a')])).toBe(false);
+    expect(await writeSavedGroups({ one: [makeTab('1')] })).toBe(false);
+    expect(await appendSavedGroup('one', [makeTab('1')])).toBe(false);
     expect(await readSettings()).toEqual(DEFAULT_SETTINGS);
   });
 });

@@ -11,8 +11,10 @@ export default defineBackground(() => {
         typeof (message as { windowId?: unknown }).windowId === 'number'
           ? (message as { windowId?: number }).windowId
           : sender?.tab?.windowId;
-      void condenseCurrentWindow(windowId);
-      sendResponse({ ok: true });
+      // Ensure the response resolves only after condense finishes to reduce test flake.
+      void condenseCurrentWindow(windowId)
+        .then(() => sendResponse({ ok: true }))
+        .catch(() => sendResponse({ ok: false }));
       return true;
     }
     return undefined;

@@ -58,6 +58,8 @@ async function getOrOpenListPage(context: BrowserContext, listUrl: string): Prom
 }
 
 async function createWindowWithTabs(page: Page, urls: string[]) {
+  // Wait for the extension APIs to be available in the extension page.
+  await page.waitForFunction(() => typeof chrome?.windows?.create === 'function');
   const windowId = await page.evaluate(async (targetUrls) => {
     const created = await chrome.windows.create({ url: targetUrls });
     if (!created || typeof created.id !== 'number') {
@@ -138,10 +140,12 @@ test.describe('nufftabs extension e2e', () => {
     await expect(listPage.locator('.group-card')).toHaveCount(2, { timeout: 15000 });
 
     const groupKeys = await listPage.$$eval('.group-card', (cards) =>
-      cards.map((card) => (card as HTMLElement).dataset.groupKey),
+      cards
+        .map((card) => (card as HTMLElement).dataset.groupKey)
+        .filter((key): key is string => typeof key === 'string' && key.length > 0),
     );
-    expect(groupKeys).toContain(String(windowA));
-    expect(groupKeys).toContain(String(windowB));
+    expect(groupKeys.some((key) => key.startsWith(`${windowA}-`))).toBe(true);
+    expect(groupKeys.some((key) => key.startsWith(`${windowB}-`))).toBe(true);
 
     await context.close();
   });

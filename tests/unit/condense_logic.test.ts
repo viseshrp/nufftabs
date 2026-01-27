@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { filterEligibleTabs, resolveWindowId, saveTabsToList } from '../../entrypoints/shared/condense';
+import {
+  createCondenseGroupKey,
+  filterEligibleTabs,
+  resolveWindowId,
+  saveTabsToList,
+} from '../../entrypoints/shared/condense';
 
 describe('condense', () => {
   it('filters pinned and list tab URLs', () => {
@@ -9,13 +14,14 @@ describe('condense', () => {
       { id: 2, url: 'https://example.com/2', pinned: true },
       { id: 3, url: listUrl, pinned: false },
       { id: 4, url: '', pinned: false },
+      { id: 5, url: '', pendingUrl: 'https://pending.com', pinned: false },
     ] as chrome.tabs.Tab[];
 
     const eligible = filterEligibleTabs(tabs, listUrl, true);
-    expect(eligible.map((tab) => tab.id)).toEqual([1]);
+    expect(eligible.map((tab) => tab.id)).toEqual([1, 5]);
 
     const eligibleAll = filterEligibleTabs(tabs, listUrl, false);
-    expect(eligibleAll.map((tab) => tab.id)).toEqual([1, 2]);
+    expect(eligibleAll.map((tab) => tab.id)).toEqual([1, 2, 5]);
   });
 
   it('resolves window id from target or tabs', () => {
@@ -25,11 +31,25 @@ describe('condense', () => {
     expect(resolveWindowId([])).toBeUndefined();
   });
 
+  it('creates unique condense group keys per window', () => {
+    // Explicit nonces keep the test deterministic while validating uniqueness.
+    const keyA = createCondenseGroupKey(8, 1700000000000, 'nonce-a');
+    const keyB = createCondenseGroupKey(8, 1700000000000, 'nonce-b');
+    const keyUnknown = createCondenseGroupKey(undefined, 1700000001000, 'nonce-c');
+    const keyLater = createCondenseGroupKey(8, 1700000002000, 'nonce-d');
+
+    expect(keyA).not.toBe(keyB);
+    expect(keyA).toBe('8-1700000000000-nonce-a');
+    expect(keyB).toBe('8-1700000000000-nonce-b');
+    expect(keyUnknown).toBe('unknown-1700000001000-nonce-c');
+    expect(keyLater).toBe('8-1700000002000-nonce-d');
+  });
+
   it('saves tabs with consistent timestamps and prepends existing', () => {
     const now = 1700000000000;
     const tabs = [
       { url: 'https://a.com', title: 'A' },
-      { url: 'https://b.com' },
+      { url: '', pendingUrl: 'https://b.com' },
     ] as chrome.tabs.Tab[];
     const existing = [
       { id: 'old', url: 'https://c.com', title: 'C', savedAt: now - 1 },
