@@ -223,9 +223,8 @@ test.describe('nufftabs extension e2e', () => {
 
     const listTabCount = await getListTabCount(page, listUrl);
     expect(listTabCount).toBe(1);
-    await listPage.close();
-    listPage = await context.newPage();
-    await listPage.goto(listUrl);
+    await listPage.bringToFront();
+    await listPage.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
     await expect(listPage.locator('.group-card')).toHaveCount(1, { timeout: 15000 });
 
     // Import JSON append
