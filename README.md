@@ -72,7 +72,7 @@ tradeoffs. These are documented in code comments, but summarized here for mainta
 ### Restore rules
 - **Restore single:** always opens the tab in the current window (the window that contains the list tab) and keeps the list tab open and pinned.
 - **Restore all:** opens a new window by default. Exception: if the list tab is the only tab in the current window, all restored tabs open in that same window (list tab remains open and active).
-- **Save memory on restore:** when enabled, restored tabs are discarded immediately (best-effort) and will load when clicked.
+- **Save memory on restore:** when enabled, restored tabs are discarded after their URLs are set (best-effort) and will load when clicked.
 
 ## Development setup (WXT)
 
@@ -144,7 +144,8 @@ pnpm build
 ### Save memory on restore
 1. Open the options page.
 2. Set **Save memory when restoring tabs** to **Enabled**.
-3. Restored tabs are unloaded immediately and will load when clicked.
+3. Restored tabs are unloaded after their URLs are set and will load when clicked.
+4. If you turn the setting off, no discard scheduling runs (pending discards are skipped).
 
 ### Existing list tab reuse
 - If a list tab already exists anywhere, condense focuses the most recently active one.
