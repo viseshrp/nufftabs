@@ -31,14 +31,14 @@ describe('condense', () => {
   });
 
   it('creates unique condense group keys per window', () => {
-    const keyA = createCondenseGroupKey(8, 1700000000000);
-    const keyB = createCondenseGroupKey(8, 1700000000000);
-    const keyUnknown = createCondenseGroupKey(undefined, 1700000001000);
+    const keyA = createCondenseGroupKey(8, 1700000000000, 'nonce-a');
+    const keyB = createCondenseGroupKey(8, 1700000000000, 'nonce-b');
+    const keyUnknown = createCondenseGroupKey(undefined, 1700000001000, 'nonce-c');
 
     expect(keyA).not.toBe(keyB);
-    expect(keyA.startsWith('8-1700000000000-')).toBe(true);
-    expect(keyB.startsWith('8-1700000000000-')).toBe(true);
-    expect(keyUnknown.startsWith('unknown-1700000001000-')).toBe(true);
+    expect(keyA).toBe('8-1700000000000-nonce-a');
+    expect(keyB).toBe('8-1700000000000-nonce-b');
+    expect(keyUnknown).toBe('unknown-1700000001000-nonce-c');
   });
 
   it('saves tabs with consistent timestamps and prepends existing', () => {
