@@ -58,6 +58,7 @@ async function getOrOpenListPage(context: BrowserContext, listUrl: string): Prom
 }
 
 async function createWindowWithTabs(page: Page, urls: string[]) {
+  await page.waitForFunction(() => typeof chrome?.windows?.create === 'function');
   const windowId = await page.evaluate(async (targetUrls) => {
     const created = await chrome.windows.create({ url: targetUrls });
     if (!created || typeof created.id !== 'number') {
