@@ -146,6 +146,24 @@ test.describe('nufftabs extension e2e', () => {
     await context.close();
   });
 
+  test('focus existing list tab', async () => {
+    const { context, extensionId, page } = await launchExtension();
+    const listUrl = extensionUrl(extensionId, 'nufftabs.html');
+
+    await page.goto(extensionUrl(extensionId, 'options.html'));
+
+    await getOrOpenListPage(context, listUrl);
+
+    const windowId = await createWindowWithTabs(page, ['https://example.com/focus']);
+    await sendCondense(page, windowId);
+    await waitForSavedGroupCount(page, 1);
+
+    const listTabCount = await getListTabCount(page, listUrl);
+    expect(listTabCount).toBe(1);
+
+    await context.close();
+  });
+
   test('restore single and restore all rules', async () => {
     const { context, extensionId, page } = await launchExtension();
     const listUrl = extensionUrl(extensionId, 'nufftabs.html');
@@ -208,23 +226,22 @@ test.describe('nufftabs extension e2e', () => {
     await context.close();
   });
 
-  test('import JSON append + OneTab behavior + focus existing list tab', async () => {
+  test('import JSON append + OneTab behavior', async () => {
     const { context, extensionId, page } = await launchExtension();
     const listUrl = extensionUrl(extensionId, 'nufftabs.html');
 
     await page.goto(extensionUrl(extensionId, 'options.html'));
 
-    let listPage = await getOrOpenListPage(context, listUrl);
-
-    // Focus existing list tab behavior: condense from another window should reuse list tab.
-    const windowId = await createWindowWithTabs(page, ['https://example.com/x']);
-    await sendCondense(page, windowId);
+    const listPage = await getOrOpenListPage(context, listUrl);
+    const listWindowId = await listPage.evaluate(async () => {
+      const current = await chrome.tabs.getCurrent();
+      return typeof current?.windowId === 'number' ? current.windowId : null;
+    });
+    if (typeof listWindowId !== 'number') {
+      throw new Error('Missing list window id');
+    }
+    await seedSavedGroup(page, String(listWindowId), ['https://example.com/x']);
     await waitForSavedGroupCount(page, 1);
-
-    const listTabCount = await getListTabCount(page, listUrl);
-    expect(listTabCount).toBe(1);
-    await listPage.bringToFront();
-    await listPage.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
     await expect(listPage.locator('.group-card')).toHaveCount(1, { timeout: 15000 });
 
     // Import JSON append
