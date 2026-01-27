@@ -9,15 +9,14 @@ import {
   writeSettings,
   type SavedTabGroups,
 } from '../../entrypoints/shared/storage';
-import { createMockChrome } from '../helpers/mock_chrome';
+import { createMockChrome, setMockChrome } from '../helpers/mock_chrome';
 
 const makeTab = (id: string) => ({ id, url: `https://example.com/${id}`, title: id, savedAt: 10 });
 
 describe('storage integration', () => {
   beforeEach(() => {
     const mock = createMockChrome();
-    // @ts-ignore - test shim
-    globalThis.chrome = mock.chrome;
+    setMockChrome(mock.chrome);
   });
 
   it('writes and reads a single group with index updates', async () => {
@@ -59,8 +58,7 @@ describe('storage integration', () => {
 
   it('returns safe defaults when storage throws', async () => {
     const mock = createMockChrome();
-    // @ts-ignore - test shim
-    globalThis.chrome = mock.chrome;
+    setMockChrome(mock.chrome);
 
     mock.chrome.storage.local.get = async () => {
       throw new Error('boom');
@@ -78,3 +76,5 @@ describe('storage integration', () => {
     expect(await readSettings()).toEqual(DEFAULT_SETTINGS);
   });
 });
+
+

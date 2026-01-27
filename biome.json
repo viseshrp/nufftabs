@@ -29,21 +29,5 @@
     "rules": {
       "recommended": true
     }
-  },
-  "overrides": [
-    {
-      "includes": ["tests/**/*"],
-      "linter": {
-        "rules": {
-          "suspicious": {
-            "noExplicitAny": "off",
-            "noTsIgnore": "off"
-          },
-          "style": {
-            "noNonNullAssertion": "off"
-          }
-        }
-      }
-    }
-  ]
+  }
 }

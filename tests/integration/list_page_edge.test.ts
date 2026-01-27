@@ -1,14 +1,13 @@
 // @vitest-environment jsdom
 import { describe, expect, it, vi } from 'vitest';
-import { createMockChrome } from '../helpers/mock_chrome';
+import { createMockChrome, setMockChrome } from '../helpers/mock_chrome';
 
 describe('list page edge cases', () => {
   it('handles missing DOM nodes without crashing', async () => {
     vi.resetModules();
     document.body.innerHTML = '';
     const mock = createMockChrome();
-    // @ts-ignore - test shim
-    globalThis.chrome = mock.chrome;
+    setMockChrome(mock.chrome);
     const setSpy = vi.spyOn(mock.chrome.storage.local, 'set');
 
     await import('../../entrypoints/nufftabs/index');
@@ -26,12 +25,16 @@ describe('list page edge cases', () => {
       <div id="snackbar"></div>
     `;
     const mock = createMockChrome();
-    // @ts-ignore - test shim
-    globalThis.chrome = mock.chrome;
+    setMockChrome(mock.chrome);
 
     await import('../../entrypoints/nufftabs/index');
-    const groups = document.querySelector<HTMLDivElement>('#groups')!;
-    const snackbar = document.querySelector<HTMLDivElement>('#snackbar')!;
+    const groups = document.querySelector<HTMLDivElement>('#groups');
+    const snackbar = document.querySelector<HTMLDivElement>('#snackbar');
+    expect(groups).not.toBeNull();
+    expect(snackbar).not.toBeNull();
+    if (!groups || !snackbar) {
+      throw new Error('Missing list page elements');
+    }
     snackbar.textContent = '';
 
     const card = document.createElement('section');
@@ -55,3 +58,5 @@ describe('list page edge cases', () => {
     expect(card.classList.contains('is-collapsed')).toBe(false);
   });
 });
+
+

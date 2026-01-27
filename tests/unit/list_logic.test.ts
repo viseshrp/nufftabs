@@ -17,8 +17,10 @@ const sampleTabs = [
 
 describe('list', () => {
   it('counts total tabs across groups', () => {
+    const firstTab = sampleTabs[0];
+    if (!firstTab) throw new Error('Missing sample tab');
     expect(countTotalTabs({})).toBe(0);
-    expect(countTotalTabs({ one: sampleTabs, two: [sampleTabs[0]!] })).toBe(3);
+    expect(countTotalTabs({ one: sampleTabs, two: [firstTab] })).toBe(3);
   });
 
   it('compares groups with heuristic', () => {
@@ -66,13 +68,15 @@ describe('list', () => {
   });
 
   it('merges groups by appending', () => {
+    const firstTab = sampleTabs[0];
+    if (!firstTab) throw new Error('Missing sample tab');
     const merged = mergeGroups(
       { one: sampleTabs },
       { one: [{ id: '3', url: 'https://c.com', title: 'C', savedAt: 30 }] },
     );
     expect(merged.one).toHaveLength(3);
 
-    const mergedNew = mergeGroups({}, { two: [sampleTabs[0]!] });
+    const mergedNew = mergeGroups({}, { two: [firstTab] });
     expect(mergedNew.two).toHaveLength(1);
   });
 });

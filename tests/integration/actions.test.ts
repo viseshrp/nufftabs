@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { LIST_PAGE_PATH, STORAGE_KEYS } from '../../entrypoints/shared/storage';
-import { createMockChrome } from '../helpers/mock_chrome';
+import { createMockChrome, setMockChrome } from '../helpers/mock_chrome';
 
 const listHtml = readFileSync(join(process.cwd(), 'entrypoints', 'nufftabs', 'index.html'), 'utf-8');
 
@@ -18,8 +18,7 @@ async function setupListPage(groups: Record<string, unknown[]>) {
   }
 
   const mock = createMockChrome({ initialStorage: storagePayload });
-  // @ts-ignore - test shim
-  globalThis.chrome = mock.chrome;
+  setMockChrome(mock.chrome);
 
   const listUrl = mock.chrome.runtime.getURL(LIST_PAGE_PATH);
   const listWindow = mock.createWindow([listUrl]);
@@ -219,3 +218,5 @@ describe('list page actions', () => {
     expect(status?.textContent).toContain('Failed to read file');
   });
 });
+
+

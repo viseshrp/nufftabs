@@ -1,13 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { condenseCurrentWindow } from '../../entrypoints/background/condense';
 import { LIST_PAGE_PATH, readSavedGroup, UNKNOWN_GROUP_KEY } from '../../entrypoints/shared/storage';
-import { createMockChrome } from '../helpers/mock_chrome';
+import { createMockChrome, setMockChrome } from '../helpers/mock_chrome';
 
 describe('background condense', () => {
   it('saves eligible tabs and focuses list tab', async () => {
     const mock = createMockChrome();
-    // @ts-ignore - test shim
-    globalThis.chrome = mock.chrome;
+    setMockChrome(mock.chrome);
 
     const window = mock.createWindow(['https://a.com']);
     const windowId = window.id as number;
@@ -28,8 +27,7 @@ describe('background condense', () => {
 
   it('focuses existing list tab when no eligible tabs', async () => {
     const mock = createMockChrome();
-    // @ts-ignore - test shim
-    globalThis.chrome = mock.chrome;
+    setMockChrome(mock.chrome);
 
     const listUrl = mock.chrome.runtime.getURL(LIST_PAGE_PATH);
     const window = mock.createWindow([listUrl]);
@@ -45,8 +43,7 @@ describe('background condense', () => {
 
   it('creates a list tab when all tabs are eligible', async () => {
     const mock = createMockChrome();
-    // @ts-ignore - test shim
-    globalThis.chrome = mock.chrome;
+    setMockChrome(mock.chrome);
 
     const window = mock.createWindow(['https://a.com', 'https://b.com']);
     await condenseCurrentWindow(window.id as number);
@@ -59,8 +56,7 @@ describe('background condense', () => {
 
   it('returns early when tabs query fails', async () => {
     const mock = createMockChrome();
-    // @ts-ignore - test shim
-    globalThis.chrome = mock.chrome;
+    setMockChrome(mock.chrome);
     const window = mock.createWindow(['https://a.com']);
     const listUrl = mock.chrome.runtime.getURL(LIST_PAGE_PATH);
     mock.chrome.tabs.query = async () => {
@@ -79,8 +75,7 @@ describe('background condense', () => {
 
   it('handles storage write failures by focusing list tab', async () => {
     const mock = createMockChrome();
-    // @ts-ignore - test shim
-    globalThis.chrome = mock.chrome;
+    setMockChrome(mock.chrome);
     mock.chrome.storage.local.set = async () => {
       throw new Error('boom');
     };
@@ -96,8 +91,7 @@ describe('background condense', () => {
 
   it('handles list tab query failures gracefully', async () => {
     const mock = createMockChrome();
-    // @ts-ignore - test shim
-    globalThis.chrome = mock.chrome;
+    setMockChrome(mock.chrome);
 
     const originalQuery = mock.chrome.tabs.query;
     mock.chrome.tabs.query = async (queryInfo: chrome.tabs.QueryInfo) => {
@@ -116,8 +110,7 @@ describe('background condense', () => {
 
   it('uses the unknown group key when window id cannot be resolved', async () => {
     const mock = createMockChrome();
-    // @ts-ignore - test shim
-    globalThis.chrome = mock.chrome;
+    setMockChrome(mock.chrome);
 
     mock.chrome.tabs.query = async (queryInfo: chrome.tabs.QueryInfo) => {
       if (queryInfo.url) return [];
@@ -133,8 +126,7 @@ describe('background condense', () => {
 
   it('handles list tab creation returning undefined', async () => {
     const mock = createMockChrome();
-    // @ts-ignore - test shim
-    globalThis.chrome = mock.chrome;
+    setMockChrome(mock.chrome);
 
     const window = mock.createWindow(['https://a.com']);
     const originalCreate = mock.chrome.tabs.create;
@@ -155,8 +147,7 @@ describe('background condense', () => {
 
   it('handles tab creation and removal failures', async () => {
     const mock = createMockChrome();
-    // @ts-ignore - test shim
-    globalThis.chrome = mock.chrome;
+    setMockChrome(mock.chrome);
 
     const window = mock.createWindow(['https://a.com']);
     const listUrl = mock.chrome.runtime.getURL(LIST_PAGE_PATH);
@@ -176,3 +167,5 @@ describe('background condense', () => {
     expect(listTabs).toHaveLength(0);
   });
 });
+
+

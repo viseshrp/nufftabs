@@ -1,13 +1,67 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 export type MockTab = chrome.tabs.Tab;
 export type MockWindow = chrome.windows.Window;
 
-type StorageRecord = Record<string, any>;
+type StorageValue = unknown;
+type StorageRecord = Record<string, StorageValue>;
+type StorageGetKeys = string | string[] | StorageRecord | null | undefined;
 
 type StorageListener = (
   changes: Record<string, { oldValue?: unknown; newValue?: unknown }>,
   areaName: 'local' | 'sync' | 'managed' | 'session',
 ) => void;
+
+export type MockChrome = {
+  runtime: {
+    getURL: (path: string) => string;
+    onMessage: { addListener: (handler?: unknown) => void };
+  };
+  action: { onClicked: { addListener: (handler?: unknown) => void } };
+  storage: {
+    local: {
+      get: (keys: StorageGetKeys) => Promise<StorageRecord>;
+      set: (payload: StorageRecord) => Promise<void>;
+      remove: (keys: string | string[]) => Promise<void>;
+    };
+    sync: {
+      get: (keys: StorageGetKeys) => Promise<StorageRecord>;
+      set: (payload: StorageRecord) => Promise<void>;
+      remove: (keys: string | string[]) => Promise<void>;
+    };
+    onChanged: {
+      addListener: (listener: StorageListener) => void;
+      removeListener: (listener: StorageListener) => void;
+    };
+  };
+  tabs: {
+    query: (queryInfo: chrome.tabs.QueryInfo) => Promise<MockTab[]>;
+    create: (createProperties: chrome.tabs.CreateProperties) => Promise<MockTab>;
+    update: (tabId: number, updateProperties: chrome.tabs.UpdateProperties) => Promise<MockTab>;
+    remove: (tabIds: number | number[]) => Promise<void>;
+    getCurrent: () => Promise<MockTab | null>;
+  };
+  windows: {
+    create: (createData?: chrome.windows.CreateData) => Promise<MockWindow>;
+    update: (windowId: number, updateInfo: chrome.windows.UpdateInfo) => Promise<MockWindow>;
+  };
+};
+
+export type MockDefineBackground = (callback: () => void) => void;
+
+export function setMockChrome(mockChrome: MockChrome): void {
+  Object.defineProperty(globalThis, 'chrome', {
+    value: mockChrome,
+    configurable: true,
+    writable: true,
+  });
+}
+
+export function setMockDefineBackground(handler: MockDefineBackground): void {
+  Object.defineProperty(globalThis, 'defineBackground', {
+    value: handler,
+    configurable: true,
+    writable: true,
+  });
+}
 
 export function createMockChrome(options?: { initialStorage?: StorageRecord }) {
   const storageData: StorageRecord = { ...(options?.initialStorage ?? {}) };
@@ -69,7 +123,7 @@ export function createMockChrome(options?: { initialStorage?: StorageRecord }) {
   };
 
   const storageArea = {
-    async get(keys: any) {
+    async get(keys: StorageGetKeys) {
       if (Array.isArray(keys)) {
         return keys.reduce((acc, key) => {
           if (Object.hasOwn(storageData, key)) {
@@ -119,7 +173,7 @@ export function createMockChrome(options?: { initialStorage?: StorageRecord }) {
     },
   };
 
-  const chrome = {
+  const chrome: MockChrome = {
     runtime: {
       getURL: (path: string) => `chrome-extension://mock/${path}`,
       onMessage: {
@@ -206,7 +260,7 @@ export function createMockChrome(options?: { initialStorage?: StorageRecord }) {
         return window;
       },
     },
-  } as any;
+  };
 
   const api = {
     chrome,

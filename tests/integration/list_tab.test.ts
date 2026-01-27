@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { focusExistingListTabOrCreate, pickMostRecentListTab } from '../../entrypoints/background/list_tab';
 import { LIST_PAGE_PATH } from '../../entrypoints/shared/storage';
-import { createMockChrome } from '../helpers/mock_chrome';
+import { createMockChrome, setMockChrome } from '../helpers/mock_chrome';
 
 describe('list tab focus', () => {
   it('picks most recently accessed tab', () => {
@@ -30,8 +30,7 @@ describe('list tab focus', () => {
 
   it('creates a list tab when none exists', async () => {
     const mock = createMockChrome();
-    // @ts-ignore - test shim
-    globalThis.chrome = mock.chrome;
+    setMockChrome(mock.chrome);
 
     const window = mock.createWindow(['https://a.com']);
     const listUrl = mock.chrome.runtime.getURL(LIST_PAGE_PATH);
@@ -45,8 +44,7 @@ describe('list tab focus', () => {
 
   it('creates a list tab when no preferred window is provided', async () => {
     const mock = createMockChrome();
-    // @ts-ignore - test shim
-    globalThis.chrome = mock.chrome;
+    setMockChrome(mock.chrome);
 
     mock.createWindow(['https://a.com']);
     const listUrl = mock.chrome.runtime.getURL(LIST_PAGE_PATH);
@@ -58,8 +56,7 @@ describe('list tab focus', () => {
 
   it('reuses and focuses an existing list tab', async () => {
     const mock = createMockChrome();
-    // @ts-ignore - test shim
-    globalThis.chrome = mock.chrome;
+    setMockChrome(mock.chrome);
 
     const window = mock.createWindow(['https://a.com']);
     const listUrl = mock.chrome.runtime.getURL(LIST_PAGE_PATH);
@@ -76,8 +73,7 @@ describe('list tab focus', () => {
 
   it('creates a new tab if focusing existing one fails', async () => {
     const mock = createMockChrome();
-    // @ts-ignore - test shim
-    globalThis.chrome = mock.chrome;
+    setMockChrome(mock.chrome);
 
     const window = mock.createWindow(['https://a.com']);
     const listUrl = mock.chrome.runtime.getURL(LIST_PAGE_PATH);
@@ -94,15 +90,20 @@ describe('list tab focus', () => {
 
   it('handles create tab without id', async () => {
     const mock = createMockChrome();
-    // @ts-ignore - test shim
-    globalThis.chrome = mock.chrome;
+    setMockChrome(mock.chrome);
 
     const window = mock.createWindow(['https://a.com']);
     const listUrl = mock.chrome.runtime.getURL(LIST_PAGE_PATH);
-    mock.chrome.tabs.create = async () => ({ windowId: window.id });
+    mock.chrome.tabs.create = async () => {
+      const created = mock.createTab({ windowId: window.id, url: listUrl, active: true });
+      const { id: _id, ...rest } = created;
+      return rest as chrome.tabs.Tab;
+    };
 
     await focusExistingListTabOrCreate([], listUrl, window.id as number);
     const tabs = await mock.chrome.tabs.query({ windowId: window.id as number });
     expect(tabs.length).toBeGreaterThan(0);
   });
 });
+
+

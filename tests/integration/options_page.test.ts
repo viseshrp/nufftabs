@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest';
 import { initSettingsPage } from '../../entrypoints/options/settings_page';
 import { STORAGE_KEYS } from '../../entrypoints/shared/storage';
-import { createMockChrome } from '../helpers/mock_chrome';
+import { createMockChrome, setMockChrome } from '../helpers/mock_chrome';
 
 describe('options settings page', () => {
   it('loads and saves settings', async () => {
@@ -11,8 +11,7 @@ describe('options settings page', () => {
         [STORAGE_KEYS.settings]: { excludePinned: true, restoreBatchSize: 25 },
       },
     });
-    // @ts-ignore - test shim
-    globalThis.chrome = mock.chrome;
+    setMockChrome(mock.chrome);
 
     document.body.innerHTML = `
       <input id="excludePinned" type="checkbox" />
@@ -22,8 +21,11 @@ describe('options settings page', () => {
 
     await initSettingsPage(document);
 
-    const excludePinnedEl = document.querySelector<HTMLInputElement>('#excludePinned')!;
-    const restoreBatchSizeEl = document.querySelector<HTMLInputElement>('#restoreBatchSize')!;
+    const excludePinnedEl = document.querySelector<HTMLInputElement>('#excludePinned');
+    const restoreBatchSizeEl = document.querySelector<HTMLInputElement>('#restoreBatchSize');
+    if (!excludePinnedEl || !restoreBatchSizeEl) {
+      throw new Error('Missing settings inputs');
+    }
 
     expect(excludePinnedEl.checked).toBe(true);
     expect(restoreBatchSizeEl.value).toBe('25');
@@ -34,7 +36,10 @@ describe('options settings page', () => {
     restoreBatchSizeEl.value = '50';
     restoreBatchSizeEl.dispatchEvent(new Event('change'));
 
-    const saved = mock.storageData[STORAGE_KEYS.settings];
+    const saved = mock.storageData[STORAGE_KEYS.settings] as {
+      excludePinned?: boolean;
+      restoreBatchSize?: number;
+    };
     expect(saved.excludePinned).toBe(false);
     expect(saved.restoreBatchSize).toBe(50);
   });
@@ -45,8 +50,7 @@ describe('options settings page', () => {
         [STORAGE_KEYS.settings]: { excludePinned: true, restoreBatchSize: 5 },
       },
     });
-    // @ts-ignore - test shim
-    globalThis.chrome = mock.chrome;
+    setMockChrome(mock.chrome);
 
     document.body.innerHTML = `
       <input id="excludePinned" type="checkbox" />
@@ -55,11 +59,16 @@ describe('options settings page', () => {
     `;
 
     await initSettingsPage(document);
-    const restoreBatchSizeEl = document.querySelector<HTMLInputElement>('#restoreBatchSize')!;
+    const restoreBatchSizeEl = document.querySelector<HTMLInputElement>('#restoreBatchSize');
+    if (!restoreBatchSizeEl) {
+      throw new Error('Missing restore batch size input');
+    }
     restoreBatchSizeEl.value = '';
     restoreBatchSizeEl.dispatchEvent(new Event('blur'));
 
-    const saved = mock.storageData[STORAGE_KEYS.settings];
+    const saved = mock.storageData[STORAGE_KEYS.settings] as {
+      restoreBatchSize?: number;
+    };
     expect(saved.restoreBatchSize).toBeUndefined();
   });
 
@@ -69,8 +78,7 @@ describe('options settings page', () => {
         [STORAGE_KEYS.settings]: { excludePinned: true },
       },
     });
-    // @ts-ignore - test shim
-    globalThis.chrome = mock.chrome;
+    setMockChrome(mock.chrome);
     mock.chrome.storage.local.set = async () => {
       throw new Error('fail');
     };
@@ -83,7 +91,10 @@ describe('options settings page', () => {
 
     await initSettingsPage(document);
 
-    const restoreBatchSizeEl = document.querySelector<HTMLInputElement>('#restoreBatchSize')!;
+    const restoreBatchSizeEl = document.querySelector<HTMLInputElement>('#restoreBatchSize');
+    if (!restoreBatchSizeEl) {
+      throw new Error('Missing restore batch size input');
+    }
     restoreBatchSizeEl.value = '-1';
     restoreBatchSizeEl.dispatchEvent(new Event('change'));
 
@@ -93,3 +104,5 @@ describe('options settings page', () => {
     expect(status?.textContent).toContain('Failed');
   });
 });
+
+

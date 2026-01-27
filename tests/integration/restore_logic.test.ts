@@ -2,13 +2,12 @@ import { describe, expect, it } from 'vitest';
 import { LIST_PAGE_PATH } from '../../entrypoints/shared/storage';
 import { restoreTabs } from '../../entrypoints/nufftabs/restore';
 import { writeSettings } from '../../entrypoints/shared/storage';
-import { createMockChrome } from '../helpers/mock_chrome';
+import { createMockChrome, setMockChrome } from '../helpers/mock_chrome';
 
 describe('restore logic', () => {
   it('reuses list window when it is the only tab', async () => {
     const mock = createMockChrome();
-    // @ts-ignore - test shim
-    globalThis.chrome = mock.chrome;
+    setMockChrome(mock.chrome);
 
     await writeSettings({ excludePinned: true, restoreBatchSize: 2 });
 
@@ -41,8 +40,7 @@ describe('restore logic', () => {
 
   it('creates new windows when reuse is not allowed', async () => {
     const mock = createMockChrome();
-    // @ts-ignore - test shim
-    globalThis.chrome = mock.chrome;
+    setMockChrome(mock.chrome);
 
     await writeSettings({ excludePinned: true, restoreBatchSize: 2 });
 
@@ -63,8 +61,7 @@ describe('restore logic', () => {
 
   it('returns false when restoration fails', async () => {
     const mock = createMockChrome();
-    // @ts-ignore - test shim
-    globalThis.chrome = mock.chrome;
+    setMockChrome(mock.chrome);
 
     mock.chrome.windows.create = async () => {
       throw new Error('boom');
@@ -80,8 +77,7 @@ describe('restore logic', () => {
 
   it('handles empty restore lists', async () => {
     const mock = createMockChrome();
-    // @ts-ignore - test shim
-    globalThis.chrome = mock.chrome;
+    setMockChrome(mock.chrome);
 
     const restored = await restoreTabs([]);
     expect(restored).toBe(true);
@@ -89,11 +85,10 @@ describe('restore logic', () => {
 
   it('fails when window id is missing', async () => {
     const mock = createMockChrome();
-    // @ts-ignore - test shim
-    globalThis.chrome = mock.chrome;
+    setMockChrome(mock.chrome);
 
     await writeSettings({ excludePinned: true, restoreBatchSize: 1 });
-    mock.chrome.windows.create = async () => ({});
+    mock.chrome.windows.create = async () => ({} as chrome.windows.Window);
 
     const listUrl = mock.chrome.runtime.getURL(LIST_PAGE_PATH);
     const window = mock.createWindow([listUrl]);
@@ -108,8 +103,7 @@ describe('restore logic', () => {
 
   it('covers reuse branch window creation and rest tabs', async () => {
     const mock = createMockChrome();
-    // @ts-ignore - test shim
-    globalThis.chrome = mock.chrome;
+    setMockChrome(mock.chrome);
 
     await writeSettings({ excludePinned: true, restoreBatchSize: 2 });
 
@@ -150,8 +144,7 @@ describe('restore logic', () => {
 
   it('handles getCurrent errors', async () => {
     const mock = createMockChrome();
-    // @ts-ignore - test shim
-    globalThis.chrome = mock.chrome;
+    setMockChrome(mock.chrome);
 
     mock.chrome.tabs.getCurrent = async () => {
       throw new Error('boom');
@@ -163,10 +156,9 @@ describe('restore logic', () => {
 
   it('fails when window id is missing without reuse', async () => {
     const mock = createMockChrome();
-    // @ts-ignore - test shim
-    globalThis.chrome = mock.chrome;
+    setMockChrome(mock.chrome);
 
-    mock.chrome.windows.create = async () => ({});
+    mock.chrome.windows.create = async () => ({} as chrome.windows.Window);
 
     const restored = await restoreTabs([
       { id: '1', url: 'https://a.com', title: 'A', savedAt: 1 },
@@ -174,3 +166,5 @@ describe('restore logic', () => {
     expect(restored).toBe(false);
   });
 });
+
+

@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from 'vitest';
 import { LIST_PAGE_PATH, STORAGE_KEYS } from '../../entrypoints/shared/storage';
-import { createMockChrome } from '../helpers/mock_chrome';
+import { createMockChrome, setMockChrome } from '../helpers/mock_chrome';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
@@ -18,8 +18,7 @@ describe('list page init', () => {
         ],
       },
     });
-    // @ts-ignore - test shim
-    globalThis.chrome = mock.chrome;
+    setMockChrome(mock.chrome);
 
     const listUrl = mock.chrome.runtime.getURL(LIST_PAGE_PATH);
     const listWindow = mock.createWindow([listUrl]);
@@ -51,3 +50,5 @@ describe('list page init', () => {
     expect(snackbar?.textContent).toContain('Cleared');
   });
 });
+
+
