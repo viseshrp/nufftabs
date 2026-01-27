@@ -126,8 +126,8 @@ describe('background condense', () => {
     const savedGroups = await readSavedGroups();
     const groupKeys = Object.keys(savedGroups);
     expect(groupKeys).toHaveLength(1);
-    expect(groupKeys[0]?.startsWith('unknown-')).toBe(true);
-    const savedGroup = savedGroups[groupKeys[0] ?? ''] ?? [];
+    expect(groupKeys[0].startsWith('unknown-')).toBe(true);
+    const savedGroup = savedGroups[groupKeys[0]] ?? [];
     expect(savedGroup).toHaveLength(1);
     expect(savedGroup[0]?.url).toBe('https://a.com');
   });
