@@ -107,6 +107,7 @@ Unit + integration:
 - OneTab parsing and skipped reasons
 - Storage read/write and error handling
 - Restore rules (reuse current window vs new windows)
+- Memory-saving restore discard (best-effort)
 - Options/settings behavior
 
 E2E:

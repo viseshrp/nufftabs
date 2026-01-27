@@ -8,7 +8,7 @@ This spec is written to support an agentic implementation loop (Codex/Copilot/Ge
 
 ## 0) One sentence product definition
 
-**nufftabs** is a minimal MV3 Chrome extension that saves all tabs from the current window into a list and closes them, then lets you restore one or all tabs into a new window while removing restored tabs from the list.
+**nufftabs** is a minimal MV3 Chrome extension that saves all tabs from the current window into a list and closes them, then lets you restore one tab in the current window or restore all into new windows while removing restored tabs from the list.
 
 ---
 
@@ -24,7 +24,7 @@ This spec is written to support an agentic implementation loop (Codex/Copilot/Ge
 - No explicit support requirements for Firefox/Safari etc.
 
 ### 1.3 Storage and permissions
-- Persist saved tabs via `chrome.storage.local` and settings via `chrome.storage.sync`.
+- Persist saved tabs and settings via `chrome.storage.local`.
 - Only required permissions:
   - `tabs`
   - `storage`
@@ -64,26 +64,31 @@ Triggered by clicking the extension action icon.
 A 'lists' page renders:
 - List of saved tabs (most recent first is fine).
 - Each item shows at least: Title + URL.
-- Per-item action: Restore (new window).
+- Per-item action: Restore (current window).
 - Top-level actions:
-  - Restore all (new window)
+  - Restore all (new windows unless list tab is only tab)
   - Delete all
   - Export JSON
   - Import JSON (replace)
 
-### 2.3 Restore single (new window + remove from list)
+### 2.3 Restore single (current window + remove from list)
 When user clicks Restore on an item:
-1. Open a new window with that tab’s URL.
-2. Remove that item from stored list immediately.
-3. Re-render UI reflecting removal.
+1. Open the tab in the current window (the one containing the list UI).
+2. If the current window is unavailable, fall back to a new window.
+3. If ?Save memory when restoring tabs? is enabled, discard the restored tab (best-effort).
+4. Remove that item from stored list immediately.
+5. Re-render UI reflecting removal.
 
-### 2.4 Restore all (one new window + clear list)
+### 2.4 Restore all (chunked windows + clear list)
 When user clicks Restore all:
 1. If list is empty: do nothing (optional status message).
-2. Create one new window with the first URL.
-3. Create remaining tabs inside the same new window (`windowId`).
-4. Clear stored list.
-5. Re-render UI showing empty state.
+2. Split tabs into chunks using `restoreBatchSize`.
+3. If the list tab is the only tab in its window, use that window for the first chunk.
+4. Otherwise, create a new window for each chunk.
+5. Create remaining tabs in each window.
+6. If ?Save memory when restoring tabs? is enabled, discard restored tabs (best-effort).
+7. Clear stored list.
+8. Re-render UI showing empty state.
 
 ### 2.5 Delete all
 When user clicks Delete all:
@@ -118,7 +123,7 @@ When user clicks Delete all:
 - No keyboard shortcut.
 - No context menu.
 - No special casing for `chrome://` or internal tabs beyond basic validation.
-- Settings use `storage.sync`; saved tabs remain local-only.
+- Settings are stored locally (no sync); saved tabs remain local-only.
 - No attempt to match OneTab UX.
 
 ---
@@ -130,7 +135,23 @@ When user clicks Delete all:
 - Type: boolean
 - Default: `true`
 - UI: checkbox in the Options page
-- Storage: `chrome.storage.sync` under a `settings` object
+- Storage: `chrome.storage.local` under a `settings` object
+
+### 4.2 Tabs per restore window
+- Name: `restoreBatchSize`
+- Type: number
+- Default: `100`
+- UI: number input in the Options page
+- Behavior: controls how many tabs open per window during Restore all
+- Storage: `chrome.storage.local` under a `settings` object
+
+### 4.3 Save memory when restoring tabs
+- Name: `discardRestoredTabs`
+- Type: boolean
+- Default: `false`
+- UI: radio group in the Options page (Disabled/Enabled)
+- Behavior: if enabled, restored tabs are discarded immediately (best-effort) and load on click
+- Storage: `chrome.storage.local` under a `settings` object
 
 ---
 
@@ -138,7 +159,7 @@ When user clicks Delete all:
 
 ### 5.1 Storage keys
 - `savedTabs`: `SavedTab[]`
-- `settings`: `{ excludePinned: boolean }`
+- `settings`: `{ excludePinned: boolean, restoreBatchSize: number, discardRestoredTabs: boolean }`
 
 ### 5.2 Types
 ```ts
@@ -151,6 +172,8 @@ type SavedTab = {
 
 type Settings = {
   excludePinned: boolean;
+  restoreBatchSize: number;
+  discardRestoredTabs: boolean;
 };
 ```
 
@@ -201,7 +224,7 @@ Requirements:
   - closes those tabs
   - opens options page showing the list
 - Restore single:
-  - opens new window with the URL
+  - opens the tab in the current window
   - removes item from list
 
 Acceptance checklist:
@@ -209,7 +232,7 @@ Acceptance checklist:
 2. Click action icon.
 3. Tabs close; options page shows 3 items.
 4. Click Restore on one item.
-5. A new window opens; list now shows 2 items.
+5. The tab opens in the current window; list now shows 2 items.
 
 ### Milestone 1 — Settings: Exclude pinned tabs
 Goal: pinned toggle fully implemented and default ON.
@@ -230,7 +253,7 @@ Goal: required bulk operations.
 Acceptance checklist:
 1. With at least 5 saved tabs:
 2. Click Restore all.
-3. Exactly one new window opens containing all saved tabs.
+3. One or more windows open containing all saved tabs (based on restore batch size).
 4. Saved list is empty.
 5. Condense again; then click Delete all.
 6. Saved list becomes empty; no windows open.
@@ -287,12 +310,12 @@ Acceptance:
 
 ### D. Restore single removes it
 1. Click Restore on one item.
-2. New window opens with the restored tab.
+2. The tab opens in the current window (list tab window).
 3. Item disappears from list.
 
-### E. Restore all clears list and uses one window
+### E. Restore all clears list and opens new windows
 1. Click Restore all.
-2. One new window opens with all remaining tabs.
+2. New window(s) open for the restored tabs (based on restore batch size).
 3. List empty.
 
 ### F. Delete all
@@ -307,6 +330,11 @@ Acceptance:
 4. Import JSON.
 5. List restored.
 6. Try invalid JSON: must show error.
+
+### H. Save memory on restore
+1. Enable ?Save memory when restoring tabs?.
+2. Restore all and confirm tabs appear but load on click.
+3. Restore single and confirm it is discarded until clicked.
 
 ---
 
@@ -358,7 +386,7 @@ When you find a bug, report back to the agent like this:
 Example:
 - Steps: Condense 5 tabs → Restore all
 - Observed: 5 new windows opened
-- Expected: 1 new window with 5 tabs
+- Expected: restored tabs open in the list window if it is the only tab, otherwise new window(s) based on restore batch size
 - Console: (paste)
 
 ---

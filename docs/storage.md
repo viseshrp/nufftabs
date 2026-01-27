@@ -34,6 +34,7 @@ single‑group updates.
 settings: {
   excludePinned: boolean;
   restoreBatchSize: number;
+  discardRestoredTabs: boolean;
 }
 ```
 Settings are stored locally (not sync) for simplicity and to avoid conflicts.
@@ -50,7 +51,7 @@ savedTabs:123: [
 savedTabs:456: [
   { "id": "uuid-3", "url": "https://openai.com", "title": "OpenAI", "savedAt": 1737860100000 }
 ]
-settings: { "excludePinned": true, "restoreBatchSize": 100 }
+settings: { "excludePinned": true, "restoreBatchSize": 100, "discardRestoredTabs": false }
 ```
 
 ## Data model

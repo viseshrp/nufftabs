@@ -21,7 +21,8 @@ junior developers and useful for future maintenance.
 - Listens to storage changes to refresh the view.
 
 3) **Options page** (`entrypoints/options/`)
-- Manages settings like “Exclude pinned tabs” and “Tabs per restore window”.
+- Manages settings like ?Exclude pinned tabs?, ?Tabs per restore window?, and
+  ?Save memory when restoring tabs?.
 
 ## Data flow summary
 
@@ -61,6 +62,7 @@ focus or create list tab
 tabs = currentGroups[groupKey]
 tab = tabs.find(id)
 open tab in current window (or new window if needed)
+if discardRestoredTabs: discard restored tab (best-effort)
 tabs = tabs.filter(id)
 writeSavedGroup(groupKey, tabs)
 render UI
@@ -74,6 +76,7 @@ if list tab is only tab in window:
   use current window for first chunk
 else:
   create new window for each chunk
+if discardRestoredTabs: discard restored tabs (best-effort)
 writeSavedGroup(groupKey, [])  // delete group
 render UI
 ```
@@ -106,10 +109,14 @@ behavior predictable (a group roughly represents “the tabs that were open toge
 
 ### Restore single
 - Opens the tab in the current window (the one that contains the list UI).
+- If ?Save memory when restoring tabs? is enabled, the restored tab is discarded
+  immediately (best-effort) and loads on demand.
 - Removes the tab from storage immediately.
 
 ### Restore group (restore all)
 - Uses `restoreBatchSize` from settings to create **one window per chunk**.
+- If ?Save memory when restoring tabs? is enabled, restored tabs are discarded
+  immediately (best-effort) and load on click.
 - If the list tab is the only tab in its window, it **reuses** that window for the
   first chunk and keeps the list tab pinned and active.
 
@@ -139,6 +146,8 @@ Groups are rendered as cards. Each group can be collapsed without deleting data.
 - **Restore all:** restores all tabs in the group, then deletes the group.
 - **Delete all:** deletes the entire group without opening tabs.
 - **Restore single:** opens one tab, then removes it from the group.
+- **Save memory on restore:** when enabled, restored tabs are discarded
+  best-effort and load when clicked.
 - **Export JSON:** writes `{ savedTabs: ... }` to the textarea and downloads it.
 - **Import JSON:** validates and appends (or replaces) groups.
 - **Import OneTab:** parses OneTab text and appends to current group.
