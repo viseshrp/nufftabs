@@ -98,6 +98,25 @@ async function seedSavedGroup(page: Page, groupKey: string, urls: string[]) {
   }, { key: groupKey, values: urls });
 }
 
+async function getAllSavedUrls(page: Page): Promise<string[]> {
+  return page.evaluate(async () => {
+    const result = await chrome.storage.local.get(['savedTabsIndex']);
+    const index = result.savedTabsIndex;
+    if (!Array.isArray(index) || index.length === 0) return [];
+    const groupKeys = index.map((key) => `savedTabs:${key}`);
+    const groups = await chrome.storage.local.get(groupKeys);
+    const urls: string[] = [];
+    for (const key of index) {
+      const tabs = groups[`savedTabs:${key}`];
+      if (!Array.isArray(tabs)) continue;
+      for (const tab of tabs) {
+        if (tab && typeof tab.url === 'string') urls.push(tab.url);
+      }
+    }
+    return urls;
+  });
+}
+
 test.describe('nufftabs extension e2e', () => {
   test('condense tabs and group by window', async () => {
     const { context, extensionId, page } = await launchExtension();
@@ -210,19 +229,9 @@ test.describe('nufftabs extension e2e', () => {
     let jsonArea = listPage.locator('#jsonArea');
     await jsonArea.fill(JSON.stringify([{ url: 'https://example.com/imported' }]));
     await listPage.locator('#importJson').click();
-    await listPage.waitForFunction(async (url) => {
-      const result = await chrome.storage.local.get(['savedTabsIndex']);
-      const index = result.savedTabsIndex;
-      if (!Array.isArray(index) || index.length === 0) return false;
-      const groupKeys = index.map((key) => `savedTabs:${key}`);
-      const groups = await chrome.storage.local.get(groupKeys);
-      return index.some((key) => {
-        const tabs = groups[`savedTabs:${key}`];
-        return Array.isArray(tabs) && tabs.some((tab) => tab && tab.url === url);
-      });
-    }, 'https://example.com/imported');
-    await listPage.locator('#toggleIo').click();
-    jsonArea = listPage.locator('#jsonArea');
+    await expect
+      .poll(async () => getAllSavedUrls(page))
+      .toEqual(expect.arrayContaining(['https://example.com/x', 'https://example.com/imported']));
 
     // Import OneTab with skipped lines
     const oneTabText = [
