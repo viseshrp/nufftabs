@@ -10,7 +10,7 @@ import {
   mergeGroups,
   normalizeImportedGroups,
 } from './list';
-import { discardTabsBestEffort, getReuseWindowContext, restoreTabs } from './restore';
+import { createDiscardSession, getReuseWindowContext, restoreTabs } from './restore';
 import {
   readSettings,
   readSavedGroups,
@@ -574,19 +574,24 @@ async function restoreSingle(groupKey: string, id: string): Promise<void> {
       if (typeof reuse.tabId === 'number') {
         await chrome.tabs.update(reuse.tabId, { active: true });
       }
-      if (settings.discardRestoredTabs) {
-        void discardTabsBestEffort([created.id]);
+      if (settings.discardRestoredTabs && typeof created.id === 'number') {
+        const discardSession = createDiscardSession();
+        discardSession.schedule([created.id]);
       }
     } else {
       const window = await chrome.windows.create({ url: tab.url });
       if (settings.discardRestoredTabs) {
         const firstTabId = window.tabs?.[0]?.id;
         if (typeof firstTabId === 'number') {
-          void discardTabsBestEffort([firstTabId]);
+          const discardSession = createDiscardSession();
+          discardSession.schedule([firstTabId]);
         } else if (typeof window.id === 'number') {
           try {
             const windowTabs = await chrome.tabs.query({ windowId: window.id });
-            void discardTabsBestEffort(windowTabs.map((entry) => entry.id));
+            if (windowTabs.some((entry) => typeof entry.id === 'number')) {
+              const discardSession = createDiscardSession();
+              discardSession.schedule(windowTabs.map((entry) => entry.id));
+            }
           } catch {
             // Ignore discard failures for best-effort behavior.
           }
