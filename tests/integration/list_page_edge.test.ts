@@ -9,15 +9,19 @@ describe('list page edge cases', () => {
     const mock = createMockChrome();
     // @ts-ignore - test shim
     globalThis.chrome = mock.chrome;
+    const setSpy = vi.spyOn(mock.chrome.storage.local, 'set');
 
     await import('../../entrypoints/nufftabs/index');
-    expect(true).toBe(true);
+    expect(document.body.innerHTML).toBe('');
+    expect(Object.keys(mock.storageData)).toHaveLength(0);
+    expect(setSpy).not.toHaveBeenCalled();
+    setSpy.mockRestore();
   });
 
   it('ignores unknown actions and empty targets', async () => {
     vi.resetModules();
     document.body.innerHTML = `
-      <div id="groups"><button id="noop">noop</button></div>
+      <div id="groups"></div>
       <div id="empty"></div>
       <div id="snackbar"></div>
     `;
@@ -26,11 +30,28 @@ describe('list page edge cases', () => {
     globalThis.chrome = mock.chrome;
 
     await import('../../entrypoints/nufftabs/index');
-    const groups = document.querySelector('#groups')!;
-    const button = document.querySelector('#noop') as HTMLButtonElement;
+    const groups = document.querySelector<HTMLDivElement>('#groups')!;
+    const snackbar = document.querySelector<HTMLDivElement>('#snackbar')!;
+    snackbar.textContent = '';
+
+    const card = document.createElement('section');
+    card.className = 'group-card';
+    card.dataset.groupKey = '1';
+
+    const button = document.createElement('button');
+    button.type = 'button';
     button.dataset.action = 'unknown';
+    card.appendChild(button);
+    groups.appendChild(card);
+
+    const emptyTarget = document.createElement('div');
+    groups.appendChild(emptyTarget);
+
     groups.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     button.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-    expect(true).toBe(true);
+    emptyTarget.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+
+    expect(snackbar.textContent).toBe('');
+    expect(card.classList.contains('is-collapsed')).toBe(false);
   });
 });

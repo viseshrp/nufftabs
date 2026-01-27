@@ -161,6 +161,9 @@ describe('list page actions', () => {
     const restoreGroup = document.querySelector<HTMLButtonElement>('button[data-action="restore-group"]');
     restoreGroup?.click();
     await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(status?.textContent).toContain('Restored all');
+    const remainingGroups = document.querySelectorAll('.group-card');
+    expect(remainingGroups.length).toBe(0);
   });
 
   it('updates scroll controls and handles missing tab ids', async () => {

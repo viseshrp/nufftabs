@@ -61,12 +61,20 @@ describe('background condense', () => {
     const mock = createMockChrome();
     // @ts-ignore - test shim
     globalThis.chrome = mock.chrome;
+    const window = mock.createWindow(['https://a.com']);
+    const listUrl = mock.chrome.runtime.getURL(LIST_PAGE_PATH);
     mock.chrome.tabs.query = async () => {
       throw new Error('boom');
     };
 
-    await condenseCurrentWindow(1);
-    expect(true).toBe(true);
+    await condenseCurrentWindow(window.id as number);
+
+    expect(Object.keys(mock.storageData)).toHaveLength(0);
+    expect(mock.tabs.size).toBe(1);
+    const listTabs = Array.from(mock.tabs.values()).filter((tab) => tab.url === listUrl);
+    expect(listTabs).toHaveLength(0);
+    const existingTabs = Array.from(mock.tabs.values()).filter((tab) => tab.url === 'https://a.com');
+    expect(existingTabs).toHaveLength(1);
   });
 
   it('handles storage write failures by focusing list tab', async () => {
@@ -151,6 +159,7 @@ describe('background condense', () => {
     globalThis.chrome = mock.chrome;
 
     const window = mock.createWindow(['https://a.com']);
+    const listUrl = mock.chrome.runtime.getURL(LIST_PAGE_PATH);
     mock.chrome.tabs.create = async () => {
       throw new Error('boom');
     };
@@ -159,6 +168,11 @@ describe('background condense', () => {
     };
 
     await condenseCurrentWindow(window.id as number);
-    expect(true).toBe(true);
+    const savedGroup = await readSavedGroup(String(window.id));
+    expect(savedGroup).toHaveLength(1);
+    expect(savedGroup[0]?.url).toBe('https://a.com');
+    expect(mock.tabs.size).toBe(1);
+    const listTabs = Array.from(mock.tabs.values()).filter((tab) => tab.url === listUrl);
+    expect(listTabs).toHaveLength(0);
   });
 });
