@@ -30,6 +30,7 @@ export async function condenseCurrentWindow(targetWindowId?: number): Promise<vo
   }
 
   const now = Date.now();
+  // Timestamp is captured once to keep group keys and savedAt values consistent.
   const groupKey = createCondenseGroupKey(resolvedWindowId, now);
   const updatedGroup = saveTabsToList(eligibleTabs, [], now);
   const saved = await appendSavedGroup(groupKey, updatedGroup);
@@ -51,6 +52,7 @@ export async function condenseCurrentWindow(targetWindowId?: number): Promise<vo
     }
   }
 
+  // Remove condensed tabs after saving, but only when tab IDs are available.
   const tabIds = eligibleTabs.map((tab) => tab.id).filter((id): id is number => typeof id === 'number');
   if (tabIds.length > 0) {
     try {

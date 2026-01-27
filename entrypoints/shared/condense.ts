@@ -14,6 +14,7 @@ export function createCondenseGroupKey(
   nonce: string = crypto.randomUUID(),
 ): string {
   const baseKey = typeof windowId === 'number' ? String(windowId) : UNKNOWN_GROUP_KEY;
+  // Use a random nonce to avoid collisions across concurrent condense operations.
   return `${baseKey}-${now}-${nonce}`;
 }
 
@@ -24,6 +25,7 @@ export function filterEligibleTabs(
 ): chrome.tabs.Tab[] {
   return tabs.filter((tab) => {
     if (excludePinned && tab.pinned) return false;
+    // Chrome may expose pendingUrl before url is populated; treat it as eligible.
     const candidateUrl =
       typeof tab.url === 'string' && tab.url.length > 0 ? tab.url : tab.pendingUrl;
     if (candidateUrl === listUrl) return false;
@@ -38,6 +40,7 @@ export function saveTabsToList(
 ): SavedTab[] {
   const saved: SavedTab[] = [];
   for (const tab of tabs) {
+    // Keep pendingUrl support in sync with filterEligibleTabs to avoid dropping new tabs.
     const candidateUrl =
       typeof tab.url === 'string' && tab.url.length > 0 ? tab.url : tab.pendingUrl;
     if (typeof candidateUrl !== 'string' || candidateUrl.length === 0) continue;

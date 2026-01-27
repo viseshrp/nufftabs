@@ -239,6 +239,7 @@ export async function appendSavedGroup(
       });
       const verified = await readSavedGroupsIndex();
       const stabilized = Array.from(new Set([...verified, groupKey]));
+      // Reconcile if a concurrent write dropped our key from the index.
       if (stabilized.length !== verified.length) {
         await chrome.storage.local.set({ [STORAGE_KEYS.savedTabsIndex]: stabilized });
         const finalIndex = await readSavedGroupsIndex();

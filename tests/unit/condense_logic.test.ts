@@ -32,6 +32,7 @@ describe('condense', () => {
   });
 
   it('creates unique condense group keys per window', () => {
+    // Explicit nonces keep the test deterministic while validating uniqueness.
     const keyA = createCondenseGroupKey(8, 1700000000000, 'nonce-a');
     const keyB = createCondenseGroupKey(8, 1700000000000, 'nonce-b');
     const keyUnknown = createCondenseGroupKey(undefined, 1700000001000, 'nonce-c');
