@@ -11,7 +11,7 @@ export function resolveWindowId(
 export function createCondenseGroupKey(
   windowId?: number,
   now = Date.now(),
-  nonce = crypto.randomUUID(),
+  nonce: string = crypto.randomUUID(),
 ): string {
   const baseKey = typeof windowId === 'number' ? String(windowId) : UNKNOWN_GROUP_KEY;
   return `${baseKey}-${now}-${nonce}`;

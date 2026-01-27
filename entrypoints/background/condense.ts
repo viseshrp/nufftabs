@@ -51,6 +51,7 @@ export async function condenseCurrentWindow(targetWindowId?: number): Promise<vo
     }
   }
 
+  const tabIds = eligibleTabs.map((tab) => tab.id).filter((id): id is number => typeof id === 'number');
   if (tabIds.length > 0) {
     try {
       await chrome.tabs.remove(tabIds);
