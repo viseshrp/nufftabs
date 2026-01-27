@@ -584,17 +584,14 @@ async function restoreSingle(groupKey: string, id: string): Promise<void> {
         throw new Error('Missing window id');
       }
       if (settings.discardRestoredTabs) {
+        const discardSession = createDiscardSession();
         const firstTabId = createdWindow.tabs?.[0]?.id;
         if (typeof firstTabId === 'number') {
-          const discardSession = createDiscardSession();
           discardSession.schedule([firstTabId]);
         } else {
           try {
             const windowTabs = await chrome.tabs.query({ windowId: createdWindow.id });
-            if (windowTabs.some((entry) => typeof entry.id === 'number')) {
-              const discardSession = createDiscardSession();
-              discardSession.schedule(windowTabs.map((entry) => entry.id));
-            }
+            discardSession.schedule(windowTabs.map((entry) => entry.id));
           } catch {
             // Ignore discard failures for best-effort behavior.
           }

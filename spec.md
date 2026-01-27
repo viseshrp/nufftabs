@@ -75,7 +75,7 @@ A 'lists' page renders:
 When user clicks Restore on an item:
 1. Open the tab in the current window (the one containing the list UI).
 2. If the current window is unavailable, fall back to a new window.
-3. If ?Save memory when restoring tabs? is enabled, discard the restored tab after its URL is set (best-effort).
+3. If Save memory when restoring tabs is enabled, discard the restored tab after its URL is set (best-effort).
 4. Remove that item from stored list immediately.
 5. Re-render UI reflecting removal.
 
@@ -86,7 +86,7 @@ When user clicks Restore all:
 3. If the list tab is the only tab in its window, use that window for the first chunk.
 4. Otherwise, create a new window for each chunk.
 5. Create remaining tabs in each window.
-6. If ?Save memory when restoring tabs? is enabled, discard restored tabs after their URLs are set (best-effort).
+6. If Save memory when restoring tabs is enabled, discard restored tabs after their URLs are set (best-effort).
 7. Clear stored list.
 8. Re-render UI showing empty state.
 
@@ -333,7 +333,7 @@ Acceptance:
 6. Try invalid JSON: must show error.
 
 ### H. Save memory on restore
-1. Enable ?Save memory when restoring tabs?.
+1. Enable Save memory when restoring tabs.
 2. Restore all and confirm tabs appear but load on click.
 3. Restore single and confirm it is discarded until clicked.
 

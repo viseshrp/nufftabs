@@ -21,8 +21,8 @@ junior developers and useful for future maintenance.
 - Listens to storage changes to refresh the view.
 
 3) **Options page** (`entrypoints/options/`)
-- Manages settings like ?Exclude pinned tabs?, ?Tabs per restore window?, and
-  ?Save memory when restoring tabs?.
+- Manages settings like Exclude pinned tabs, Tabs per restore window, and
+  Save memory when restoring tabs.
 
 ## Data flow summary
 
@@ -109,13 +109,13 @@ behavior predictable (a group roughly represents “the tabs that were open toge
 
 ### Restore single
 - Opens the tab in the current window (the one that contains the list UI).
-- If ?Save memory when restoring tabs? is enabled, the restored tab is discarded
+- If Save memory when restoring tabs is enabled, the restored tab is discarded
   after its URL is set (best-effort) and loads on demand.
 - Removes the tab from storage immediately.
 
 ### Restore group (restore all)
 - Uses `restoreBatchSize` from settings to create **one window per chunk**.
-- If "Save memory when restoring tabs" is enabled, restored tabs are discarded
+- If Save memory when restoring tabs is enabled, restored tabs are discarded
   after their URLs are set (best-effort) and load on click.
 - If the setting is turned off mid-restore, pending discards are skipped.
 - If the list tab is the only tab in its window, it **reuses** that window for the
@@ -148,6 +148,7 @@ Groups are rendered as cards. Each group can be collapsed without deleting data.
 - **Restore single:** opens one tab, then removes it from the group.
 - **Save memory on restore:** when enabled, restored tabs are discarded
   after their URLs are set (best-effort) and load when clicked.
+- **Save memory on restore (toggle off):** pending discards are skipped when the setting is turned off mid-restore.
 - **Export JSON:** writes `{ savedTabs: ... }` to the textarea and downloads it.
 - **Import JSON:** validates and appends (or replaces) groups.
 - **Import OneTab:** parses OneTab text and appends to current group.
