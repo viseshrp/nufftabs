@@ -231,15 +231,21 @@ export async function appendSavedGroup(
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
     try {
       const index = await readSavedGroupsIndex();
-      const payload: Record<string, unknown> = {
+      const merged = Array.from(new Set([...index, groupKey]));
+      // Always write the merged index to reduce lost updates under concurrent writes.
+      await chrome.storage.local.set({
+        [STORAGE_KEYS.savedTabsIndex]: merged,
         [groupStorageKey(groupKey)]: tabs,
-      };
-      if (!index.includes(groupKey)) {
-        payload[STORAGE_KEYS.savedTabsIndex] = [...index, groupKey];
-      }
-      await chrome.storage.local.set(payload);
+      });
       const verified = await readSavedGroupsIndex();
-      if (verified.includes(groupKey)) return true;
+      const stabilized = Array.from(new Set([...verified, groupKey]));
+      if (stabilized.length !== verified.length) {
+        await chrome.storage.local.set({ [STORAGE_KEYS.savedTabsIndex]: stabilized });
+        const finalIndex = await readSavedGroupsIndex();
+        if (finalIndex.includes(groupKey)) return true;
+      } else if (verified.includes(groupKey)) {
+        return true;
+      }
     } catch {
       return false;
     }
