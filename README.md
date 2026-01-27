@@ -44,8 +44,9 @@ tradeoffs. These are documented in code comments, but summarized here for mainta
   must replace arrays rather than mutating them in place to avoid accidental shared state.
 
 ### Gotchas
-- **Group key = window ID string.** Window IDs can be reused over time, so groups represent
-  "tabs saved from that window at the time of condense," not a stable long-lived window identity.
+- **Group key = window ID + timestamp + nonce.** Each condense creates a fresh group key like
+  `${windowId}-${epochMs}-${uuid}` (or `unknown-...` when window ID is unavailable), so repeated
+  condenses never append to earlier groups.
 - **Created-at ordering.** Group "Created" timestamps use the earliest `savedAt` in the group.
   Imports (including OneTab) stamp `savedAt` with "now," which can make imported groups
   appear newest.

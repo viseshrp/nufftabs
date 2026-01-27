@@ -49,10 +49,10 @@ List UI loads
 settings = readSettings()
 tabs = queryTabs(currentWindow)
 eligible = tabs.filter(url is valid and (excludePinned ? !pinned : true) and not listUrl)
-groupKey = String(windowId) or "unknown"
-saved = readSavedGroup(groupKey)
+groupKey = `${windowId}-${epochMs}-${uuid}` or `unknown-${epochMs}-${uuid}`
+saved = [] // always a new group per condense
 saved = createSavedTab(eligible) + saved
-writeSavedGroup(groupKey, saved)
+appendSavedGroup(groupKey, saved)
 close eligible tabs
 focus or create list tab
 ```
@@ -101,9 +101,10 @@ render UI
 ```
 
 ## Why groups exist
-Each “condense” action creates a **group** of tabs. The group is keyed by the
-current `windowId` (stringified). This keeps the UI organized and makes “Restore all”
-behavior predictable (a group roughly represents “the tabs that were open together”).
+Each “condense” action creates a **group** of tabs. The group is keyed by
+`windowId-epochMs-uuid` (or `unknown-epochMs-uuid`). This keeps the UI organized and
+makes “Restore all” behavior predictable (a group roughly represents “the tabs that
+were open together”).
 
 ## Restore behavior
 
@@ -162,7 +163,7 @@ For the full schema and reasoning, see `docs/storage.md`.
 ### Condense
 1. User clicks extension icon.
 2. Background reads settings.
-3. Background writes one group to storage.
+3. Background writes one new group to storage.
 4. Background closes eligible tabs.
 5. Background focuses list tab.
 
@@ -191,7 +192,7 @@ For the full schema and reasoning, see `docs/storage.md`.
 - **Import JSON fails:** validate schema; ensure each entry has a string `url`.
 
 ## Glossary
-- **Group:** a collection of tabs saved together (keyed by window ID string).
+- **Group:** a collection of tabs saved together (keyed by `windowId-epochMs-uuid`).
 - **List tab:** the `nufftabs.html` page that shows saved tabs.
 - **Chunk:** a batch of tabs restored into a single window (size = `restoreBatchSize`).
 - **Restore batch size:** number of tabs to open per window during “Restore all”.

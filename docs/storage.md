@@ -43,12 +43,12 @@ Settings are stored locally (not sync) for simplicity and to avoid conflicts.
 This is what storage might look like after two condense actions:
 
 ```
-savedTabsIndex: ["123", "456"]
-savedTabs:123: [
+savedTabsIndex: ["123-1700000000000-uuid-a", "456-1700000001000-uuid-b"]
+savedTabs:123-1700000000000-uuid-a: [
   { "id": "uuid-1", "url": "https://example.com", "title": "Example", "savedAt": 1737860000000 },
   { "id": "uuid-2", "url": "https://news.ycombinator.com", "title": "Hacker News", "savedAt": 1737860000000 }
 ]
-savedTabs:456: [
+savedTabs:456-1700000001000-uuid-b: [
   { "id": "uuid-3", "url": "https://openai.com", "title": "OpenAI", "savedAt": 1737860100000 }
 ]
 settings: { "excludePinned": true, "restoreBatchSize": 100, "discardRestoredTabs": false }
@@ -67,17 +67,15 @@ type SavedTab = {
 ```
 
 ### Group key
-`groupKey` is currently the **stringified window ID** at the time of condense.
-This is not a permanent identifier (window IDs can be reused), but it is stable
-enough for "save tabs from this window now".
+`groupKey` is `windowId-epochMs-uuid` (or `unknown-epochMs-uuid`), so each condense
+creates a fresh group instead of appending to an existing one.
 
 ## Common write patterns (pseudo-code)
 
-### Append tabs to a group (condense)
+### Create a new group (condense)
 ```
-tabs = readSavedGroup(groupKey)
-tabs = newTabs + tabs
-writeSavedGroup(groupKey, tabs)
+tabs = newTabs
+appendSavedGroup(groupKey, tabs)
 ```
 
 ### Remove a single tab
@@ -133,8 +131,8 @@ This keeps the UI stable even if storage is manually edited.
 
 ## Important gotchas
 - **No sync:** tab data is local only; it will not appear on other devices.
-- **Group keys can repeat:** window IDs can be reused across time; do not treat
-  `groupKey` as a permanent identity.
+- **Group keys are not a stable window identity:** window IDs can be reused across time;
+  do not treat `groupKey` as a permanent identity.
 - **Shallow cloning:** callers must replace arrays rather than mutating them in place.
 
 ## Adding fields later
