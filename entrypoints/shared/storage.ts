@@ -222,6 +222,29 @@ export async function writeSavedGroup(groupKey: string, tabs: SavedTab[]): Promi
   }
 }
 
+export async function appendSavedGroup(
+  groupKey: string,
+  tabs: SavedTab[],
+  maxAttempts = 3,
+): Promise<boolean> {
+  if (tabs.length === 0) return false;
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    try {
+      const index = await readSavedGroupsIndex();
+      const nextIndex = index.includes(groupKey) ? index : [...index, groupKey];
+      await chrome.storage.local.set({
+        [STORAGE_KEYS.savedTabsIndex]: nextIndex,
+        [groupStorageKey(groupKey)]: tabs,
+      });
+      const verified = await readSavedGroupsIndex();
+      if (verified.includes(groupKey)) return true;
+    } catch {
+      return false;
+    }
+  }
+  return false;
+}
+
 export async function readSettings(): Promise<Settings> {
   try {
     const result = await chrome.storage.local.get([STORAGE_KEYS.settings]);
