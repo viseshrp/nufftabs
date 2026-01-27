@@ -3,19 +3,81 @@ import { LIST_PAGE_PATH, readSettings, type SavedTab } from '../shared/storage';
 // Restore tabs in limited parallel batches to improve throughput; this can relax strict
 // tab ordering compared to fully sequential creation.
 export const RESTORE_CONCURRENCY = 6;
+const DISCARD_CONCURRENCY = 8;
+const DISCARD_WAIT_TIMEOUT_MS = 5000;
+
+type PendingDiscard = {
+  resolve: () => void;
+  timeoutId: ReturnType<typeof setTimeout>;
+};
+
+const pendingDiscards = new Map<number, PendingDiscard>();
+let onUpdatedListener: ((tabId: number, changeInfo: chrome.tabs.TabChangeInfo, tab: chrome.tabs.Tab) => void) | null =
+  null;
+
+function isPlaceholderUrl(url?: string | null): boolean {
+  return !url || url === 'about:blank';
+}
+
+function cleanupListenerIfIdle(): void {
+  if (pendingDiscards.size === 0 && onUpdatedListener) {
+    chrome.tabs.onUpdated.removeListener(onUpdatedListener);
+    onUpdatedListener = null;
+  }
+}
+
+function ensureOnUpdatedListener(): void {
+  if (onUpdatedListener) return;
+  onUpdatedListener = (tabId, changeInfo, tab) => {
+    const pending = pendingDiscards.get(tabId);
+    if (!pending) return;
+    const url = changeInfo.url ?? tab?.url;
+    if (isPlaceholderUrl(url)) return;
+    clearTimeout(pending.timeoutId);
+    pending.resolve();
+    pendingDiscards.delete(tabId);
+    cleanupListenerIfIdle();
+  };
+  chrome.tabs.onUpdated.addListener(onUpdatedListener);
+}
+
+async function waitForTabUrlReady(tabId: number, timeoutMs = DISCARD_WAIT_TIMEOUT_MS): Promise<boolean> {
+  try {
+    const tab = await chrome.tabs.get(tabId);
+    if (tab && !isPlaceholderUrl(tab.url)) return true;
+  } catch {
+    return false;
+  }
+
+  return new Promise((resolve) => {
+    const finalize = (ready: boolean) => {
+      if (pendingDiscards.has(tabId)) pendingDiscards.delete(tabId);
+      resolve(ready);
+      cleanupListenerIfIdle();
+    };
+
+    const timeoutId = setTimeout(() => finalize(false), timeoutMs);
+    pendingDiscards.set(tabId, {
+      resolve: () => finalize(true),
+      timeoutId,
+    });
+    ensureOnUpdatedListener();
+  });
+}
 
 export async function discardTabsBestEffort(tabIds: Array<number | undefined | null>): Promise<void> {
   const ids = tabIds.filter((id): id is number => typeof id === 'number');
   if (ids.length === 0) return;
-  await Promise.allSettled(
-    ids.map(async (id) => {
-      try {
-        await chrome.tabs.discard(id);
-      } catch {
-        // Best-effort discard; ignore failures (e.g., active tabs).
-      }
-    }),
-  );
+  const uniqueIds = Array.from(new Set(ids));
+  await runWithConcurrency(uniqueIds, DISCARD_CONCURRENCY, async (id) => {
+    const ready = await waitForTabUrlReady(id);
+    if (!ready) return;
+    try {
+      await chrome.tabs.discard(id);
+    } catch {
+      // Best-effort discard; ignore failures (e.g., active tabs).
+    }
+  });
 }
 
 async function getWindowTabIdsBestEffort(windowId: number): Promise<number[]> {
@@ -110,7 +172,7 @@ export async function restoreTabs(savedTabs: SavedTab[]): Promise<boolean> {
           startIndex,
         );
         if (settings.discardRestoredTabs) {
-          await discardTabsBestEffort(createdIds);
+          void discardTabsBestEffort(createdIds);
         }
       }
       await chrome.tabs.update(reuse.tabId, { active: true });
@@ -133,10 +195,10 @@ export async function restoreTabs(savedTabs: SavedTab[]): Promise<boolean> {
         }
         if (settings.discardRestoredTabs) {
           if (typeof firstTabId === 'number') {
-            await discardTabsBestEffort([firstTabId, ...createdIds]);
+            void discardTabsBestEffort([firstTabId, ...createdIds]);
           } else {
             const fallbackIds = await getWindowTabIdsBestEffort(windowId);
-            await discardTabsBestEffort(fallbackIds);
+            void discardTabsBestEffort(fallbackIds);
           }
         }
       }
@@ -160,10 +222,10 @@ export async function restoreTabs(savedTabs: SavedTab[]): Promise<boolean> {
         }
         if (settings.discardRestoredTabs) {
           if (typeof firstTabId === 'number') {
-            await discardTabsBestEffort([firstTabId, ...createdIds]);
+            void discardTabsBestEffort([firstTabId, ...createdIds]);
           } else {
             const fallbackIds = await getWindowTabIdsBestEffort(windowId);
-            await discardTabsBestEffort(fallbackIds);
+            void discardTabsBestEffort(fallbackIds);
           }
         }
       }

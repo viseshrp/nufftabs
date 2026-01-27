@@ -170,6 +170,7 @@ describe('restore logic', () => {
       { id: '2', url: 'https://b.com', title: 'B', savedAt: 1 },
     ]);
     expect(restored).toBe(true);
+    await new Promise((resolve) => setTimeout(resolve, 0));
 
     const tabsInWindow = await mock.chrome.tabs.query({ windowId: window.id as number });
     const restoredTabs = tabsInWindow.filter((tab: chrome.tabs.Tab) => tab.url !== listUrl);

@@ -575,18 +575,18 @@ async function restoreSingle(groupKey: string, id: string): Promise<void> {
         await chrome.tabs.update(reuse.tabId, { active: true });
       }
       if (settings.discardRestoredTabs) {
-        await discardTabsBestEffort([created.id]);
+        void discardTabsBestEffort([created.id]);
       }
     } else {
       const window = await chrome.windows.create({ url: tab.url });
       if (settings.discardRestoredTabs) {
         const firstTabId = window.tabs?.[0]?.id;
         if (typeof firstTabId === 'number') {
-          await discardTabsBestEffort([firstTabId]);
+          void discardTabsBestEffort([firstTabId]);
         } else if (typeof window.id === 'number') {
           try {
             const windowTabs = await chrome.tabs.query({ windowId: window.id });
-            await discardTabsBestEffort(windowTabs.map((entry) => entry.id));
+            void discardTabsBestEffort(windowTabs.map((entry) => entry.id));
           } catch {
             // Ignore discard failures for best-effort behavior.
           }

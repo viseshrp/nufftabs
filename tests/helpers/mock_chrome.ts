@@ -39,6 +39,11 @@ export type MockChrome = {
     remove: (tabIds: number | number[]) => Promise<void>;
     getCurrent: () => Promise<MockTab | null>;
     discard: (tabId: number) => Promise<MockTab>;
+    get: (tabId: number) => Promise<MockTab>;
+    onUpdated: {
+      addListener: (listener: (tabId: number, changeInfo: chrome.tabs.TabChangeInfo, tab: MockTab) => void) => void;
+      removeListener: (listener: (tabId: number, changeInfo: chrome.tabs.TabChangeInfo, tab: MockTab) => void) => void;
+    };
   };
   windows: {
     create: (createData?: chrome.windows.CreateData) => Promise<MockWindow>;
@@ -67,6 +72,9 @@ export function setMockDefineBackground(handler: MockDefineBackground): void {
 export function createMockChrome(options?: { initialStorage?: StorageRecord }) {
   const storageData: StorageRecord = { ...(options?.initialStorage ?? {}) };
   const storageListeners = new Set<StorageListener>();
+  const tabUpdatedListeners = new Set<
+    (tabId: number, changeInfo: chrome.tabs.TabChangeInfo, tab: MockTab) => void
+  >();
 
   const windows = new Map<number, MockWindow>();
   const tabs = new Map<number, MockTab>();
@@ -110,6 +118,9 @@ export function createMockChrome(options?: { initialStorage?: StorageRecord }) {
     }
 
     addTabToWindow(tab, windowId);
+    for (const listener of tabUpdatedListeners) {
+      listener(tab.id as number, { url: tab.url }, tab);
+    }
     return tab;
   };
 
@@ -220,6 +231,7 @@ export function createMockChrome(options?: { initialStorage?: StorageRecord }) {
       async update(tabId: number, updateProperties: chrome.tabs.UpdateProperties) {
         const tab = tabs.get(tabId);
         if (!tab) throw new Error('Tab not found');
+        const changeInfo: chrome.tabs.TabChangeInfo = {};
         if (typeof updateProperties.active === 'boolean') {
           if (updateProperties.active) {
             for (const existing of tabs.values()) {
@@ -235,6 +247,16 @@ export function createMockChrome(options?: { initialStorage?: StorageRecord }) {
         }
         if (typeof updateProperties.pinned === 'boolean') {
           tab.pinned = updateProperties.pinned;
+        }
+        if (typeof updateProperties.url === 'string') {
+          tab.url = updateProperties.url;
+          tab.title = updateProperties.url;
+          changeInfo.url = updateProperties.url;
+        }
+        if (Object.keys(changeInfo).length > 0) {
+          for (const listener of tabUpdatedListeners) {
+            listener(tabId, changeInfo, tab);
+          }
         }
         return tab;
       },
@@ -253,6 +275,19 @@ export function createMockChrome(options?: { initialStorage?: StorageRecord }) {
         if (!tab) throw new Error('Tab not found');
         tab.discarded = true;
         return tab;
+      },
+      async get(tabId: number) {
+        const tab = tabs.get(tabId);
+        if (!tab) throw new Error('Tab not found');
+        return tab;
+      },
+      onUpdated: {
+        addListener: (listener) => {
+          tabUpdatedListeners.add(listener);
+        },
+        removeListener: (listener) => {
+          tabUpdatedListeners.delete(listener);
+        },
       },
     },
     windows: {
