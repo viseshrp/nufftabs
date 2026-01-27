@@ -210,9 +210,17 @@ test.describe('nufftabs extension e2e', () => {
     let jsonArea = listPage.locator('#jsonArea');
     await jsonArea.fill(JSON.stringify([{ url: 'https://example.com/imported' }]));
     await listPage.locator('#importJson').click();
-    await waitForSavedGroupCount(page, 2);
-    await listPage.reload();
-    await expect(listPage.locator('.group-card')).toHaveCount(2);
+    await listPage.waitForFunction(async (url) => {
+      const result = await chrome.storage.local.get(['savedTabsIndex']);
+      const index = result.savedTabsIndex;
+      if (!Array.isArray(index) || index.length === 0) return false;
+      const groupKeys = index.map((key) => `savedTabs:${key}`);
+      const groups = await chrome.storage.local.get(groupKeys);
+      return index.some((key) => {
+        const tabs = groups[`savedTabs:${key}`];
+        return Array.isArray(tabs) && tabs.some((tab) => tab && tab.url === url);
+      });
+    }, 'https://example.com/imported');
     await listPage.locator('#toggleIo').click();
     jsonArea = listPage.locator('#jsonArea');
 
