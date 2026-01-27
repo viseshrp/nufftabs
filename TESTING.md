@@ -151,5 +151,6 @@ pnpm biome
 pnpm lint:webext
 ```
 What this does:
-- `lint`/`biome`: Biome lint checks (formatter disabled).
+- `lint`/`biome`: Biome lint checks. The formatter is enabled in `biome.json` for local use,
+  but CI only runs `biome lint` (it does not apply formatting).
 - `lint:webext`: builds the Firefox MV2 bundle and runs `web-ext lint` against `.output/firefox-mv2/`.
