@@ -14,13 +14,14 @@ describe('condense', () => {
       { id: 2, url: 'https://example.com/2', pinned: true },
       { id: 3, url: listUrl, pinned: false },
       { id: 4, url: '', pinned: false },
+      { id: 5, url: '', pendingUrl: 'https://pending.com', pinned: false },
     ] as chrome.tabs.Tab[];
 
     const eligible = filterEligibleTabs(tabs, listUrl, true);
-    expect(eligible.map((tab) => tab.id)).toEqual([1]);
+    expect(eligible.map((tab) => tab.id)).toEqual([1, 5]);
 
     const eligibleAll = filterEligibleTabs(tabs, listUrl, false);
-    expect(eligibleAll.map((tab) => tab.id)).toEqual([1, 2]);
+    expect(eligibleAll.map((tab) => tab.id)).toEqual([1, 2, 5]);
   });
 
   it('resolves window id from target or tabs', () => {
@@ -47,7 +48,7 @@ describe('condense', () => {
     const now = 1700000000000;
     const tabs = [
       { url: 'https://a.com', title: 'A' },
-      { url: 'https://b.com' },
+      { url: '', pendingUrl: 'https://b.com' },
     ] as chrome.tabs.Tab[];
     const existing = [
       { id: 'old', url: 'https://c.com', title: 'C', savedAt: now - 1 },

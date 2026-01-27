@@ -24,8 +24,10 @@ export function filterEligibleTabs(
 ): chrome.tabs.Tab[] {
   return tabs.filter((tab) => {
     if (excludePinned && tab.pinned) return false;
-    if (tab.url === listUrl) return false;
-    return typeof tab.url === 'string' && tab.url.length > 0;
+    const candidateUrl =
+      typeof tab.url === 'string' && tab.url.length > 0 ? tab.url : tab.pendingUrl;
+    if (candidateUrl === listUrl) return false;
+    return typeof candidateUrl === 'string' && candidateUrl.length > 0;
   });
 }
 
@@ -36,11 +38,14 @@ export function saveTabsToList(
 ): SavedTab[] {
   const saved: SavedTab[] = [];
   for (const tab of tabs) {
-    if (typeof tab.url !== 'string' || tab.url.length === 0) continue;
+    const candidateUrl =
+      typeof tab.url === 'string' && tab.url.length > 0 ? tab.url : tab.pendingUrl;
+    if (typeof candidateUrl !== 'string' || candidateUrl.length === 0) continue;
     saved.push(
       createSavedTab({
-        url: tab.url,
-        title: typeof tab.title === 'string' && tab.title.length > 0 ? tab.title : tab.url,
+        url: candidateUrl,
+        title:
+          typeof tab.title === 'string' && tab.title.length > 0 ? tab.title : candidateUrl,
         savedAt: now,
       }),
     );
