@@ -41,7 +41,7 @@ describe('list', () => {
   it('calculates group created at timestamps', () => {
     expect(getGroupCreatedAt(sampleTabs)).toBe(10);
     expect(Number.isFinite(getGroupCreatedAt([]))).toBe(false);
-    expect(getGroupCreatedAt([{ id: 'x', url: 'https://x.com', title: 'X' } as const])).toBe(
+    expect(getGroupCreatedAt([{ id: 'x', url: 'https://x.com', title: 'X', savedAt: NaN } as const])).toBe(
       Number.NEGATIVE_INFINITY,
     );
     expect(formatCreatedAt(1700000000000)).toContain('2023');
