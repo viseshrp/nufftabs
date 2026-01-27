@@ -9,7 +9,7 @@ nufftabs is a minimal Chrome (MV3) extension to condense all tabs from the curre
 - List UI with restore single, restore all, delete all, export/import JSON.
 - Restore rules: single restore uses the current window; restore all opens a new window unless the list tab is the only tab.
 - List tab is pinned and reused if it already exists.
-- Settings page for “Exclude pinned tabs”.
+- Settings page for “Exclude pinned tabs” and optional memory-saving restore.
 
 ## How it works
 
@@ -62,7 +62,7 @@ tradeoffs. These are documented in code comments, but summarized here for mainta
 - **Storage schema:** saved tabs are stored per group under `savedTabs:<groupKey>` with a
   `savedTabsIndex` array listing active group keys. This avoids full-blob rewrites.
 - **Data shapes:** `SavedTab` requires a UUID `id`, non-empty `url`, `title`, and `savedAt`
-  epoch ms. Settings are `{ excludePinned, restoreBatchSize }`.
+  epoch ms. Settings are `{ excludePinned, restoreBatchSize, discardRestoredTabs }`.
 - **Restore chunking:** `restoreBatchSize` controls how many tabs open per window during
   "Restore all" (one window per chunk, after any reused list window).
 - **Permissions:** only `tabs` + `storage` are required; no host permissions are used.
@@ -72,6 +72,7 @@ tradeoffs. These are documented in code comments, but summarized here for mainta
 ### Restore rules
 - **Restore single:** always opens the tab in the current window (the window that contains the list tab) and keeps the list tab open and pinned.
 - **Restore all:** opens a new window by default. Exception: if the list tab is the only tab in the current window, all restored tabs open in that same window (list tab remains open and active).
+- **Save memory on restore:** when enabled, restored tabs are discarded immediately (best-effort) and will load when clicked.
 
 ## Development setup (WXT)
 
@@ -139,6 +140,11 @@ pnpm build
 1. Open the options page (Extension details ? “Extension options”).
 2. Toggle **Exclude pinned tabs**.
 3. When enabled, pinned tabs are not saved or closed during condense.
+
+### Save memory on restore
+1. Open the options page.
+2. Set **Save memory when restoring tabs** to **Enabled**.
+3. Restored tabs are unloaded immediately and will load when clicked.
 
 ### Existing list tab reuse
 - If a list tab already exists anywhere, condense focuses the most recently active one.

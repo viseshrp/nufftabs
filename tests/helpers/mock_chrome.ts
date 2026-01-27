@@ -38,6 +38,7 @@ export type MockChrome = {
     update: (tabId: number, updateProperties: chrome.tabs.UpdateProperties) => Promise<MockTab>;
     remove: (tabIds: number | number[]) => Promise<void>;
     getCurrent: () => Promise<MockTab | null>;
+    discard: (tabId: number) => Promise<MockTab>;
   };
   windows: {
     create: (createData?: chrome.windows.CreateData) => Promise<MockWindow>;
@@ -96,6 +97,7 @@ export function createMockChrome(options?: { initialStorage?: StorageRecord }) {
       title: params.url ?? 'about:blank',
       pinned: Boolean(params.pinned),
       active: params.active !== false,
+      discarded: false,
       lastAccessed: Date.now(),
     } as MockTab;
 
@@ -245,6 +247,12 @@ export function createMockChrome(options?: { initialStorage?: StorageRecord }) {
       async getCurrent() {
         if (typeof currentTabId === 'number') return tabs.get(currentTabId) ?? null;
         return null;
+      },
+      async discard(tabId: number) {
+        const tab = tabs.get(tabId);
+        if (!tab) throw new Error('Tab not found');
+        tab.discarded = true;
+        return tab;
       },
     },
     windows: {

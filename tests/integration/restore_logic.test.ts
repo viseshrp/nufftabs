@@ -154,6 +154,31 @@ describe('restore logic', () => {
     expect(restored).toBe(true);
   });
 
+  it('discards restored tabs when enabled', async () => {
+    const mock = createMockChrome();
+    setMockChrome(mock.chrome);
+
+    await writeSettings({ excludePinned: true, restoreBatchSize: 2, discardRestoredTabs: true });
+
+    const listUrl = mock.chrome.runtime.getURL(LIST_PAGE_PATH);
+    const window = mock.createWindow([listUrl]);
+    const listTabId = window.tabs?.[0]?.id as number;
+    mock.setCurrentTab(listTabId);
+
+    const restored = await restoreTabs([
+      { id: '1', url: 'https://a.com', title: 'A', savedAt: 1 },
+      { id: '2', url: 'https://b.com', title: 'B', savedAt: 1 },
+    ]);
+    expect(restored).toBe(true);
+
+    const tabsInWindow = await mock.chrome.tabs.query({ windowId: window.id as number });
+    const restoredTabs = tabsInWindow.filter((tab: chrome.tabs.Tab) => tab.url !== listUrl);
+    expect(restoredTabs).toHaveLength(2);
+    for (const tab of restoredTabs) {
+      expect(tab.discarded).toBe(true);
+    }
+  });
+
   it('fails when window id is missing without reuse', async () => {
     const mock = createMockChrome();
     setMockChrome(mock.chrome);

@@ -10,8 +10,9 @@ import {
   mergeGroups,
   normalizeImportedGroups,
 } from './list';
-import { getReuseWindowContext, restoreTabs } from './restore';
+import { discardTabsBestEffort, getReuseWindowContext, restoreTabs } from './restore';
 import {
+  readSettings,
   readSavedGroups,
   STORAGE_KEYS,
   isSavedGroupStorageKey,
@@ -566,14 +567,31 @@ async function restoreSingle(groupKey: string, id: string): Promise<void> {
   }
 
   try {
+    const settings = await readSettings();
     const reuse = await getReuseWindowContext();
     if (typeof reuse.windowId === 'number') {
-      await chrome.tabs.create({ windowId: reuse.windowId, url: tab.url, active: false });
+      const created = await chrome.tabs.create({ windowId: reuse.windowId, url: tab.url, active: false });
       if (typeof reuse.tabId === 'number') {
         await chrome.tabs.update(reuse.tabId, { active: true });
       }
+      if (settings.discardRestoredTabs) {
+        await discardTabsBestEffort([created.id]);
+      }
     } else {
-      await chrome.windows.create({ url: tab.url });
+      const window = await chrome.windows.create({ url: tab.url });
+      if (settings.discardRestoredTabs) {
+        const firstTabId = window.tabs?.[0]?.id;
+        if (typeof firstTabId === 'number') {
+          await discardTabsBestEffort([firstTabId]);
+        } else if (typeof window.id === 'number') {
+          try {
+            const windowTabs = await chrome.tabs.query({ windowId: window.id });
+            await discardTabsBestEffort(windowTabs.map((entry) => entry.id));
+          } catch {
+            // Ignore discard failures for best-effort behavior.
+          }
+        }
+      }
     }
   } catch {
     setStatus('Failed to restore tab.');

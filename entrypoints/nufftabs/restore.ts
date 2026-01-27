@@ -4,6 +4,29 @@ import { LIST_PAGE_PATH, readSettings, type SavedTab } from '../shared/storage';
 // tab ordering compared to fully sequential creation.
 export const RESTORE_CONCURRENCY = 6;
 
+export async function discardTabsBestEffort(tabIds: Array<number | undefined | null>): Promise<void> {
+  const ids = tabIds.filter((id): id is number => typeof id === 'number');
+  if (ids.length === 0) return;
+  await Promise.allSettled(
+    ids.map(async (id) => {
+      try {
+        await chrome.tabs.discard(id);
+      } catch {
+        // Best-effort discard; ignore failures (e.g., active tabs).
+      }
+    }),
+  );
+}
+
+async function getWindowTabIdsBestEffort(windowId: number): Promise<number[]> {
+  try {
+    const tabs = await chrome.tabs.query({ windowId });
+    return tabs.map((tab) => tab.id).filter((id): id is number => typeof id === 'number');
+  } catch {
+    return [];
+  }
+}
+
 export async function runWithConcurrency<T>(
   items: T[],
   limit: number,
@@ -22,9 +45,10 @@ export async function runWithConcurrency<T>(
   await Promise.all(workers);
 }
 
-export async function createTabsInWindow(windowId: number, urls: string[], startIndex?: number): Promise<void> {
+export async function createTabsInWindow(windowId: number, urls: string[], startIndex?: number): Promise<number[]> {
   // Uses concurrency-limited creation; tabs may appear slightly out of order versus strict
   // sequential creation, which is accepted for better restore throughput.
+  const createdIds: number[] = [];
   const tasks = urls.map((url, offset) => ({
     url,
     index: typeof startIndex === 'number' ? startIndex + offset : undefined,
@@ -36,8 +60,10 @@ export async function createTabsInWindow(windowId: number, urls: string[], start
       active: false,
     };
     if (typeof task.index === 'number') createOptions.index = task.index;
-    await chrome.tabs.create(createOptions);
+    const created = await chrome.tabs.create(createOptions);
+    if (typeof created.id === 'number') createdIds.push(created.id);
   });
+  return createdIds;
 }
 
 export async function getReuseWindowContext(): Promise<{
@@ -78,11 +104,14 @@ export async function restoreTabs(savedTabs: SavedTab[]): Promise<boolean> {
       if (firstChunk && firstChunk.length > 0) {
         const existingTabs = await chrome.tabs.query({ windowId: reuse.windowId });
         const startIndex = existingTabs.length;
-        await createTabsInWindow(
+        const createdIds = await createTabsInWindow(
           reuse.windowId,
           firstChunk.map((tab) => tab.url),
           startIndex,
         );
+        if (settings.discardRestoredTabs) {
+          await discardTabsBestEffort(createdIds);
+        }
       }
       await chrome.tabs.update(reuse.tabId, { active: true });
       for (const chunk of remainingChunks) {
@@ -93,12 +122,22 @@ export async function restoreTabs(savedTabs: SavedTab[]): Promise<boolean> {
         if (typeof windowId !== 'number') {
           throw new Error('Missing window id');
         }
+        const firstTabId = window.tabs?.[0]?.id;
+        let createdIds: number[] = [];
         if (rest.length > 0) {
-          await createTabsInWindow(
+          createdIds = await createTabsInWindow(
             windowId,
             rest.map((tab) => tab.url),
             1,
           );
+        }
+        if (settings.discardRestoredTabs) {
+          if (typeof firstTabId === 'number') {
+            await discardTabsBestEffort([firstTabId, ...createdIds]);
+          } else {
+            const fallbackIds = await getWindowTabIdsBestEffort(windowId);
+            await discardTabsBestEffort(fallbackIds);
+          }
         }
       }
     } else {
@@ -110,12 +149,22 @@ export async function restoreTabs(savedTabs: SavedTab[]): Promise<boolean> {
         if (typeof windowId !== 'number') {
           throw new Error('Missing window id');
         }
+        const firstTabId = window.tabs?.[0]?.id;
+        let createdIds: number[] = [];
         if (rest.length > 0) {
-          await createTabsInWindow(
+          createdIds = await createTabsInWindow(
             windowId,
             rest.map((tab) => tab.url),
             1,
           );
+        }
+        if (settings.discardRestoredTabs) {
+          if (typeof firstTabId === 'number') {
+            await discardTabsBestEffort([firstTabId, ...createdIds]);
+          } else {
+            const fallbackIds = await getWindowTabIdsBestEffort(windowId);
+            await discardTabsBestEffort(fallbackIds);
+          }
         }
       }
     }
