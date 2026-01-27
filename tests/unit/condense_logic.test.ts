@@ -34,11 +34,13 @@ describe('condense', () => {
     const keyA = createCondenseGroupKey(8, 1700000000000, 'nonce-a');
     const keyB = createCondenseGroupKey(8, 1700000000000, 'nonce-b');
     const keyUnknown = createCondenseGroupKey(undefined, 1700000001000, 'nonce-c');
+    const keyLater = createCondenseGroupKey(8, 1700000002000, 'nonce-d');
 
     expect(keyA).not.toBe(keyB);
     expect(keyA).toBe('8-1700000000000-nonce-a');
     expect(keyB).toBe('8-1700000000000-nonce-b');
     expect(keyUnknown).toBe('unknown-1700000001000-nonce-c');
+    expect(keyLater).toBe('8-1700000002000-nonce-d');
   });
 
   it('saves tabs with consistent timestamps and prepends existing', () => {
