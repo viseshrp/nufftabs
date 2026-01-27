@@ -197,7 +197,7 @@ test.describe('nufftabs extension e2e', () => {
     await seedSavedGroup(page, 'delete-group', ['https://example.com/3']);
     await waitForSavedGroupCount(page, 1);
 
-    const listPage = await getOrOpenListPage(context, listUrl);
+    let listPage = await getOrOpenListPage(context, listUrl);
     await expect(listPage.locator('.group-card')).toHaveCount(1, { timeout: 15000 });
 
     await expect(listPage.locator('button[data-action="delete-group"]')).toHaveCount(1);
