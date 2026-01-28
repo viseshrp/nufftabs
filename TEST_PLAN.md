@@ -14,7 +14,7 @@
   - JSON import/merge and restore rules with mocked tab/window APIs
 - E2E tests (real browser + built extension)
   - Condense tabs
-  - Group tiles by windowId
+  - Group cards per condense action
   - Per-tile restore all / delete all
   - Restore single rules (current window)
   - Import JSON append behavior
@@ -23,7 +23,7 @@
 
 ## Core scenarios to cover
 - Condense filters pinned/list tab and saves eligible tabs
-- Group key equals windowId (string) and groups render in UI
+- Group key includes windowId + timestamp + uuid and groups render in UI
 - Restore rules: single restores to current window; restore all opens new windows unless list tab is only tab
 - Save memory on restore: when enabled, restored tabs are discarded after URL set (best-effort)
 - Import JSON append vs replace; invalid JSON errors

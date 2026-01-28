@@ -112,7 +112,7 @@ Unit + integration:
 
 E2E:
 - Condense tabs
-- Group tiles by windowId
+- Group cards per condense action (group key)
 - Restore single (current window)
 - Restore all (post-single)
 - Delete all
