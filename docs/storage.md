@@ -9,7 +9,8 @@ understand the decisions and avoid common pitfalls.
   added or removed.
 - **Simple to reason about:** minimal schema and a single source of truth.
 - **Only `chrome.storage.local`:** no sync requirements for saved tabs.
-- **No legacy migration:** the extension assumes a clean schema from day one.
+- **No legacy migration:** the extension has not shipped yet, so we can assume a clean
+  schema from day one.
 
 ## Storage keys
 All data lives in `chrome.storage.local`.
@@ -21,12 +22,12 @@ savedTabsIndex: string[]
 This is the list of active group keys. It is the canonical list used to discover
 groups on read.
 
-### 2) Per-group entries
+### 2) Per‑group entries
 ```
 savedTabs:<groupKey>: SavedTab[]
 ```
 Each group is stored under its own key. This prevents large rewrites and allows
-single-group updates.
+single‑group updates.
 
 ### 3) Settings
 ```
@@ -114,14 +115,15 @@ writeSavedGroup(groupKey, [])
 
 This is used for bulk imports and replacement flows.
 
-## Why per-group storage?
-A single monolithic `savedTabs` value would require rewriting the entire dataset on
-small changes, which is slow for large lists. The index + group layout makes common
-operations (`restoreSingle`, `deleteSingle`, `condense`) fast and proportional to one group.
+## Why per‑group storage?
+Previously, a single `savedTabs` object held all groups. That meant every update
+rewrote the entire dataset, which is slow for large lists and expensive on storage.
+The index+group layout makes the common operations (`restoreSingle`, `deleteSingle`,
+`condense`) fast and proportional to one group.
 
 ## Validation / normalization
 Inputs are normalized:
-- Non-array values become empty arrays.
+- Non‑array values become empty arrays.
 - Entries without a string `url` are dropped.
 - `savedAt` must be a finite number; otherwise it defaults to `Date.now()`.
 
@@ -149,6 +151,6 @@ If you need to add fields:
   is used for all tabs in a condense action).
 
 ## Useful file references
-- `entrypoints/shared/storage.ts` - schema, normalization, read/write helpers.
-- `entrypoints/background/index.ts` - condense writes a single group.
-- `entrypoints/nufftabs/index.ts` - restore/delete/import flows.
+- `entrypoints/shared/storage.ts` — schema, normalization, read/write helpers.
+- `entrypoints/background/index.ts` — condense writes a single group.
+- `entrypoints/nufftabs/index.ts` — restore/delete/import flows.

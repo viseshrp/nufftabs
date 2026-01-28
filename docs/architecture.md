@@ -4,20 +4,20 @@ This document explains how the extension is structured, how data flows through i
 and why certain design choices were made. It is intended to be approachable for
 junior developers and useful for future maintenance.
 
-## High-level components
+## High‑level components
 
 1) **Background service worker** (`entrypoints/background/index.ts`)
 - Listens for the extension action click.
 - Queries tabs in the current window.
 - Applies settings (exclude pinned).
-- Saves eligible tabs to storage as a new group.
+- Saves eligible tabs to storage.
 - Closes eligible tabs.
-- Focuses (or creates) the list UI tab and pins it.
+- Focuses (or creates) the list UI tab.
 
 2) **List UI (nufftabs page)** (`entrypoints/nufftabs/`)
 - Renders saved groups and tabs.
 - Provides actions: restore single, restore group, delete group.
-- Provides import/export tools (JSON, file, OneTab).
+- Provides import/export tools.
 - Listens to storage changes to refresh the view.
 
 3) **Options page** (`entrypoints/options/`)
@@ -28,18 +28,18 @@ junior developers and useful for future maintenance.
 
 ```
 User clicks action icon
-  -> Background reads settings
-  -> Background queries tabs in current window
-  -> Background filters tabs and saves a group
-  -> Background closes eligible tabs
-  -> Background focuses or creates list UI tab
+  → Background reads settings
+  → Background queries tabs in current window
+  → Background filters tabs and saves a group
+  → Background closes eligible tabs
+  → Background focuses or creates list UI tab
 
 List UI loads
-  -> Reads saved groups
-  -> Renders groups + tabs
-  -> User restores/deletes/imports
-  -> UI writes updated groups back to storage
-  -> Storage change listener refreshes UI
+  → Reads saved groups
+  → Renders groups + tabs
+  → User restores/deletes/imports
+  → UI writes updated groups back to storage
+  → Storage change listener refreshes UI
 ```
 
 ## Key flows (pseudo-code)
@@ -61,7 +61,7 @@ focus or create list tab
 ```
 tabs = currentGroups[groupKey]
 tab = tabs.find(id)
-open tab in current window (fallback to new window if unavailable)
+open tab in current window (or new window if needed)
 if discardRestoredTabs: discard restored tab after URL set (best-effort)
 tabs = tabs.filter(id)
 writeSavedGroup(groupKey, tabs)
@@ -101,10 +101,10 @@ render UI
 ```
 
 ## Why groups exist
-Each "condense" action creates a **group** of tabs. The group is keyed by
+Each “condense” action creates a **group** of tabs. The group is keyed by
 `windowId-epochMs-uuid` (or `unknown-epochMs-uuid`). This keeps the UI organized and
-makes "Restore all" behavior predictable (a group roughly represents "the tabs that
-were open together").
+makes “Restore all” behavior predictable (a group roughly represents “the tabs that
+were open together”).
 
 ## Restore behavior
 
@@ -121,22 +121,21 @@ were open together").
 - If the setting is turned off mid-restore, pending discards are skipped.
 - If the list tab is the only tab in its window, it **reuses** that window for the
   first chunk and keeps the list tab pinned and active.
-
 ## Performance decisions (and tradeoffs)
 
 These choices keep the UI responsive with large tab counts:
 
 - **Incremental rendering:** only the first `RENDER_PAGE_SIZE` tabs render initially.
-  The rest require "Load more." This keeps DOM size bounded.
+  The rest require “Load more”. This keeps DOM size bounded.
 - **Heuristic group diffing:** group updates are detected by checking first/middle/last
   tab IDs instead of deep comparisons. This can miss reorder changes.
-- **Event delegation:** one click handler on the list container replaces per-row listeners.
+- **Event delegation:** one click handler on the list container replaces per‑row listeners.
   This is faster but depends on `data-action` attributes.
-- **Concurrency-limited restore:** tabs are created in small parallel batches. This
+- **Concurrency‑limited restore:** tabs are created in small parallel batches. This
   improves throughput but can relax strict ordering.
 
 ## UI rendering model
-The list UI holds an in-memory `currentGroups` object and updates the DOM when:
+The list UI holds an in‑memory `currentGroups` object and updates the DOM when:
 - The page loads.
 - Storage changes (e.g., background condense or another tab).
 - The page becomes visible again.
@@ -151,9 +150,8 @@ Groups are rendered as cards. Each group can be collapsed without deleting data.
 - **Save memory on restore:** when enabled, restored tabs are discarded
   after their URLs are set (best-effort) and load when clicked.
 - **Save memory on restore (toggle off):** pending discards are skipped when the setting is turned off mid-restore.
-- **Export JSON:** writes `{ savedTabs: ... }` to the textarea, copies it, and downloads a file.
+- **Export JSON:** writes `{ savedTabs: ... }` to the textarea and downloads it.
 - **Import JSON:** validates and appends (or replaces) groups.
-- **Import file:** reads a JSON file and appends the parsed tabs.
 - **Import OneTab:** parses OneTab text and appends to current group.
 - **Load more:** renders the next chunk of rows for large groups.
 
@@ -189,15 +187,15 @@ For the full schema and reasoning, see `docs/storage.md`.
 ## Troubleshooting matrix
 - **Condense closes tabs but list is empty:** storage write failed; check background console
   and verify `savedTabsIndex`/`savedTabs:<groupKey>` keys exist.
-- **List UI doesn't refresh:** check storage listener and `isSameGroup` heuristic.
-- **Restore all opens many windows:** verify `restoreBatchSize` and list-tab reuse logic.
+- **List UI doesn’t refresh:** check storage listener and `isSameGroup` heuristic.
+- **Restore all opens many windows:** verify `restoreBatchSize` and list‑tab reuse logic.
 - **Import JSON fails:** validate schema; ensure each entry has a string `url`.
 
 ## Glossary
 - **Group:** a collection of tabs saved together (keyed by `windowId-epochMs-uuid`).
 - **List tab:** the `nufftabs.html` page that shows saved tabs.
 - **Chunk:** a batch of tabs restored into a single window (size = `restoreBatchSize`).
-- **Restore batch size:** number of tabs to open per window during "Restore all."
+- **Restore batch size:** number of tabs to open per window during “Restore all”.
 - **Index:** `savedTabsIndex`, the list of group keys in storage.
 
 ## Future changes

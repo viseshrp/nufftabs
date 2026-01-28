@@ -6,24 +6,23 @@ nufftabs is a minimal Chrome (MV3) extension to condense all tabs from the curre
 
 ## Core features
 - Condense tabs from the current window (optionally excluding pinned tabs).
-- List UI grouped by condense action, with per-group restore all/delete all plus per-tab restore/delete.
-- Export/import JSON (append or replace), import from file, and OneTab import.
-- Restore rules: single restore uses the current window; restore all opens new windows per chunk, reusing the list window only when it is the sole tab.
+- List UI with restore single, restore all, delete all, export/import JSON.
+- Restore rules: single restore uses the current window; restore all opens a new window unless the list tab is the only tab.
 - List tab is pinned and reused if it already exists.
-- Settings for “Exclude pinned tabs,” “Tabs per restore window,” and optional memory-saving restore.
+- Settings page for “Exclude pinned tabs” and optional memory-saving restore.
 
 ## How it works
 
 ### Condense
 - Triggered by clicking the extension action icon.
 - Reads settings (`excludePinned`, `restoreBatchSize`, `discardRestoredTabs`) from `chrome.storage.local`.
-- Saves eligible tabs (URL + title + timestamp) to a new group under `savedTabs:<groupKey>` and updates `savedTabsIndex`.
+- Saves eligible tabs (URL + title + timestamp) to `savedTabs`.
 - Closes eligible tabs.
 - Focuses an existing nufftabs list tab if one exists anywhere (most recently active), or creates a new one if none exist. The list tab is pinned.
 
 ### List page
 - Unlisted page at `/nufftabs.html`.
-- Renders saved tab groups from `chrome.storage.local`.
+- Renders saved tabs from `chrome.storage.local`.
 - Refreshes on storage changes and when the tab becomes visible.
 
 ### Performance tradeoffs (intentional)
@@ -73,7 +72,7 @@ tradeoffs. These are documented in code comments, but summarized here for mainta
 
 ### Restore rules
 - **Restore single:** always opens the tab in the current window (the window that contains the list tab) and keeps the list tab open and pinned.
-  - **Restore all:** opens new window(s) per restore chunk. If the list tab is the only tab in its window, the first chunk opens there and remaining chunks open in new windows (list tab remains open and active).
+- **Restore all:** opens a new window by default. Exception: if the list tab is the only tab in the current window, all restored tabs open in that same window (list tab remains open and active).
 - **Save memory on restore:** when enabled, restored tabs are discarded after their URLs are set (best-effort) and will load when clicked.
 
 ## Development setup (WXT)
@@ -119,21 +118,19 @@ pnpm build
 2. The tab opens in the **current window**.
 3. The list item is removed from storage.
 
-### Restore all (per group)
-1. Click **Restore all** on a group card.
-2. If the list tab is not the only tab in the window, a **new window** opens for each restore chunk.
-3. If the list tab is the only tab, the first chunk restores **in the same window**, and the list tab stays open.
+### Restore all (new window unless list tab is only tab)
+1. Click **Restore all**.
+2. If the list tab is not the only tab in the window, a **new window** opens with all saved tabs.
+3. If the list tab is the only tab, all restored tabs open **in the same window**, and the list tab stays open.
 
-### Delete all (per group)
-1. Click **Delete all** on a group card.
-2. The selected group is removed.
+### Delete all
+1. Click **Delete all**.
+2. The saved list is cleared.
 
 ### Export / Import JSON
 1. Click the Export/Import control to open the panel.
-2. **Export** populates the JSON textarea, copies to clipboard (if allowed), and downloads a backup file.
-3. **Import** appends the parsed tabs to existing groups.
-4. **Import (replace)** reads the textarea and replaces the saved list if valid.
-5. **Import file** reads a JSON file and appends the parsed tabs.
+2. **Export** populates the JSON textarea and copies to clipboard (if allowed).
+3. **Import (replace)** reads the textarea and replaces the saved list if valid.
 
 ### Import from OneTab
 1. In OneTab, open “Export / Import URLs” and copy the text.
@@ -144,11 +141,6 @@ pnpm build
 1. Open the options page (Extension details ? “Extension options”).
 2. Toggle **Exclude pinned tabs**.
 3. When enabled, pinned tabs are not saved or closed during condense.
-
-### Tabs per restore window
-1. Open the options page.
-2. Set **Tabs per restore window** (leave blank to use the default of 100).
-3. During **Restore all**, each window opens up to that many tabs.
 
 ### Save memory on restore
 1. Open the options page.
@@ -169,7 +161,7 @@ pnpm build
 
 ## Permissions
 - `tabs`: required to query, create, update, move, and close tabs/windows.
-- `storage`: required to persist `savedTabsIndex`, `savedTabs:<groupKey>`, and settings in `chrome.storage.local`.
+- `storage`: required to persist `savedTabs` and settings in `chrome.storage.local`.
 
 ## Troubleshooting
 - **List doesn’t update after condense:** reload the list tab or check the service worker console for errors.
@@ -182,7 +174,7 @@ pnpm build
 If any list tab exists, nufftabs reuses the most recently active one instead of creating duplicates.
 
 **Where is data stored?**  
-In `chrome.storage.local` under `savedTabsIndex`, `savedTabs:<groupKey>`, and `settings`.
+In `chrome.storage.local` under `savedTabs` and `settings`.
 
 **Why are pinned tabs excluded by default?**  
 It’s a safety default so pinned tabs are not closed unless you turn the setting off.
