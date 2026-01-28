@@ -10,8 +10,8 @@ nufftabs is an offline Chrome extension that saves and restores your tabs. It do
 - Tab titles
 - Saved timestamps
 - A grouping key derived from the current window id (stored as a string)
-- Settings values: `excludePinned`, `restoreBatchSize`, `discardRestoredTabs`
-- Any JSON you paste or import for restore (user-initiated), including OneTab export text
+- The single settings value: excludePinned
+- Any JSON you paste or import for restore (user-initiated)
 
 ## How data is used
 - To save tabs into a local list and restore them on request.
@@ -20,7 +20,7 @@ nufftabs is an offline Chrome extension that saves and restores your tabs. It do
 
 ## Storage and retention
 - Saved tabs are stored locally in chrome.storage.local on your device.
-- Settings are stored locally in chrome.storage.local.
+- Settings are stored in chrome.storage.sync.
 - Data remains until you delete it or restore tabs, or until you clear extension storage.
 - If you export data, the file/clipboard contents are under your control and remain wherever you save them.
 
