@@ -1,94 +1,146 @@
+/* Inherits variables from ../shared/theme.css */
+
 :root {
-  color-scheme: light;
-  font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
-  line-height: 1.4;
+  accent-color: var(--md-sys-color-primary);
 }
 
 body {
   margin: 0;
   padding: 24px;
-  background: #f6f6f6;
-  color: #202124;
+  background: var(--md-sys-color-background);
+  color: var(--md-sys-color-on-background);
+  font-family: var(--md-sys-typescale-body-font);
+  display: flex;
+  justify-content: center;
+  min-height: 100vh;
 }
 
 .app {
-  max-width: 720px;
-  margin: 0 auto;
-  background: #ffffff;
-  padding: 20px 24px;
-  border-radius: 10px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+  width: 100%;
+  max-width: 680px;
+  background: var(--md-sys-color-surface);
+  padding: 32px;
+  border-radius: var(--md-sys-shape-corner-large);
+  box-shadow: var(--md-sys-elevation-1);
+  height: fit-content;
 }
 
 header {
-  margin-bottom: 16px;
+  margin-bottom: 32px;
+  text-align: center;
 }
 
 h1 {
-  margin: 0 0 4px;
-  font-size: 24px;
+  margin: 0 0 8px;
+  font-size: 28px;
+  font-weight: 400;
+  color: var(--md-sys-color-on-surface);
 }
 
 .subtitle {
   margin: 0;
-  color: #5f6368;
+  color: var(--md-sys-color-on-surface-variant);
+  font-size: 16px;
 }
 
 .settings {
-  margin-bottom: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
 }
 
+/* Specific setting rows */
 .setting {
   display: flex;
   align-items: center;
-  gap: 8px;
-  font-weight: 600;
+  gap: 16px;
+  font-size: 16px;
+  color: var(--md-sys-color-on-surface);
 }
 
-.setting + .setting {
-  margin-top: 12px;
+.setting input[type="checkbox"] {
+  width: 20px;
+  height: 20px;
 }
 
 .setting input[type="number"] {
-  width: 120px;
-  padding: 6px 8px;
-  border-radius: 6px;
-  border: 1px solid #dadce0;
-  font-size: 13px;
+  width: 100px;
+  /* Specific width */
+  padding: 10px 12px;
+  border-radius: var(--md-sys-shape-corner-small);
+  border: 1px solid var(--md-sys-color-outline);
+  background: transparent;
+  color: var(--md-sys-color-on-surface);
+  font-size: 14px;
 }
 
+.setting input[type="number"]:focus {
+  outline: 2px solid var(--md-sys-color-primary);
+  border-color: transparent;
+}
+
+/* Radio Group (Card-like or Section) */
 .setting-group {
-  margin-top: 12px;
-  padding: 12px;
-  border-radius: 8px;
-  border: 1px solid #e4e6eb;
-  background: #fafafa;
+  margin-top: 8px;
+  padding: 20px;
+  border-radius: var(--md-sys-shape-corner-medium);
+  border: 1px solid var(--md-sys-color-outline);
+  background: transparent;
+  /* or surface-variant */
+}
+
+/* Reduce border opacity for outline */
+.setting-group {
+  border-color: rgba(116, 119, 127, 0.4);
 }
 
 .setting-label {
-  font-weight: 600;
-  margin-bottom: 4px;
+  font-weight: 500;
+  margin-bottom: 8px;
+  font-size: 16px;
+  color: var(--md-sys-color-on-surface);
 }
 
 .setting-help {
-  margin: 0 0 10px;
-  font-size: 12px;
-  color: #5f6368;
+  margin: 0 0 16px;
+  font-size: 14px;
+  color: var(--md-sys-color-on-surface-variant);
+  line-height: 1.5;
 }
 
 .setting-radio {
   display: flex;
   align-items: center;
-  gap: 8px;
-  font-weight: 600;
+  gap: 12px;
+  padding: 8px 0;
+  cursor: pointer;
 }
 
-.setting-radio + .setting-radio {
-  margin-top: 6px;
+.setting-radio input[type="radio"] {
+  width: 20px;
+  height: 20px;
+  margin: 0;
+}
+
+.setting-radio span {
+  font-size: 15px;
+  color: var(--md-sys-color-on-surface);
 }
 
 .status {
-  margin-top: 16px;
+  margin-top: 24px;
   min-height: 20px;
-  color: #5f6368;
+  color: var(--md-sys-color-on-surface-variant);
+  font-size: 14px;
+  text-align: center;
+}
+
+@media (max-width: 600px) {
+  body {
+    padding: 16px;
+  }
+
+  .app {
+    padding: 20px;
+  }
 }
