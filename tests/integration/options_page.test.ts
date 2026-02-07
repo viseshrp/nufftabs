@@ -18,6 +18,9 @@ describe('options settings page', () => {
       <input id="restoreBatchSize" type="number" />
       <input id="discardRestoredTabsDisabled" type="radio" name="discardRestoredTabs" value="false" />
       <input id="discardRestoredTabsEnabled" type="radio" name="discardRestoredTabs" value="true" />
+      <input id="themeOs" type="radio" name="theme" value="os" />
+      <input id="themeLight" type="radio" name="theme" value="light" />
+      <input id="themeDark" type="radio" name="theme" value="dark" />
       <div id="status"></div>
     `;
 
@@ -67,6 +70,9 @@ describe('options settings page', () => {
       <input id="restoreBatchSize" type="number" />
       <input id="discardRestoredTabsDisabled" type="radio" name="discardRestoredTabs" value="false" />
       <input id="discardRestoredTabsEnabled" type="radio" name="discardRestoredTabs" value="true" />
+      <input id="themeOs" type="radio" name="theme" value="os" />
+      <input id="themeLight" type="radio" name="theme" value="light" />
+      <input id="themeDark" type="radio" name="theme" value="dark" />
       <div id="status"></div>
     `;
 
@@ -100,6 +106,9 @@ describe('options settings page', () => {
       <input id="restoreBatchSize" type="number" />
       <input id="discardRestoredTabsDisabled" type="radio" name="discardRestoredTabs" value="false" />
       <input id="discardRestoredTabsEnabled" type="radio" name="discardRestoredTabs" value="true" />
+      <input id="themeOs" type="radio" name="theme" value="os" />
+      <input id="themeLight" type="radio" name="theme" value="light" />
+      <input id="themeDark" type="radio" name="theme" value="dark" />
       <div id="status"></div>
     `;
 
