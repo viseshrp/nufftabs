@@ -107,7 +107,7 @@ export async function initSettingsPage(documentRef: Document = document): Promis
         typeof nextSettings.discardRestoredTabs === 'boolean'
           ? nextSettings.discardRestoredTabs
           : DEFAULT_SETTINGS.discardRestoredTabs,
-      theme: nextSettings.theme ?? DEFAULT_SETTINGS.theme,
+      theme: nextSettings.theme ?? settings.theme,
     };
     customBatchSize =
       typeof nextSettings.restoreBatchSize === 'number' && Number.isFinite(nextSettings.restoreBatchSize);
