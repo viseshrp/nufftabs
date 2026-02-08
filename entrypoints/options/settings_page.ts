@@ -57,11 +57,6 @@ export async function initSettingsPage(documentRef: Document = document): Promis
     return 'os';
   };
 
-  const getRestoreBatchSizeSetting = () => {
-    const parsed = getBatchSizeInput(restoreBatchSizeEl);
-    return parsed ?? undefined;
-  };
-
   const applyTheme = (theme: Settings['theme']) => {
     if (theme === 'os') {
       documentRef.documentElement.removeAttribute('data-theme');
@@ -70,6 +65,10 @@ export async function initSettingsPage(documentRef: Document = document): Promis
     }
   };
 
+  const getRestoreBatchSizeSetting = () => {
+    const parsed = getBatchSizeInput(restoreBatchSizeEl);
+    return parsed ?? undefined;
+  };
   const raw = await chrome.storage.local.get([STORAGE_KEYS.settings]);
   const rawSettings = raw[STORAGE_KEYS.settings];
   const hasCustomBatchSize =
@@ -108,7 +107,7 @@ export async function initSettingsPage(documentRef: Document = document): Promis
         typeof nextSettings.discardRestoredTabs === 'boolean'
           ? nextSettings.discardRestoredTabs
           : DEFAULT_SETTINGS.discardRestoredTabs,
-      theme: nextSettings.theme ?? DEFAULT_SETTINGS.theme,
+      theme: nextSettings.theme ?? settings.theme,
     };
     customBatchSize =
       typeof nextSettings.restoreBatchSize === 'number' && Number.isFinite(nextSettings.restoreBatchSize);
@@ -116,7 +115,7 @@ export async function initSettingsPage(documentRef: Document = document): Promis
     setStatus(statusEl, 'Settings saved.');
   };
 
-  excludePinnedEl.addEventListener('change', async () => {
+  const updateSettings = async () => {
     const nextSettings: SettingsInput = {
       excludePinned: excludePinnedEl.checked,
       restoreBatchSize: getRestoreBatchSizeSetting(),
@@ -124,67 +123,33 @@ export async function initSettingsPage(documentRef: Document = document): Promis
       theme: getThemeSelection(),
     };
     await saveSettings(nextSettings);
-  });
-
-  const handleBatchSizeChange = async () => {
-    const parsed = getBatchSizeInput(restoreBatchSizeEl);
-    if (!parsed) {
-      const nextSettings: SettingsInput = {
-        excludePinned: excludePinnedEl.checked,
-        restoreBatchSize: undefined,
-        discardRestoredTabs: getDiscardSelection(),
-        theme: getThemeSelection(),
-      };
-      await saveSettings(nextSettings);
+    // Explicitly clear invalid input if parsing failed (returned undefined)
+    if (!nextSettings.restoreBatchSize) {
       restoreBatchSizeEl.value = '';
-      return;
     }
-    const nextSettings: SettingsInput = {
-      excludePinned: excludePinnedEl.checked,
-      restoreBatchSize: parsed,
-      discardRestoredTabs: getDiscardSelection(),
-      theme: getThemeSelection(),
-    };
-    await saveSettings(nextSettings);
   };
 
+  excludePinnedEl.addEventListener('change', async () => {
+    await updateSettings();
+  });
+
   restoreBatchSizeEl.addEventListener('change', () => {
-    void handleBatchSizeChange();
+    void updateSettings();
   });
 
   restoreBatchSizeEl.addEventListener('blur', () => {
-    void handleBatchSizeChange();
+    void updateSettings();
   });
-
-  const handleDiscardChange = async () => {
-    const nextSettings: SettingsInput = {
-      excludePinned: excludePinnedEl.checked,
-      restoreBatchSize: getRestoreBatchSizeSetting(),
-      discardRestoredTabs: getDiscardSelection(),
-      theme: getThemeSelection(),
-    };
-    await saveSettings(nextSettings);
-  };
 
   for (const radio of discardRadios) {
     radio.addEventListener('change', () => {
-      void handleDiscardChange();
+      void updateSettings();
     });
   }
 
-  const handleThemeChange = async () => {
-    const nextSettings: SettingsInput = {
-      excludePinned: excludePinnedEl.checked,
-      restoreBatchSize: getRestoreBatchSizeSetting(),
-      discardRestoredTabs: getDiscardSelection(),
-      theme: getThemeSelection(),
-    };
-    await saveSettings(nextSettings);
-  };
-
   for (const radio of themeRadios) {
     radio.addEventListener('change', () => {
-      void handleThemeChange();
+      void updateSettings();
     });
   }
 }

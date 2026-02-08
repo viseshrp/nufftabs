@@ -91,7 +91,7 @@ h1 {
 
 /* Reduce border opacity for outline */
 .setting-group {
-  border-color: rgba(116, 119, 127, 0.4);
+  border-color: rgba(var(--md-sys-color-outline-rgb), 0.4);
 }
 
 .setting-label {
