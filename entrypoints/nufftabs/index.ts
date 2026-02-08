@@ -18,6 +18,7 @@ import {
   UNKNOWN_GROUP_KEY,
   writeSavedGroup,
   writeSavedGroups,
+  normalizeSettings,
   type SavedTab,
   type SavedTabGroups,
 } from '../shared/storage';
@@ -92,6 +93,28 @@ type GroupView = {
 };
 
 const groupViews = new Map<string, GroupView>();
+
+function applyTheme(theme: 'os' | 'light' | 'dark'): void {
+  if (theme === 'os') {
+    document.documentElement.removeAttribute('data-theme');
+  } else {
+    document.documentElement.setAttribute('data-theme', theme);
+  }
+}
+
+async function initTheme(): Promise<void> {
+  const settings = await readSettings();
+  applyTheme(settings.theme);
+
+  chrome.storage.onChanged.addListener((changes, areaName) => {
+    if (areaName === 'local' && changes[STORAGE_KEYS.settings]) {
+      const newSettings = normalizeSettings(changes[STORAGE_KEYS.settings].newValue);
+      applyTheme(newSettings.theme);
+    }
+  });
+}
+
+void initTheme();
 
 function updateGroupHeader(view: GroupView, tabs: SavedTab[], createdAt: number): void {
   view.titleEl.textContent = `${tabs.length} tab${tabs.length === 1 ? '' : 's'}`;
