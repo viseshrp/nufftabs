@@ -360,7 +360,7 @@ button {
 .row-actions {
   display: flex;
   align-items: center;
-  gap: 0;
+  gap: 4px;
 }
 
 /* Snackbar */
