@@ -5,7 +5,6 @@ import {
   cloneGroups,
   countTotalTabs,
   formatCreatedAt,
-  getGroupCreatedAt,
   isSameGroup,
   mergeGroups,
   normalizeImportedGroups,
@@ -94,9 +93,9 @@ type GroupView = {
 
 const groupViews = new Map<string, GroupView>();
 
-function updateGroupHeader(view: GroupView, tabs: SavedTab[], createdAt = getGroupCreatedAt(tabs)): void {
+function updateGroupHeader(view: GroupView, tabs: SavedTab[], createdAt: number): void {
   view.titleEl.textContent = `${tabs.length} tab${tabs.length === 1 ? '' : 's'}`;
-  view.metaEl.textContent = Number.isFinite(createdAt) ? `Created ${formatCreatedAt(createdAt)}` : 'Created -';
+  view.metaEl.textContent = createdAt > 0 ? `Created ${formatCreatedAt(createdAt)}` : 'Created -';
 }
 
 function ensureLoadMore(view: GroupView): void {
@@ -474,15 +473,25 @@ function createGroupView(groupKey: string): GroupView {
   };
 }
 
+function parseGroupCreationTime(key: string): number | null {
+  const parts = key.split('-');
+  if (parts.length < 3) return null;
+  const timestamp = Number(parts[1]);
+  return Number.isFinite(timestamp) && timestamp > 0 ? timestamp : null;
+}
+
 function renderGroups(savedGroups: SavedTabGroups, previousGroups: SavedTabGroups): void {
   if (!groupsEl || !emptyEl) return;
   const entries = Object.entries(savedGroups)
     .filter(([, tabs]) => tabs.length > 0)
-    .map(([key, tabs]) => ({
-      key,
-      tabs,
-      createdAt: getGroupCreatedAt(tabs),
-    }))
+    .map(([key, tabs]) => {
+      const createdAt = parseGroupCreationTime(key) ?? 0;
+      return {
+        key,
+        tabs,
+        createdAt,
+      };
+    })
     .sort((a, b) => b.createdAt - a.createdAt);
   const totalCount = entries.reduce((sum, entry) => sum + entry.tabs.length, 0);
   if (tabCountEl) tabCountEl.textContent = String(totalCount);
