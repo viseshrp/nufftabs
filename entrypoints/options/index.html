@@ -1,48 +1,60 @@
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>nufftabs options</title>
-  </head>
-  <body>
-    <main class="app">
-      <header>
-        <h1>nufftabs options</h1>
-        <p class="subtitle">Settings</p>
-      </header>
-      <section class="settings">
-        <label class="setting">
-          <input id="excludePinned" type="checkbox" />
-          <span>Exclude pinned tabs</span>
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>nufftabs options</title>
+</head>
+
+<body>
+  <main class="app">
+    <header>
+      <h1>nufftabs options</h1>
+      <p class="subtitle">Settings</p>
+    </header>
+    <section class="settings">
+      <label class="setting">
+        <input id="excludePinned" type="checkbox" />
+        <span>Exclude pinned tabs</span>
+      </label>
+      <label class="setting">
+        <span>Tabs per restore window</span>
+        <input id="restoreBatchSize" type="number" min="1" step="1" placeholder="100" />
+      </label>
+      <div class="setting-group" role="group" aria-labelledby="themeLabel">
+        <div id="themeLabel" class="setting-label">Theme</div>
+        <label class="setting-radio">
+          <input id="themeOs" type="radio" name="theme" value="os" checked />
+          <span>System</span>
         </label>
-        <label class="setting">
-          <span>Tabs per restore window</span>
-          <input id="restoreBatchSize" type="number" min="1" step="1" placeholder="100" />
+        <label class="setting-radio">
+          <input id="themeLight" type="radio" name="theme" value="light" />
+          <span>Light</span>
         </label>
-        <div class="setting-group" role="group" aria-labelledby="discardRestoredTabsLabel">
-          <div id="discardRestoredTabsLabel" class="setting-label">Save memory when restoring tabs</div>
-          <p class="setting-help">
-            When enabled, restored tabs are immediately unloaded to save RAM and will load when you click them.
-          </p>
-          <label class="setting-radio">
-            <input
-              id="discardRestoredTabsDisabled"
-              type="radio"
-              name="discardRestoredTabs"
-              value="false"
-              checked
-            />
-            <span>Disabled</span>
-          </label>
-          <label class="setting-radio">
-            <input id="discardRestoredTabsEnabled" type="radio" name="discardRestoredTabs" value="true" />
-            <span>Enabled</span>
-          </label>
-        </div>
-      </section>
-      <div id="status" class="status" role="status" aria-live="polite"></div>
-    </main>
-    <script type="module" src="./index.ts"></script>
-  </body>
+        <label class="setting-radio">
+          <input id="themeDark" type="radio" name="theme" value="dark" />
+          <span>Dark</span>
+        </label>
+      </div>
+      <div class="setting-group" role="group" aria-labelledby="discardRestoredTabsLabel">
+        <div id="discardRestoredTabsLabel" class="setting-label">Save memory when restoring tabs</div>
+        <p class="setting-help">
+          When enabled, restored tabs are immediately unloaded to save RAM and will load when you click them.
+        </p>
+        <label class="setting-radio">
+          <input id="discardRestoredTabsDisabled" type="radio" name="discardRestoredTabs" value="false" checked />
+          <span>Disabled</span>
+        </label>
+        <label class="setting-radio">
+          <input id="discardRestoredTabsEnabled" type="radio" name="discardRestoredTabs" value="true" />
+          <span>Enabled</span>
+        </label>
+      </div>
+    </section>
+    <div id="status" class="status" role="status" aria-live="polite"></div>
+  </main>
+  <script type="module" src="./index.ts"></script>
+</body>
+
 </html>
