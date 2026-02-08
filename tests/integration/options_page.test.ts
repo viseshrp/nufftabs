@@ -18,6 +18,9 @@ describe('options settings page', () => {
       <input id="restoreBatchSize" type="number" />
       <input id="discardRestoredTabsDisabled" type="radio" name="discardRestoredTabs" value="false" />
       <input id="discardRestoredTabsEnabled" type="radio" name="discardRestoredTabs" value="true" />
+      <input id="themeOs" type="radio" name="theme" value="os" />
+      <input id="themeLight" type="radio" name="theme" value="light" />
+      <input id="themeDark" type="radio" name="theme" value="dark" />
       <div id="status"></div>
     `;
 
@@ -27,13 +30,17 @@ describe('options settings page', () => {
     const restoreBatchSizeEl = document.querySelector<HTMLInputElement>('#restoreBatchSize');
     const discardDisabledEl = document.querySelector<HTMLInputElement>('#discardRestoredTabsDisabled');
     const discardEnabledEl = document.querySelector<HTMLInputElement>('#discardRestoredTabsEnabled');
-    if (!excludePinnedEl || !restoreBatchSizeEl || !discardDisabledEl || !discardEnabledEl) {
+    const themeOsEl = document.querySelector<HTMLInputElement>('#themeOs');
+    const themeLightEl = document.querySelector<HTMLInputElement>('#themeLight');
+    const themeDarkEl = document.querySelector<HTMLInputElement>('#themeDark');
+    if (!excludePinnedEl || !restoreBatchSizeEl || !discardDisabledEl || !discardEnabledEl || !themeOsEl || !themeLightEl || !themeDarkEl) {
       throw new Error('Missing settings inputs');
     }
 
     expect(excludePinnedEl.checked).toBe(true);
     expect(restoreBatchSizeEl.value).toBe('25');
     expect(discardEnabledEl.checked).toBe(true);
+    expect(themeOsEl.checked).toBe(true); // Default fallback
 
     excludePinnedEl.checked = false;
     excludePinnedEl.dispatchEvent(new Event('change'));
@@ -44,14 +51,25 @@ describe('options settings page', () => {
     discardDisabledEl.checked = true;
     discardDisabledEl.dispatchEvent(new Event('change'));
 
+    // Simulate radio button behavior manually for jsdom
+    themeOsEl.checked = false;
+    themeDarkEl.checked = true;
+    themeDarkEl.dispatchEvent(new Event('change'));
+
+    // Wait for async operations
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
     const saved = mock.storageData[STORAGE_KEYS.settings] as {
       excludePinned?: boolean;
       restoreBatchSize?: number;
       discardRestoredTabs?: boolean;
+      theme?: string;
     };
     expect(saved.excludePinned).toBe(false);
     expect(saved.restoreBatchSize).toBe(50);
     expect(saved.discardRestoredTabs).toBe(false);
+    expect(saved.theme).toBe('dark');
+    expect(document.documentElement.getAttribute('data-theme')).toBe('dark');
   });
 
   it('clears custom batch size when input is empty', async () => {
@@ -67,6 +85,9 @@ describe('options settings page', () => {
       <input id="restoreBatchSize" type="number" />
       <input id="discardRestoredTabsDisabled" type="radio" name="discardRestoredTabs" value="false" />
       <input id="discardRestoredTabsEnabled" type="radio" name="discardRestoredTabs" value="true" />
+      <input id="themeOs" type="radio" name="theme" value="os" />
+      <input id="themeLight" type="radio" name="theme" value="light" />
+      <input id="themeDark" type="radio" name="theme" value="dark" />
       <div id="status"></div>
     `;
 
@@ -100,6 +121,9 @@ describe('options settings page', () => {
       <input id="restoreBatchSize" type="number" />
       <input id="discardRestoredTabsDisabled" type="radio" name="discardRestoredTabs" value="false" />
       <input id="discardRestoredTabsEnabled" type="radio" name="discardRestoredTabs" value="true" />
+      <input id="themeOs" type="radio" name="theme" value="os" />
+      <input id="themeLight" type="radio" name="theme" value="light" />
+      <input id="themeDark" type="radio" name="theme" value="dark" />
       <div id="status"></div>
     `;
 
@@ -118,5 +142,3 @@ describe('options settings page', () => {
     expect(status?.textContent).toContain('Failed');
   });
 });
-
-

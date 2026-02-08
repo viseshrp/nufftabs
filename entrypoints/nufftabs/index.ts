@@ -5,7 +5,6 @@ import {
   cloneGroups,
   countTotalTabs,
   formatCreatedAt,
-  getGroupCreatedAt,
   isSameGroup,
   mergeGroups,
   normalizeImportedGroups,
@@ -45,6 +44,7 @@ const SVG_NS = 'http://www.w3.org/2000/svg';
 
 let snackbarTimer: number | undefined;
 let currentGroups: SavedTabGroups = {};
+let draggedTab: { groupKey: string; tabId: string } | null = null;
 
 // Render only a subset of each group at first paint to keep DOM size bounded; users can
 // load additional rows in chunks via the "Load more" control.
@@ -93,9 +93,9 @@ type GroupView = {
 
 const groupViews = new Map<string, GroupView>();
 
-function updateGroupHeader(view: GroupView, tabs: SavedTab[], createdAt = getGroupCreatedAt(tabs)): void {
+function updateGroupHeader(view: GroupView, tabs: SavedTab[], createdAt: number): void {
   view.titleEl.textContent = `${tabs.length} tab${tabs.length === 1 ? '' : 's'}`;
-  view.metaEl.textContent = Number.isFinite(createdAt) ? `Created ${formatCreatedAt(createdAt)}` : 'Created -';
+  view.metaEl.textContent = createdAt > 0 ? `Created ${formatCreatedAt(createdAt)}` : 'Created -';
 }
 
 function ensureLoadMore(view: GroupView): void {
@@ -133,6 +133,24 @@ function appendGroupItems(view: GroupView, groupKey: string, tabs: SavedTab[], s
     item.className = 'item';
     item.dataset.tabId = tab.id;
     item.dataset.groupKey = groupKey;
+    item.draggable = true;
+
+    item.addEventListener('dragstart', (e) => {
+      if (e.dataTransfer) {
+        draggedTab = { groupKey, tabId: tab.id };
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', tab.url);
+        // Defer class addition to avoid hiding the element immediately during drag generation
+        window.requestAnimationFrame(() => {
+          item.classList.add('is-dragging');
+        });
+      }
+    });
+
+    item.addEventListener('dragend', () => {
+      draggedTab = null;
+      item.classList.remove('is-dragging');
+    });
 
     const main = document.createElement('div');
     main.className = 'item-main';
@@ -417,6 +435,26 @@ function createGroupView(groupKey: string): GroupView {
   const itemsWrap = document.createElement('div');
   itemsWrap.className = 'group-items';
 
+  itemsWrap.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    if (draggedTab && draggedTab.groupKey !== groupKey) {
+      if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+      itemsWrap.classList.add('drag-over');
+    }
+  });
+
+  itemsWrap.addEventListener('dragleave', () => {
+    itemsWrap.classList.remove('drag-over');
+  });
+
+  itemsWrap.addEventListener('drop', (e) => {
+    e.preventDefault();
+    itemsWrap.classList.remove('drag-over');
+    if (draggedTab && draggedTab.groupKey !== groupKey) {
+      void handleDrop(groupKey);
+    }
+  });
+
   const list = document.createElement('ul');
   list.className = 'list';
 
@@ -435,15 +473,25 @@ function createGroupView(groupKey: string): GroupView {
   };
 }
 
+function parseGroupCreationTime(key: string): number | null {
+  const parts = key.split('-');
+  if (parts.length < 3) return null;
+  const timestamp = Number(parts[1]);
+  return Number.isFinite(timestamp) && timestamp > 0 ? timestamp : null;
+}
+
 function renderGroups(savedGroups: SavedTabGroups, previousGroups: SavedTabGroups): void {
   if (!groupsEl || !emptyEl) return;
   const entries = Object.entries(savedGroups)
     .filter(([, tabs]) => tabs.length > 0)
-    .map(([key, tabs]) => ({
-      key,
-      tabs,
-      createdAt: getGroupCreatedAt(tabs),
-    }))
+    .map(([key, tabs]) => {
+      const createdAt = parseGroupCreationTime(key) ?? 0;
+      return {
+        key,
+        tabs,
+        createdAt,
+      };
+    })
     .sort((a, b) => b.createdAt - a.createdAt);
   const totalCount = entries.reduce((sum, entry) => sum + entry.tabs.length, 0);
   if (tabCountEl) tabCountEl.textContent = String(totalCount);
@@ -686,6 +734,41 @@ async function deleteGroup(groupKey: string): Promise<void> {
   setStatus('Deleted tabs.');
 }
 
+
+async function handleDrop(targetGroupKey: string): Promise<void> {
+  if (!draggedTab) return;
+  const { groupKey: sourceGroupKey, tabId } = draggedTab;
+  if (sourceGroupKey === targetGroupKey) return;
+
+  const nextGroups = cloneGroups(currentGroups);
+  const sourceGroup = [...(nextGroups[sourceGroupKey] ?? [])]; // Copy array
+  if (sourceGroup.length === 0) return;
+
+  const tabIndex = sourceGroup.findIndex((t) => t.id === tabId);
+  if (tabIndex === -1) return;
+
+  const [tab] = sourceGroup.splice(tabIndex, 1);
+  if (!tab) return;
+
+  if (sourceGroup.length === 0) {
+    delete nextGroups[sourceGroupKey];
+  } else {
+    nextGroups[sourceGroupKey] = sourceGroup;
+  }
+
+  const targetGroup = [...(nextGroups[targetGroupKey] ?? [])]; // Copy array
+  targetGroup.unshift(tab);
+  nextGroups[targetGroupKey] = targetGroup;
+
+  const saved = await writeSavedGroups(nextGroups);
+  if (!saved) {
+    setStatus('Failed to move tab.');
+    await refreshList();
+    return;
+  }
+  applyGroups(nextGroups);
+  setStatus('Moved 1 tab.');
+}
 
 async function exportJson(): Promise<void> {
   if (!jsonAreaEl) return;

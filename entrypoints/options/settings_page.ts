@@ -26,9 +26,12 @@ export async function initSettingsPage(documentRef: Document = document): Promis
   const discardRadios = Array.from(
     documentRef.querySelectorAll<HTMLInputElement>('input[name="discardRestoredTabs"]'),
   );
+  const themeRadios = Array.from(
+    documentRef.querySelectorAll<HTMLInputElement>('input[name="theme"]'),
+  );
   const statusEl = documentRef.querySelector<HTMLDivElement>('#status');
 
-  if (!excludePinnedEl || !restoreBatchSizeEl || discardRadios.length === 0) return;
+  if (!excludePinnedEl || !restoreBatchSizeEl || discardRadios.length === 0 || themeRadios.length === 0) return;
 
   const setDiscardRadios = (enabled: boolean) => {
     for (const radio of discardRadios) {
@@ -36,9 +39,30 @@ export async function initSettingsPage(documentRef: Document = document): Promis
     }
   };
 
+  const setThemeRadios = (theme: Settings['theme']) => {
+    for (const radio of themeRadios) {
+      radio.checked = radio.value === theme;
+    }
+  };
+
   const getDiscardSelection = () => {
     const selected = discardRadios.find((radio) => radio.checked);
     return selected?.value === 'true';
+  };
+
+  const getThemeSelection = (): Settings['theme'] => {
+    const selected = themeRadios.find((radio) => radio.checked);
+    const val = selected?.value;
+    if (val === 'light' || val === 'dark') return val;
+    return 'os';
+  };
+
+  const applyTheme = (theme: Settings['theme']) => {
+    if (theme === 'os') {
+      documentRef.documentElement.removeAttribute('data-theme');
+    } else {
+      documentRef.documentElement.setAttribute('data-theme', theme);
+    }
   };
 
   const getRestoreBatchSizeSetting = () => {
@@ -57,6 +81,8 @@ export async function initSettingsPage(documentRef: Document = document): Promis
   excludePinnedEl.checked = settings.excludePinned;
   restoreBatchSizeEl.value = hasCustomBatchSize ? String(settings.restoreBatchSize) : '';
   setDiscardRadios(settings.discardRestoredTabs);
+  setThemeRadios(settings.theme);
+  applyTheme(settings.theme);
 
   let customBatchSize = hasCustomBatchSize;
 
@@ -66,6 +92,8 @@ export async function initSettingsPage(documentRef: Document = document): Promis
       excludePinnedEl.checked = settings.excludePinned;
       restoreBatchSizeEl.value = customBatchSize ? String(settings.restoreBatchSize) : '';
       setDiscardRadios(settings.discardRestoredTabs);
+      setThemeRadios(settings.theme);
+      applyTheme(settings.theme);
       setStatus(statusEl, 'Failed to save settings.');
       return;
     }
@@ -79,61 +107,49 @@ export async function initSettingsPage(documentRef: Document = document): Promis
         typeof nextSettings.discardRestoredTabs === 'boolean'
           ? nextSettings.discardRestoredTabs
           : DEFAULT_SETTINGS.discardRestoredTabs,
+      theme: nextSettings.theme ?? settings.theme,
     };
     customBatchSize =
       typeof nextSettings.restoreBatchSize === 'number' && Number.isFinite(nextSettings.restoreBatchSize);
+    applyTheme(settings.theme);
     setStatus(statusEl, 'Settings saved.');
   };
 
-  excludePinnedEl.addEventListener('change', async () => {
+  const updateSettings = async () => {
     const nextSettings: SettingsInput = {
       excludePinned: excludePinnedEl.checked,
       restoreBatchSize: getRestoreBatchSizeSetting(),
       discardRestoredTabs: getDiscardSelection(),
+      theme: getThemeSelection(),
     };
     await saveSettings(nextSettings);
-  });
-
-  const handleBatchSizeChange = async () => {
-    const parsed = getBatchSizeInput(restoreBatchSizeEl);
-    if (!parsed) {
-      const nextSettings: SettingsInput = {
-        excludePinned: excludePinnedEl.checked,
-        restoreBatchSize: undefined,
-        discardRestoredTabs: getDiscardSelection(),
-      };
-      await saveSettings(nextSettings);
+    // Explicitly clear invalid input if parsing failed (returned undefined)
+    if (!nextSettings.restoreBatchSize) {
       restoreBatchSizeEl.value = '';
-      return;
     }
-    const nextSettings: SettingsInput = {
-      excludePinned: excludePinnedEl.checked,
-      restoreBatchSize: parsed,
-      discardRestoredTabs: getDiscardSelection(),
-    };
-    await saveSettings(nextSettings);
   };
 
+  excludePinnedEl.addEventListener('change', async () => {
+    await updateSettings();
+  });
+
   restoreBatchSizeEl.addEventListener('change', () => {
-    void handleBatchSizeChange();
+    void updateSettings();
   });
 
   restoreBatchSizeEl.addEventListener('blur', () => {
-    void handleBatchSizeChange();
+    void updateSettings();
   });
-
-  const handleDiscardChange = async () => {
-    const nextSettings: SettingsInput = {
-      excludePinned: excludePinnedEl.checked,
-      restoreBatchSize: getRestoreBatchSizeSetting(),
-      discardRestoredTabs: getDiscardSelection(),
-    };
-    await saveSettings(nextSettings);
-  };
 
   for (const radio of discardRadios) {
     radio.addEventListener('change', () => {
-      void handleDiscardChange();
+      void updateSettings();
+    });
+  }
+
+  for (const radio of themeRadios) {
+    radio.addEventListener('change', () => {
+      void updateSettings();
     });
   }
 }

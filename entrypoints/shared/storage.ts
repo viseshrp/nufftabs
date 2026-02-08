@@ -11,12 +11,14 @@ export type Settings = {
   excludePinned: boolean;
   restoreBatchSize: number;
   discardRestoredTabs: boolean;
+  theme: 'os' | 'light' | 'dark';
 };
 
 export type SettingsInput = {
   excludePinned: boolean;
   restoreBatchSize?: number;
   discardRestoredTabs?: boolean;
+  theme?: 'os' | 'light' | 'dark';
 };
 
 export const STORAGE_KEYS = {
@@ -28,6 +30,7 @@ export const DEFAULT_SETTINGS: Settings = {
   excludePinned: true,
   restoreBatchSize: 100,
   discardRestoredTabs: false,
+  theme: 'os',
 };
 
 export const LIST_PAGE_PATH = 'nufftabs.html';
@@ -151,15 +154,24 @@ export function normalizeSettings(value: unknown): Settings {
   const excludePinned = (value as { excludePinned?: unknown }).excludePinned;
   const restoreBatchSize = (value as { restoreBatchSize?: unknown }).restoreBatchSize;
   const discardRestoredTabs = (value as { discardRestoredTabs?: unknown }).discardRestoredTabs;
+  const theme = (value as { theme?: unknown }).theme;
+
   const parsedBatchSize =
     typeof restoreBatchSize === 'number' && Number.isFinite(restoreBatchSize)
       ? Math.floor(restoreBatchSize)
       : DEFAULT_SETTINGS.restoreBatchSize;
+
+  const parsedTheme =
+    typeof theme === 'string' && ['os', 'light', 'dark'].includes(theme)
+      ? (theme as Settings['theme'])
+      : DEFAULT_SETTINGS.theme;
+
   return {
     excludePinned: typeof excludePinned === 'boolean' ? excludePinned : DEFAULT_SETTINGS.excludePinned,
     restoreBatchSize: parsedBatchSize > 0 ? parsedBatchSize : DEFAULT_SETTINGS.restoreBatchSize,
     discardRestoredTabs:
       typeof discardRestoredTabs === 'boolean' ? discardRestoredTabs : DEFAULT_SETTINGS.discardRestoredTabs,
+    theme: parsedTheme,
   };
 }
 
@@ -275,6 +287,12 @@ export async function writeSettings(settings: SettingsInput): Promise<boolean> {
     }
     if (typeof settings.discardRestoredTabs === 'boolean') {
       payload.discardRestoredTabs = settings.discardRestoredTabs;
+    }
+    if (
+      typeof settings.theme === 'string' &&
+      ['os', 'light', 'dark'].includes(settings.theme)
+    ) {
+      payload.theme = settings.theme;
     }
     await chrome.storage.local.set({ [STORAGE_KEYS.settings]: payload });
     return true;

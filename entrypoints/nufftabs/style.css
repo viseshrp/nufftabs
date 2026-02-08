@@ -20,6 +20,7 @@ body {
   padding: 24px;
 }
 
+/* App Bar */
 .app-bar {
   display: flex;
   align-items: center;
@@ -59,6 +60,7 @@ h1 {
   justify-content: flex-end;
 }
 
+/* Content */
 .content {
   margin-top: 16px;
   background: #ffffff;
@@ -86,6 +88,7 @@ h1 {
   fill: none;
 }
 
+/* Lists */
 .list {
   list-style: none;
   padding: 0;
@@ -101,7 +104,6 @@ h1 {
 }
 
 .group-card {
-  border: 2px solid #c6ccd2;
   border-radius: 12px;
   padding: 12px;
   background: #ffffff;
@@ -126,7 +128,6 @@ h1 {
   font-size: 12px;
   color: #5f6368;
 }
-
 
 .group-actions {
   display: flex;
@@ -159,7 +160,6 @@ h1 {
   align-items: center;
   column-gap: 12px;
   padding: 12px 16px;
-  border-bottom: 2px solid #d0d7de;
 }
 
 .item.load-more {
@@ -199,10 +199,66 @@ h1 {
   white-space: nowrap;
 }
 
+/* IO Panel */
+.io-panel {
+  margin-bottom: 16px;
+}
+
+.io-panel[hidden] {
+  display: none;
+}
+
+.io-header {
+  font-size: 13px;
+  font-weight: 600;
+  color: #5f6368;
+  margin-bottom: 8px;
+}
+
+textarea {
+  width: 100%;
+  border-radius: 10px;
+  border: 1px solid #dadce0;
+  padding: 10px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  font-size: 12px;
+  background: #fafafa;
+}
+
+.io-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+/* Buttons */
 button {
   border: none;
   cursor: pointer;
   background: transparent;
+}
+
+.text-button {
+  height: 34px;
+  padding: 0 12px;
+  border-radius: 8px;
+  background: #eef2ff;
+  color: #1a4fd8;
+  font-size: 13px;
+}
+
+.text-button:hover {
+  background: #e0e7ff;
+}
+
+.text-button.danger {
+  background: #fdecec;
+  color: #b32624;
+}
+
+.text-button.danger:hover {
+  background: #f8d7d7;
 }
 
 .icon-button {
@@ -238,16 +294,6 @@ button {
   background: #f8d7d7;
 }
 
-.row-action {
-  align-self: center;
-}
-
-.row-actions {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
 .icon-button.is-hidden {
   display: none;
 }
@@ -263,104 +309,17 @@ button {
   outline-offset: 2px;
 }
 
-.list-section {
-  border-radius: 12px;
-  overflow: visible;
+.row-action {
+  align-self: center;
 }
 
-@media (max-width: 600px) {
-  .page {
-    padding: 16px;
-  }
-
-  .app-bar {
-    padding: 10px 12px;
-    gap: 12px;
-  }
-
-  .content {
-    padding: 12px;
-  }
-
-  .app-actions {
-    gap: 6px;
-  }
-}
-
-@media (max-width: 420px) {
-  .page {
-    padding: 12px;
-  }
-
-  .subtitle {
-    display: none;
-  }
-
-  .app-bar {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-
-  .app-actions {
-    width: 100%;
-    justify-content: flex-start;
-  }
-}
-
-.io-panel {
-  margin-bottom: 16px;
-}
-
-.io-panel[hidden] {
-  display: none;
-}
-
-.io-header {
-  font-size: 13px;
-  font-weight: 600;
-  color: #5f6368;
-  margin-bottom: 8px;
-}
-
-textarea {
-  width: 100%;
-  border-radius: 10px;
-  border: 1px solid #dadce0;
-  padding: 10px;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
-  font-size: 12px;
-  background: #fafafa;
-}
-
-.io-actions {
+.row-actions {
   display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-  margin-top: 10px;
+  align-items: center;
+  gap: 6px;
 }
 
-.text-button {
-  height: 34px;
-  padding: 0 12px;
-  border-radius: 8px;
-  background: #eef2ff;
-  color: #1a4fd8;
-  font-size: 13px;
-}
-
-.text-button:hover {
-  background: #e0e7ff;
-}
-
-.text-button.danger {
-  background: #fdecec;
-  color: #b32624;
-}
-
-.text-button.danger:hover {
-  background: #f8d7d7;
-}
-
+/* Snackbar */
 .snackbar {
   position: fixed;
   left: 50%;
@@ -381,7 +340,47 @@ textarea {
   transform: translateX(-50%) translateY(-4px);
 }
 
+/* Drag & Drop */
+.item[draggable="true"] {
+  cursor: grab;
+}
+
+.item.is-dragging {
+  opacity: 0.5;
+  background: #f1f3f4;
+}
+
+.group-items.drag-over {
+  background: #eef2ff;
+  outline: 2px dashed #1a4fd8;
+  outline-offset: -2px;
+}
+
+/* List Section helper */
+.list-section {
+  border-radius: 12px;
+  overflow: visible;
+}
+
+/* Media Queries */
 @media (max-width: 600px) {
+  .page {
+    padding: 16px;
+  }
+
+  .app-bar {
+    padding: 10px 12px;
+    gap: 12px;
+  }
+
+  .content {
+    padding: 12px;
+  }
+
+  .app-actions {
+    gap: 6px;
+  }
+
   .io-panel {
     margin-bottom: 12px;
   }
@@ -393,5 +392,25 @@ textarea {
   .io-actions {
     flex-direction: column;
     align-items: stretch;
+  }
+}
+
+@media (max-width: 420px) {
+  .page {
+    padding: 12px;
+  }
+
+  .subtitle {
+    display: none;
+  }
+
+  .app-bar {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .app-actions {
+    width: 100%;
+    justify-content: flex-start;
   }
 }
