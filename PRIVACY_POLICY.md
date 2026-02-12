@@ -1,6 +1,6 @@
 # Privacy Policy for nufftabs
 
-Effective date: 2026-01-25
+Effective date: 2026-02-12
 
 ## Summary
 nufftabs is an offline Chrome extension that saves and restores your tabs. It does not send data to any servers.
@@ -10,7 +10,7 @@ nufftabs is an offline Chrome extension that saves and restores your tabs. It do
 - Tab titles
 - Saved timestamps
 - A grouping key derived from the current window id (stored as a string)
-- Settings values: `excludePinned`, `restoreBatchSize`, `discardRestoredTabs`
+- Settings values: `theme`, `excludePinned`, `restoreBatchSize`, `discardRestoredTabs`
 - Any JSON you paste or import for restore (user-initiated), including OneTab export text
 
 ## How data is used
@@ -29,4 +29,4 @@ nufftabs is an offline Chrome extension that saves and restores your tabs. It do
 - No analytics, trackers, or advertising services are used.
 
 ## Network access
-- The extension does not make network requests for its core functionality.
+- The extension does not make network requests and does not send tab data to external services.
