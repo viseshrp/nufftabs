@@ -34,6 +34,7 @@ settings: {
   excludePinned: boolean;
   restoreBatchSize: number;
   discardRestoredTabs: boolean;
+  theme: 'os' | 'light' | 'dark';
 }
 ```
 Settings are stored locally (not sync) for simplicity and to avoid conflicts.
@@ -50,7 +51,7 @@ savedTabs:123-1700000000000-uuid-a: [
 savedTabs:456-1700000001000-uuid-b: [
   { "id": "uuid-3", "url": "https://openai.com", "title": "OpenAI", "savedAt": 1737860100000 }
 ]
-settings: { "excludePinned": true, "restoreBatchSize": 100, "discardRestoredTabs": false }
+settings: { "excludePinned": true, "restoreBatchSize": 100, "discardRestoredTabs": false, "theme": "os" }
 ```
 
 ## Data model

@@ -27,7 +27,7 @@
 - Restore rules: single restores to current window; restore all opens new windows unless list tab is only tab
 - Save memory on restore: when enabled, restored tabs are discarded after URL set (best-effort)
 - Import JSON append vs replace; invalid JSON errors
-- OneTab import parses allowed URLs and skips invalid lines with correct skipped counts
+- OneTab import parses allowed URLs (`http`/`https`/`file`) and skips invalid lines with correct skipped counts
 
 ## Coverage plan (>=90%)
 - Move pure logic from list/background/options into testable modules and cover with unit tests
