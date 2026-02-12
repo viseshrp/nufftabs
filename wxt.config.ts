@@ -2,6 +2,11 @@ import { defineConfig } from 'wxt';
 
 export default defineConfig({
   outDirTemplate: '{{browser}}-mv{{manifestVersion}}{{modeSuffix}}',
+  vite: () => ({
+    build: {
+      sourcemap: false,
+    },
+  }),
   manifest: {
     version: '1.0.0',
     name: 'nufftabs',
