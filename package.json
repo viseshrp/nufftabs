@@ -10,7 +10,7 @@
     "build": "wxt build",
     "build:e2e": "wxt build -c tests/e2e/wxt.e2e.config.ts -m e2e",
     "build:firefox": "wxt build -b firefox",
-    "zip": "node scripts/package-chrome.mjs",
+    "zip": "wxt zip",
     "zip:firefox": "wxt zip -b firefox",
     "compile": "tsc --noEmit",
     "lint": "biome lint .",
