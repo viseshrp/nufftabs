@@ -3,6 +3,7 @@ import { defineConfig } from 'wxt';
 export default defineConfig({
   outDirTemplate: '{{browser}}-mv{{manifestVersion}}{{modeSuffix}}',
   manifest: {
+    version: '1.0.0',
     name: 'nufftabs',
     description: 'Enough tabs. Condense and restore.',
     permissions: ['tabs', 'storage'],
