@@ -246,6 +246,7 @@ test.describe('nufftabs extension e2e', () => {
     }
     await seedSavedGroup(page, String(listWindowId), ['https://example.com/x']);
     await waitForSavedGroupCount(page, 1);
+    await listPage.reload();
     await expect(listPage.locator('.group-card')).toHaveCount(1, { timeout: 15000 });
 
     // Import JSON append

@@ -28,8 +28,8 @@ describe('nufftabs interaction', () => {
                 [STORAGE_KEYS.settings]: { excludePinned: true },
                 // varying keys to simulate index
                 [STORAGE_KEYS.savedTabsIndex]: [group1Key, group2Key],
-                ['savedTabs:' + group1Key]: initialGroups[group1Key],
-                ['savedTabs:' + group2Key]: initialGroups[group2Key],
+                [`savedTabs:${group1Key}`]: initialGroups[group1Key],
+                [`savedTabs:${group2Key}`]: initialGroups[group2Key],
             },
         });
         setMockChrome(mock.chrome);

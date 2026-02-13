@@ -7,6 +7,7 @@ nufftabs is a minimal Chrome (MV3) extension to condense all tabs from the curre
 ## Core features
 - Condense tabs from the current window (optionally excluding pinned tabs).
 - List UI grouped by condense action, with per-group restore all/delete all plus per-tab restore/delete.
+- Drag-and-drop between groups to move a saved tab.
 - Export/import JSON (append or replace), import from file, and OneTab import.
 - Restore rules: single restore uses the current window; restore all opens new windows per chunk, reusing the list window only when it is the sole tab.
 - List tab is pinned and reused if it already exists.
@@ -139,6 +140,7 @@ pnpm build
 1. In OneTab, open “Export / Import URLs” and copy the text.
 2. Paste it into the nufftabs Import panel textarea.
 3. Click **Import OneTab** to append those tabs to the current list.
+4. Only `http`, `https`, and `file` URLs are imported. Other schemes (for example `chrome://`) are skipped.
 
 ### Exclude pinned tabs
 1. Open the options page (Extension details ? “Extension options”).
@@ -163,12 +165,12 @@ pnpm build
 ## Project structure
 - `entrypoints/background/index.ts` — action handler, condense logic, list tab focus/pin.
 - `entrypoints/nufftabs/` — list UI (`index.html`, `index.ts`, `style.css`).
-- `entrypoints/options/` — settings UI for exclude pinned.
+- `entrypoints/options/` — settings UI for theme, exclude pinned tabs, restore batch size, and memory-saving restore.
 - `public/icon/` — PNG icons (16/19/32/38/48/96/128).
 - `wxt.config.ts` — manifest config and permissions.
 
 ## Permissions
-- `tabs`: required to query, create, update, move, and close tabs/windows.
+- `tabs`: required to query, create, update, close, and discard tabs/windows.
 - `storage`: required to persist `savedTabsIndex`, `savedTabs:<groupKey>`, and settings in `chrome.storage.local`.
 
 ## Troubleshooting
@@ -189,4 +191,3 @@ It’s a safety default so pinned tabs are not closed unless you turn the settin
 
 ## License
 MIT. See `LICENSE`.
-

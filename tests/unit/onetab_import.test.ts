@@ -13,8 +13,8 @@ describe('parseOneTabExport', () => {
 
     const result = parseOneTabExport(text);
     expect(result.totalLines).toBe(4);
-    expect(result.tabs).toHaveLength(3);
+    expect(result.tabs).toHaveLength(2);
     expect(result.tabs[0]?.url).toBe('https://example.com');
-    expect(result.tabs[1]?.url).toBe('chrome://extensions');
+    expect(result.tabs[1]?.url).toBe('file:///Users/test/index.html');
   });
 });

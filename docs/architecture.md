@@ -94,6 +94,7 @@ render UI
 ```
 lines = text.split("\n")
 tabs = parseOneTab(lines)
+// parseOneTab only keeps http/https/file URLs
 groupKey = current window id
 existing = currentGroups[groupKey]
 writeSavedGroup(groupKey, existing + tabs)
@@ -155,6 +156,7 @@ Groups are rendered as cards. Each group can be collapsed without deleting data.
 - **Import JSON:** validates and appends (or replaces) groups.
 - **Import file:** reads a JSON file and appends the parsed tabs.
 - **Import OneTab:** parses OneTab text and appends to current group.
+- **Drag and drop:** moving a row to another group rewrites both groups and persists immediately.
 - **Load more:** renders the next chunk of rows for large groups.
 
 ## Storage schema
@@ -177,7 +179,7 @@ For the full schema and reasoning, see `docs/storage.md`.
 
 ### Import OneTab
 1. UI parses OneTab text lines.
-2. UI filters by allowed URL schemes.
+2. UI filters by allowed URL schemes (`http`, `https`, `file`).
 3. UI appends to current group.
 
 ## Where to look when debugging

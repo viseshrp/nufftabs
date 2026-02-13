@@ -147,11 +147,10 @@ Artifacts:
 ## Linting and manifest validation
 ```bash
 pnpm lint
-pnpm biome
 pnpm lint:webext
 ```
 What this does:
-- `lint`/`biome`: Biome lint checks. The formatter is enabled in `biome.json` for local use,
+- `lint`: Biome lint checks. The formatter is enabled in `biome.json` for local use,
   but CI only runs `biome lint` (it does not apply formatting).
 - Lint rules apply uniformly across source and tests (no test-only relaxations).
 - `lint:webext`: builds the Firefox MV2 bundle and runs `web-ext lint` against `.output/firefox-mv2/`.

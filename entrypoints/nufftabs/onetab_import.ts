@@ -1,7 +1,7 @@
 import { createSavedTab, type SavedTab } from '../shared/storage';
 
 function isAllowedUrl(value: string): boolean {
-  return /^(https?|file|chrome|chrome-extension):\/\//i.test(value);
+  return /^(https?|file):\/\//i.test(value);
 }
 
 export function parseOneTabExport(text: string): { tabs: SavedTab[]; totalLines: number } {
