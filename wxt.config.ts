@@ -11,7 +11,6 @@ export default defineConfig({
     version: '1.0.0',
     name: 'nufftabs',
     description: 'Enough tabs. Condense and restore.',
-    offline_enabled: true,
     homepage_url: 'https://github.com/viseshrp/nufftabs',
     permissions: ['tabs', 'storage'],
     action: {
