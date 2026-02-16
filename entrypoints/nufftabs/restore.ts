@@ -1,4 +1,5 @@
 import { LIST_PAGE_PATH, STORAGE_KEYS, normalizeSettings, readSettings, type SavedTab } from '../shared/storage';
+import { logExtensionError } from '../shared/utils';
 
 // Restore tabs in limited parallel batches to improve throughput; this can relax strict
 // tab ordering compared to fully sequential creation.
@@ -61,7 +62,8 @@ async function waitForTabUrlReady(
   try {
     const tab = await chrome.tabs.get(tabId);
     if (tab && !isPlaceholderUrl(tab.url)) return true;
-  } catch {
+  } catch (error) {
+    logExtensionError(`Failed to check tab readiness for discard (${tabId})`, error, { operation: 'tab_query' });
     return false;
   }
 
@@ -128,10 +130,14 @@ export function createDiscardSession(): DiscardSession {
     schedule: (tabIds) => {
       if (abortController.signal.aborted) return;
       activeTasks += 1;
-      void discardTabsBestEffort(tabIds, abortController.signal).finally(() => {
-        activeTasks -= 1;
-        maybeCleanup();
-      });
+      void discardTabsBestEffort(tabIds, abortController.signal)
+        .catch((error) => {
+          logExtensionError('Unexpected discard session failure', error, { operation: 'runtime_context' });
+        })
+        .finally(() => {
+          activeTasks -= 1;
+          maybeCleanup();
+        });
     },
   };
 }
@@ -150,7 +156,8 @@ export async function discardTabsBestEffort(
     if (!ready || signal?.aborted) return;
     try {
       await chrome.tabs.discard(id);
-    } catch {
+    } catch (error) {
+      logExtensionError(`Failed to discard restored tab (${id})`, error, { operation: 'tab_reload' });
       // Best-effort discard; ignore failures (e.g., active tabs).
     }
   });
@@ -160,7 +167,8 @@ async function getWindowTabIdsBestEffort(windowId: number): Promise<number[]> {
   try {
     const tabs = await chrome.tabs.query({ windowId });
     return tabs.map((tab) => tab.id).filter((id): id is number => typeof id === 'number');
-  } catch {
+  } catch (error) {
+    logExtensionError(`Failed to query window tab ids (${windowId})`, error, { operation: 'tab_query' });
     return [];
   }
 }
@@ -223,7 +231,8 @@ export async function getReuseWindowContext(): Promise<{
       windowId: currentTab.windowId,
       tabId: currentTab.id,
     };
-  } catch {
+  } catch (error) {
+    logExtensionError('Failed to resolve reuse window context', error, { operation: 'tab_query' });
     return { shouldReuse: false };
   }
 }
@@ -308,7 +317,8 @@ export async function restoreTabs(savedTabs: SavedTab[]): Promise<boolean> {
         }
       }
     }
-  } catch {
+  } catch (error) {
+    logExtensionError('Failed to restore tabs', error, { operation: 'tab_query' });
     return false;
   }
 

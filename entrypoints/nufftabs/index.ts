@@ -22,6 +22,7 @@ import {
   type SavedTab,
   type SavedTabGroups,
 } from '../shared/storage';
+import { logExtensionError, type ExtensionErrorOperation } from '../shared/utils';
 
 const groupsEl = document.querySelector<HTMLDivElement>('#groups');
 const emptyEl = document.querySelector<HTMLDivElement>('#empty');
@@ -80,6 +81,16 @@ function setStatus(message: string): void {
   }, 2200);
 }
 
+function runAsyncTask(
+  task: Promise<unknown>,
+  context: string,
+  operation: ExtensionErrorOperation = 'runtime_context',
+): void {
+  void task.catch((error) => {
+    logExtensionError(context, error, { operation });
+  });
+}
+
 type GroupView = {
   card: HTMLElement;
   titleEl: HTMLDivElement;
@@ -114,7 +125,7 @@ async function initTheme(): Promise<void> {
   });
 }
 
-void initTheme();
+runAsyncTask(initTheme(), 'Failed to initialize theme');
 
 function updateGroupHeader(view: GroupView, tabs: SavedTab[], createdAt: number): void {
   view.titleEl.textContent = `${tabs.length} tab${tabs.length === 1 ? '' : 's'}`;
@@ -474,7 +485,7 @@ function createGroupView(groupKey: string): GroupView {
     e.preventDefault();
     itemsWrap.classList.remove('drag-over');
     if (draggedTab && draggedTab.groupKey !== groupKey) {
-      void handleDrop(groupKey);
+      runAsyncTask(handleDrop(groupKey), 'Failed to move tab between groups');
     }
   });
 
@@ -587,24 +598,24 @@ function handleGroupAction(event: Event): void {
     }
     case 'restore-group': {
       if (!groupKey) return;
-      void restoreGroup(groupKey);
+      runAsyncTask(restoreGroup(groupKey), 'Failed to restore group');
       break;
     }
     case 'delete-group': {
       if (!groupKey) return;
-      void deleteGroup(groupKey);
+      runAsyncTask(deleteGroup(groupKey), 'Failed to delete group');
       break;
     }
     case 'restore-single': {
       if (!groupKey) return;
       const tabId = button.dataset.tabId;
-      if (tabId) void restoreSingle(groupKey, tabId);
+      if (tabId) runAsyncTask(restoreSingle(groupKey, tabId), 'Failed to restore tab');
       break;
     }
     case 'delete-single': {
       if (!groupKey) return;
       const tabId = button.dataset.tabId;
-      if (tabId) void deleteSingle(groupKey, tabId);
+      if (tabId) runAsyncTask(deleteSingle(groupKey, tabId), 'Failed to delete tab');
       break;
     }
     case 'load-more': {
@@ -663,13 +674,15 @@ async function restoreSingle(groupKey: string, id: string): Promise<void> {
           try {
             const windowTabs = await chrome.tabs.query({ windowId: createdWindow.id });
             discardSession.schedule(windowTabs.map((entry) => entry.id));
-          } catch {
+          } catch (error) {
+            logExtensionError('Failed to query window tabs for discard fallback', error, { operation: 'tab_query' });
             // Ignore discard failures for best-effort behavior.
           }
         }
       }
     }
-  } catch {
+  } catch (error) {
+    logExtensionError('Failed to restore tab', error, { operation: 'tab_query' });
     setStatus('Failed to restore tab.');
     return;
   }
@@ -803,7 +816,8 @@ async function exportJson(): Promise<void> {
   try {
     await navigator.clipboard.writeText(jsonAreaEl.value);
     copied = true;
-  } catch {
+  } catch (error) {
+    logExtensionError('Failed to copy export JSON to clipboard', error, { operation: 'runtime_context' });
     // Ignore; we'll report status below.
   }
 
@@ -819,7 +833,8 @@ async function exportJson(): Promise<void> {
     link.remove();
     URL.revokeObjectURL(url);
     downloaded = true;
-  } catch {
+  } catch (error) {
+    logExtensionError('Failed to download export JSON', error, { operation: 'runtime_context' });
     // Keep existing status if download fails.
   }
 
@@ -847,7 +862,8 @@ async function importJsonText(text: string, mode: 'append' | 'replace'): Promise
     }
     applyGroups(nextGroups);
     setStatus(`Imported ${importedCount} tab${importedCount === 1 ? '' : 's'}, skipped 0.`);
-  } catch {
+  } catch (error) {
+    logExtensionError('Failed to import JSON payload', error, { operation: 'runtime_context' });
     setStatus('Invalid JSON: could not parse.');
   }
 }
@@ -867,7 +883,8 @@ async function importJsonFile(file: File): Promise<void> {
     const text = await file.text();
     if (jsonAreaEl) jsonAreaEl.value = text;
     await importJsonText(text, 'append');
-  } catch {
+  } catch (error) {
+    logExtensionError('Failed to import JSON file', error, { operation: 'runtime_context' });
     setStatus('Failed to read file.');
   }
 }
@@ -878,7 +895,8 @@ async function getCurrentWindowKey(): Promise<string> {
     if (currentTab && typeof currentTab.windowId === 'number') {
       return String(currentTab.windowId);
     }
-  } catch {
+  } catch (error) {
+    logExtensionError('Failed to get current window key', error, { operation: 'tab_query' });
     // ignore
   }
   return UNKNOWN_GROUP_KEY;
@@ -920,15 +938,15 @@ async function init(): Promise<void> {
   groupsEl?.addEventListener('click', handleGroupAction);
 
   exportJsonEl?.addEventListener('click', () => {
-    void exportJson();
+    runAsyncTask(exportJson(), 'Failed to export JSON');
   });
 
   importJsonEl?.addEventListener('click', () => {
-    void importJson();
+    runAsyncTask(importJson(), 'Failed to import JSON (append)');
   });
 
   importJsonReplaceEl?.addEventListener('click', () => {
-    void importJsonReplace();
+    runAsyncTask(importJsonReplace(), 'Failed to import JSON (replace)');
   });
 
   importFileEl?.addEventListener('click', () => {
@@ -938,13 +956,13 @@ async function init(): Promise<void> {
   importFileInputEl?.addEventListener('change', () => {
     const file = importFileInputEl.files?.[0];
     if (file) {
-      void importJsonFile(file);
+      runAsyncTask(importJsonFile(file), 'Failed to import JSON file');
       importFileInputEl.value = '';
     }
   });
 
   importOneTabEl?.addEventListener('click', () => {
-    void importOneTab();
+    runAsyncTask(importOneTab(), 'Failed to import OneTab export');
   });
 
   clearJsonEl?.addEventListener('click', () => {
@@ -959,12 +977,12 @@ async function init(): Promise<void> {
       Boolean(changes[STORAGE_KEYS.savedTabsIndex]) ||
       changeKeys.some((key) => isSavedGroupStorageKey(key));
     if (!hasSavedTabsChange) return;
-    void refreshList();
+    runAsyncTask(refreshList(), 'Failed to refresh tab list after storage change');
   });
 
   document.addEventListener('visibilitychange', () => {
     if (!document.hidden) {
-      void refreshList();
+      runAsyncTask(refreshList(), 'Failed to refresh tab list after visibility change');
     }
   });
 
@@ -982,7 +1000,7 @@ async function init(): Promise<void> {
   updateScrollControls();
 }
 
-void init();
+runAsyncTask(init(), 'Failed to initialize nufftabs page');
 
 function getListBottomScrollTarget(): number {
   if (!listSectionEl) return 0;
@@ -1016,4 +1034,3 @@ function updateScrollControls(): void {
   scrollTopEl.classList.toggle('is-disabled', !hasOverflow || nearTop);
   scrollBottomEl.classList.toggle('is-disabled', !hasOverflow || nearBottom);
 }
-
