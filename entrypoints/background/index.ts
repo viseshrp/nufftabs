@@ -1,7 +1,13 @@
 import { condenseCurrentWindow } from './condense';
 
-export default defineBackground(() => {
+export { condenseCurrentWindow };
+
+export function registerActionClickHandler(): void {
   chrome.action.onClicked.addListener((tab) => {
     void condenseCurrentWindow(tab?.windowId);
   });
+}
+
+export default defineBackground(() => {
+  registerActionClickHandler();
 });
