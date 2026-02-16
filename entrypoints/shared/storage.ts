@@ -1,3 +1,5 @@
+import { logExtensionError } from './utils';
+
 export type SavedTab = {
   id: string;
   url: string;
@@ -188,7 +190,8 @@ export async function readSavedGroups(_fallbackKey = UNKNOWN_GROUP_KEY): Promise
       if (tabs.length > 0) groups[key] = tabs;
     }
     return groups;
-  } catch {
+  } catch (error) {
+    logExtensionError('Failed to read saved groups', error, { operation: 'runtime_context' });
     return {};
   }
 }
@@ -198,7 +201,8 @@ export async function writeSavedGroups(savedTabs: SavedTabGroups): Promise<boole
     const existingIndex = await readSavedGroupsIndex();
     await writeAllGroupsInternal(savedTabs, existingIndex);
     return true;
-  } catch {
+  } catch (error) {
+    logExtensionError('Failed to write saved groups', error, { operation: 'runtime_context' });
     return false;
   }
 }
@@ -207,7 +211,8 @@ export async function readSavedGroup(groupKey: string): Promise<SavedTab[]> {
   try {
     const result = await chrome.storage.local.get([groupStorageKey(groupKey)]);
     return normalizeSavedTabArray(result[groupStorageKey(groupKey)]);
-  } catch {
+  } catch (error) {
+    logExtensionError(`Failed to read saved tab group (${groupKey})`, error, { operation: 'runtime_context' });
     return [];
   }
 }
@@ -229,7 +234,8 @@ export async function writeSavedGroup(groupKey: string, tabs: SavedTab[]): Promi
       await chrome.storage.local.remove(groupStorageKey(groupKey));
     }
     return true;
-  } catch {
+  } catch (error) {
+    logExtensionError(`Failed to write saved tab group (${groupKey})`, error, { operation: 'runtime_context' });
     return false;
   }
 }
@@ -259,7 +265,8 @@ export async function appendSavedGroup(
       } else if (verified.includes(groupKey)) {
         return true;
       }
-    } catch {
+    } catch (error) {
+      logExtensionError(`Failed to append saved tab group (${groupKey})`, error, { operation: 'runtime_context' });
       return false;
     }
   }
@@ -270,7 +277,8 @@ export async function readSettings(): Promise<Settings> {
   try {
     const result = await chrome.storage.local.get([STORAGE_KEYS.settings]);
     return normalizeSettings(result[STORAGE_KEYS.settings]);
-  } catch {
+  } catch (error) {
+    logExtensionError('Failed to read settings', error, { operation: 'runtime_context' });
     return { ...DEFAULT_SETTINGS };
   }
 }
@@ -296,7 +304,8 @@ export async function writeSettings(settings: SettingsInput): Promise<boolean> {
     }
     await chrome.storage.local.set({ [STORAGE_KEYS.settings]: payload });
     return true;
-  } catch {
+  } catch (error) {
+    logExtensionError('Failed to write settings', error, { operation: 'runtime_context' });
     return false;
   }
 }

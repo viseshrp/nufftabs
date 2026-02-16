@@ -6,6 +6,7 @@ import {
   type Settings,
   type SettingsInput,
 } from '../shared/storage';
+import { logExtensionError } from '../shared/utils';
 
 export function setStatus(statusEl: HTMLDivElement | null, message: string): void {
   if (statusEl) statusEl.textContent = message;
@@ -129,27 +130,33 @@ export async function initSettingsPage(documentRef: Document = document): Promis
     }
   };
 
-  excludePinnedEl.addEventListener('change', async () => {
-    await updateSettings();
+  const runUpdate = () => {
+    void updateSettings().catch((error) => {
+      logExtensionError('Failed to update settings from options UI', error, { operation: 'runtime_context' });
+    });
+  };
+
+  excludePinnedEl.addEventListener('change', () => {
+    runUpdate();
   });
 
   restoreBatchSizeEl.addEventListener('change', () => {
-    void updateSettings();
+    runUpdate();
   });
 
   restoreBatchSizeEl.addEventListener('blur', () => {
-    void updateSettings();
+    runUpdate();
   });
 
   for (const radio of discardRadios) {
     radio.addEventListener('change', () => {
-      void updateSettings();
+      runUpdate();
     });
   }
 
   for (const radio of themeRadios) {
     radio.addEventListener('change', () => {
-      void updateSettings();
+      runUpdate();
     });
   }
 }
