@@ -18,7 +18,6 @@
     "format": "biome format .",
     "quality": "pnpm compile && pnpm lint",
     "smoke": "node scripts/smoke.mjs",
-    "smoke:e2e": "pnpm test:e2e",
     "package": "pnpm zip",
     "postinstall": "wxt prepare",
     "test": "vitest run --coverage",

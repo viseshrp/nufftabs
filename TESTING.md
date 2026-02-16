@@ -128,7 +128,7 @@ E2E:
 ## CI structure (GitHub Actions)
 CI lives in `.github/workflows/ci.yml` and runs on PR + push.
 1. **Code Quality**: `pnpm install`, `pnpm lint:webext`, `pnpm quality` (tsc + biome lint).
-2. **Smoke Tests**: `pnpm install`, `pnpm smoke`, Playwright install, `xvfb-run -a pnpm smoke:e2e`.
+2. **Smoke Tests**: `pnpm install`, `pnpm smoke`, Playwright install, `xvfb-run -a pnpm test:e2e`.
 3. **Unit Tests**: `pnpm install`, `pnpm test`, upload Codecov (`coverage/lcov.info`).
 4. **Build & Package**: `pnpm install`, `pnpm package`, size budget check (1 MB), upload zip artifact.
 5. **Release** (tags `v*` only): download artifact and create a draft GitHub release.

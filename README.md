@@ -98,6 +98,13 @@ pnpm dev
 pnpm build
 ```
 
+### Package (zip)
+```bash
+pnpm package
+```
+
+The packaged extension zip is generated under `.output/`.
+
 ## Load unpacked in Chrome
 1. Run `pnpm dev` (or `pnpm build`).
 2. Open `chrome://extensions`.
