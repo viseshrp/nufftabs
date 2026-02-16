@@ -1,3 +1,5 @@
+import { logExtensionError } from '../shared/utils';
+
 export function pickMostRecentListTab(tabs: chrome.tabs.Tab[]): chrome.tabs.Tab | undefined {
   return tabs.reduce<chrome.tabs.Tab | undefined>((best, tab) => {
     if (!best) return tab;
@@ -23,7 +25,7 @@ export async function focusExistingListTabOrCreate(
       }
       return;
     } catch (error) {
-      void error;
+      logExtensionError('Failed to focus existing list tab', error, { operation: 'tab_query' });
     }
   }
 
@@ -40,6 +42,6 @@ export async function focusExistingListTabOrCreate(
       await chrome.windows.update(created.windowId, { focused: true });
     }
   } catch (error) {
-    void error;
+    logExtensionError('Failed to create or focus list tab', error, { operation: 'tab_query' });
   }
 }

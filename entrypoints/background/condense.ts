@@ -1,5 +1,6 @@
 import { LIST_PAGE_PATH, appendSavedGroup, readSettings } from '../shared/storage';
 import { createCondenseGroupKey, filterEligibleTabs, resolveWindowId, saveTabsToList } from '../shared/condense';
+import { logExtensionError } from '../shared/utils';
 import { focusExistingListTabOrCreate } from './list_tab';
 
 export async function condenseCurrentWindow(targetWindowId?: number): Promise<void> {
@@ -9,7 +10,8 @@ export async function condenseCurrentWindow(targetWindowId?: number): Promise<vo
     tabs = await chrome.tabs.query(
       typeof targetWindowId === 'number' ? { windowId: targetWindowId } : { currentWindow: true },
     );
-  } catch {
+  } catch (error) {
+    logExtensionError('Failed to query tabs during condense', error, { operation: 'tab_query' });
     return;
   }
 
@@ -18,7 +20,8 @@ export async function condenseCurrentWindow(targetWindowId?: number): Promise<vo
   let listTabs: chrome.tabs.Tab[] = [];
   try {
     listTabs = await chrome.tabs.query({ url: listUrl });
-  } catch {
+  } catch (error) {
+    logExtensionError('Failed to query list tabs during condense', error, { operation: 'tab_query' });
     listTabs = [];
   }
 
@@ -48,7 +51,7 @@ export async function condenseCurrentWindow(targetWindowId?: number): Promise<vo
       });
       listTabs = created ? [created] : listTabs;
     } catch (error) {
-      void error;
+      logExtensionError('Failed to create list tab during condense', error, { operation: 'tab_query' });
     }
   }
 
@@ -58,7 +61,7 @@ export async function condenseCurrentWindow(targetWindowId?: number): Promise<vo
     try {
       await chrome.tabs.remove(tabIds);
     } catch (error) {
-      void error;
+      logExtensionError('Failed to remove tabs during condense', error, { operation: 'tab_query' });
     }
   }
 
