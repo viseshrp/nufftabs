@@ -155,7 +155,7 @@ describe('list page actions', () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     const status = document.querySelector<HTMLDivElement>('#snackbar');
-    expect(status?.textContent).toContain('Imported 0 tabs');
+    expect(status?.textContent).toContain('No valid OneTab links found to import.');
 
     const restoreGroup = document.querySelector<HTMLButtonElement>('button[data-action="restore-group"]');
     restoreGroup?.click();
@@ -216,7 +216,7 @@ describe('list page actions', () => {
 
     await new Promise((resolve) => setTimeout(resolve, 0));
     const status = document.querySelector<HTMLDivElement>('#snackbar');
-    expect(status?.textContent).toContain('Failed to read file');
+    expect(status?.textContent).toContain('Import failed: Could not read the selected file.');
   });
 });
 

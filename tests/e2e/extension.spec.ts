@@ -267,7 +267,7 @@ test.describe('nufftabs extension e2e', () => {
     await listPage.locator('#importOneTab').click();
 
     const snackbar = listPage.locator('#snackbar');
-    await expect(snackbar).toContainText('skipped 1');
+    await expect(snackbar).toContainText('skipped 1 invalid lines');
 
     await context.close();
   });

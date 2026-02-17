@@ -1114,6 +1114,11 @@ async function exportJson(): Promise<void> {
     // Keep existing status if download fails.
   }
 
+  if (!copied && !downloaded) {
+    setStatus('Export failed: Could not copy to clipboard or download file.');
+    return;
+  }
+
   const extras = [copied ? 'copied' : null, downloaded ? 'downloaded' : null].filter(Boolean).join(', ');
   setStatus(`Exported ${total} tab${total === 1 ? '' : 's'}${extras ? ` (${extras})` : ''}.`);
 }
@@ -1124,7 +1129,7 @@ async function importJsonText(text: string, mode: 'append' | 'replace'): Promise
     const fallbackKey = await getCurrentWindowKey();
     const normalized = normalizeImportedGroups(parsed, fallbackKey);
     if (!normalized) {
-      setStatus('Invalid JSON: expected array, { savedTabs: [] }, or grouped object.');
+      setStatus('Import failed: JSON structure not recognized.');
       return;
     }
     const importedCount = countTotalTabs(normalized);
@@ -1133,16 +1138,16 @@ async function importJsonText(text: string, mode: 'append' | 'replace'): Promise
       mode === 'replace' ? normalized : mergeGroups(existing, normalized);
     const saved = await writeSavedGroups(nextGroups);
     if (!saved) {
-      setStatus('Failed to save changes.');
+      setStatus('Import failed: Could not save tabs to storage.');
       await refreshList();
       return;
     }
     applyFullGroups(nextGroups);
     setTabCount(countTotalTabs(nextGroups));
-    setStatus(`Imported ${importedCount} tab${importedCount === 1 ? '' : 's'}, skipped 0.`);
+    setStatus(`Successfully imported ${importedCount} tab${importedCount === 1 ? '' : 's'}.`);
   } catch (error) {
     logExtensionError('Failed to import JSON payload', error, { operation: 'runtime_context' });
-    setStatus('Invalid JSON: could not parse.');
+    setStatus('Import failed: Invalid JSON format.');
   }
 }
 
@@ -1163,7 +1168,7 @@ async function importJsonFile(file: File): Promise<void> {
     await importJsonText(text, 'append');
   } catch (error) {
     logExtensionError('Failed to import JSON file', error, { operation: 'runtime_context' });
-    setStatus('Failed to read file.');
+    setStatus('Import failed: Could not read the selected file.');
   }
 }
 
@@ -1186,7 +1191,7 @@ async function importOneTab(): Promise<void> {
   const { tabs: imported, totalLines } = parseOneTabExport(text);
   const skipped = Math.max(0, totalLines - imported.length);
   if (imported.length === 0) {
-    setStatus(`Imported 0 tabs, skipped ${skipped}.`);
+    setStatus('No valid OneTab links found to import.');
     return;
   }
   const groupKey = await getCurrentWindowKey();
@@ -1194,7 +1199,7 @@ async function importOneTab(): Promise<void> {
   const updatedGroup = [...existing, ...imported];
   const saved = await writeSavedGroup(groupKey, updatedGroup);
   if (!saved) {
-    setStatus('Failed to save changes.');
+    setStatus('Import failed: Could not save tabs to storage.');
     await refreshList();
     return;
   }
@@ -1202,7 +1207,8 @@ async function importOneTab(): Promise<void> {
   state.currentGroups[groupKey] = updatedGroup;
   scheduleRenderGroups();
   adjustTabCount(imported.length);
-  setStatus(`Imported ${imported.length} tab${imported.length === 1 ? '' : 's'}, skipped ${skipped}.`);
+  const skippedMsg = skipped > 0 ? ` (skipped ${skipped} invalid lines)` : '';
+  setStatus(`Successfully imported ${imported.length} tab${imported.length === 1 ? '' : 's'}${skippedMsg}.`);
 }
 
 async function init(): Promise<void> {
