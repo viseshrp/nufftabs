@@ -32,7 +32,7 @@ tests/
   integration/
     background_condense.test.ts # background condense flows w/ mocked chrome
     background_entrypoint.test.ts
-    list_page.test.ts           # list UI baseline
+    list_page.test.ts           # list UI flows: search, lazy loading, actions, count
     list_page_edge.test.ts      # DOM edge cases
     list_tab.test.ts            # list tab focus/reuse behavior
     options_entrypoint.test.ts
@@ -109,6 +109,9 @@ Unit + integration:
 - Restore rules (reuse current window vs new windows)
 - Memory-saving restore discard after URL set (best-effort)
 - Options/settings behavior
+- Search behavior (case-insensitive title/URL match, hidden non-matching groups)
+- Lazy loading behavior (index-first group fetch + per-group "Load more" paging)
+- Combined search + lazy scenarios (searching unloaded groups and preserving row actions)
 
 E2E:
 - Condense tabs

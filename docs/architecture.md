@@ -16,6 +16,8 @@ junior developers and useful for future maintenance.
 
 2) **List UI (nufftabs page)** (`entrypoints/nufftabs/`)
 - Renders saved groups and tabs.
+- Supports dynamic top-bar search (title/URL).
+- Uses index-first lazy loading for group payloads, then paged row rendering.
 - Provides actions: restore single, restore group, delete group.
 - Provides import/export tools (JSON, file, OneTab).
 - Listens to storage changes to refresh the view.
@@ -35,8 +37,11 @@ User clicks action icon
   -> Background focuses or creates list UI tab
 
 List UI loads
-  -> Reads saved groups
-  -> Renders groups + tabs
+  -> Reads saved group index
+  -> Renders group cards (loaded groups + placeholders)
+  -> Lazy-loads group payloads near viewport
+  -> Renders rows in chunks ("Load more")
+  -> On search, loads remaining groups as needed
   -> User restores/deletes/imports
   -> UI writes updated groups back to storage
   -> Storage change listener refreshes UI
@@ -101,6 +106,19 @@ writeSavedGroup(groupKey, existing + tabs)
 render UI
 ```
 
+### Search + lazy group loading
+```
+index = readSavedGroupsIndex()
+render cards for index keys
+load groups near viewport on scroll/resize
+
+on search input:
+  term = normalize(lowercase trim)
+  filter loaded groups by title/url includes(term)
+  hide groups with no matches
+  if term present: keep loading unloaded groups and re-apply filter
+```
+
 ## Why groups exist
 Each "condense" action creates a **group** of tabs. The group is keyed by
 `windowId-epochMs-uuid` (or `unknown-epochMs-uuid`). This keeps the UI organized and
@@ -127,7 +145,9 @@ were open together").
 
 These choices keep the UI responsive with large tab counts:
 
-- **Incremental rendering:** only the first `RENDER_PAGE_SIZE` tabs render initially.
+- **Index-first group loading:** UI first reads `savedTabsIndex`, then reads each
+  `savedTabs:<groupKey>` payload on demand (viewport/search/expand).
+- **Incremental rendering:** only the first `RENDER_PAGE_SIZE` rows per group render initially.
   The rest require "Load more." This keeps DOM size bounded.
 - **Heuristic group diffing:** group updates are detected by checking first/middle/last
   tab IDs instead of deep comparisons. This can miss reorder changes.
@@ -137,10 +157,17 @@ These choices keep the UI responsive with large tab counts:
   improves throughput but can relax strict ordering.
 
 ## UI rendering model
-The list UI holds an in-memory `currentGroups` object and updates the DOM when:
+The list UI holds:
+- `indexedGroupKeys`: all group keys from storage index.
+- `currentGroups`: only loaded group payloads.
+- `visibleGroups`: filtered group payloads currently shown.
+
+It updates the DOM when:
 - The page loads.
 - Storage changes (e.g., background condense or another tab).
 - The page becomes visible again.
+- Search input changes.
+- Viewport proximity triggers lazy group load.
 
 Groups are rendered as cards. Each group can be collapsed without deleting data.
 
@@ -158,6 +185,9 @@ Groups are rendered as cards. Each group can be collapsed without deleting data.
 - **Import OneTab:** parses OneTab text and appends to current group.
 - **Drag and drop:** moving a row to another group rewrites both groups and persists immediately.
 - **Load more:** renders the next chunk of rows for large groups.
+- **Search:** case-insensitive substring match across title + URL.
+- **Search exclusions:** no fuzzy matching, tokenization, or regex matching.
+- **Search visibility rule:** groups with zero matching rows are hidden.
 
 ## Storage schema
 For the full schema and reasoning, see `docs/storage.md`.

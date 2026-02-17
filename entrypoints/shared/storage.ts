@@ -110,7 +110,7 @@ export function isSavedGroupStorageKey(key: string): boolean {
   return key.startsWith(GROUP_KEY_PREFIX);
 }
 
-async function readSavedGroupsIndex(): Promise<string[]> {
+export async function readSavedGroupsIndex(): Promise<string[]> {
   const result = await chrome.storage.local.get([STORAGE_KEYS.savedTabsIndex]);
   return normalizeIndex(result[STORAGE_KEYS.savedTabsIndex]);
 }

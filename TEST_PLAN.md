@@ -12,6 +12,7 @@
 - Integration tests
   - Storage + background/list logic using mocked `chrome` APIs
   - JSON import/merge and restore rules with mocked tab/window APIs
+  - List-page search behavior and lazy loading behavior (independent + combined)
 - E2E tests (real browser + built extension)
   - Condense tabs
   - Group cards per condense action
@@ -28,6 +29,9 @@
 - Save memory on restore: when enabled, restored tabs are discarded after URL set (best-effort)
 - Import JSON append vs replace; invalid JSON errors
 - OneTab import parses allowed URLs (`http`/`https`/`file`) and skips invalid lines with correct skipped counts
+- Search filters by title/URL, hides non-matching group cards, and preserves row/group actions
+- Lazy loading fetches group payloads from index on demand and keeps header count accurate
+- Search over unloaded groups triggers additional loads and converges to complete results
 
 ## Coverage plan (>=90%)
 - Move pure logic from list/background/options into testable modules and cover with unit tests

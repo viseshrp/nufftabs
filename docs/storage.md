@@ -19,7 +19,7 @@ All data lives in `chrome.storage.local`.
 savedTabsIndex: string[]
 ```
 This is the list of active group keys. It is the canonical list used to discover
-groups on read.
+groups on read, and enables index-first lazy loading in the list page.
 
 ### 2) Per-group entries
 ```
@@ -91,10 +91,17 @@ writeSavedGroup(groupKey, [])
 ```
 
 ## Read flow
-1. Read `savedTabsIndex`.
-2. For each group key, read `savedTabs:<groupKey>`.
-3. Normalize each list (drop invalid entries).
-4. Assemble `SavedTabGroups` in memory.
+The extension uses two read patterns:
+
+1. **Index-first UI pass (list page)**
+   - Read `savedTabsIndex`.
+   - Render group cards/placeholders from keys.
+   - Read `savedTabs:<groupKey>` on demand (viewport/search/expand).
+2. **Full-read pass (imports/exports/total count refresh)**
+   - Read `savedTabsIndex`.
+   - Read each `savedTabs:<groupKey>`.
+   - Normalize each list (drop invalid entries).
+   - Assemble `SavedTabGroups` in memory.
 
 ## Write flows
 
@@ -119,6 +126,8 @@ This is used for bulk imports and replacement flows.
 A single monolithic `savedTabs` value would require rewriting the entire dataset on
 small changes, which is slow for large lists. The index + group layout makes common
 operations (`restoreSingle`, `deleteSingle`, `condense`) fast and proportional to one group.
+It also enables lazy data-fetch: the UI can render from index first and fetch group payloads
+only when needed.
 
 ## Validation / normalization
 Inputs are normalized:
