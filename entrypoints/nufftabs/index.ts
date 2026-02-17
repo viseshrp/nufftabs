@@ -8,6 +8,7 @@ import {
   mergeGroups,
   normalizeImportedGroups,
 } from './list';
+import { createCondenseGroupKey } from '../shared/condense';
 import { createDiscardSession, getReuseWindowContext, restoreTabs } from './restore';
 import {
   readSettings,
@@ -1121,7 +1122,8 @@ async function exportJson(): Promise<void> {
 async function importJsonText(text: string, mode: 'append' | 'replace'): Promise<void> {
   try {
     const parsed = JSON.parse(text);
-    const fallbackKey = await getCurrentWindowKey();
+    const windowId = await getCurrentWindowId();
+    const fallbackKey = createCondenseGroupKey(windowId);
     const normalized = normalizeImportedGroups(parsed, fallbackKey);
     if (!normalized) {
       setStatus('Invalid JSON: expected array, { savedTabs: [] }, or grouped object.');
@@ -1167,17 +1169,17 @@ async function importJsonFile(file: File): Promise<void> {
   }
 }
 
-async function getCurrentWindowKey(): Promise<string> {
+async function getCurrentWindowId(): Promise<number | undefined> {
   try {
     const currentTab = await chrome.tabs.getCurrent();
     if (currentTab && typeof currentTab.windowId === 'number') {
-      return String(currentTab.windowId);
+      return currentTab.windowId;
     }
   } catch (error) {
-    logExtensionError('Failed to get current window key', error, { operation: 'tab_query' });
+    logExtensionError('Failed to get current window id', error, { operation: 'tab_query' });
     // ignore
   }
-  return UNKNOWN_GROUP_KEY;
+  return undefined;
 }
 
 async function importOneTab(): Promise<void> {
@@ -1189,7 +1191,8 @@ async function importOneTab(): Promise<void> {
     setStatus(`Imported 0 tabs, skipped ${skipped}.`);
     return;
   }
-  const groupKey = await getCurrentWindowKey();
+  const windowId = await getCurrentWindowId();
+  const groupKey = createCondenseGroupKey(windowId);
   const existing = state.indexedGroupKeySet.has(groupKey) ? await ensureGroupLoaded(groupKey) : [];
   const updatedGroup = [...existing, ...imported];
   const saved = await writeSavedGroup(groupKey, updatedGroup);
