@@ -62,14 +62,27 @@ Triggered by clicking the extension action icon.
 
 ### 2.2 Saved list UI
 A 'lists' page renders:
-- List of saved tabs (most recent first is fine).
-- Each item shows at least: Title + URL.
-- Per-item action: Restore (current window).
-- Top-level actions:
-  - Restore all (new windows unless list tab is only tab)
-  - Delete all
+- Group cards of saved tabs (most recent groups first).
+- Each row shows at least: Title + URL.
+- Per-row actions: Restore (current window), Delete.
+- Per-group actions: Restore all, Delete all.
+- Top app-bar search input filters by title/URL.
+- Import/export actions:
   - Export JSON
-  - Import JSON (replace)
+  - Import JSON (append or replace)
+  - Import OneTab text
+
+### 2.2.1 Search behavior
+- Search is case-insensitive substring matching over title and URL.
+- Group cards without matches are hidden.
+- Matching groups keep all existing actions (restore/delete/load more).
+- Search over unloaded groups continues loading until results converge.
+
+### 2.2.2 Lazy loading behavior
+- Read group index first (`savedTabsIndex`) and render cards.
+- Fetch `savedTabs:<groupKey>` payloads on demand (viewport/search/expand).
+- For large groups, rows render in chunks with a "Load more" action.
+- Header tab count reflects total saved tabs, not just currently loaded groups.
 
 ### 2.3 Restore single (current window + remove from list)
 When user clicks Restore on an item:
@@ -118,13 +131,13 @@ When user clicks Delete all:
 ## 3) Non-goals (explicitly excluded)
 - No “save without closing” mode.
 - No deduplication.
-- No grouping, naming groups, or drag ordering.
-- No search/filter.
+- No custom naming for groups.
 - No keyboard shortcut.
 - No context menu.
 - No special casing for `chrome://` or internal tabs beyond basic validation.
 - Settings are stored locally (no sync); saved tabs remain local-only.
 - No attempt to match OneTab UX.
+- No fuzzy search, tokenized search, or regex-based search.
 
 ---
 
@@ -159,7 +172,8 @@ When user clicks Delete all:
 ## 5) Data model and storage keys
 
 ### 5.1 Storage keys
-- `savedTabs`: `SavedTab[]`
+- `savedTabsIndex`: `string[]`
+- `savedTabs:<groupKey>`: `SavedTab[]`
 - `settings`: `{ excludePinned: boolean, restoreBatchSize: number, discardRestoredTabs: boolean }`
 
 ### 5.2 Types

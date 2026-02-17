@@ -7,7 +7,9 @@ nufftabs is a minimal Chrome (MV3) extension to condense all tabs from the curre
 ## Core features
 - Condense tabs from the current window (optionally excluding pinned tabs).
 - List UI grouped by condense action, with per-group restore all/delete all plus per-tab restore/delete.
+- Dynamic search in the fixed top bar filters tabs by title/URL.
 - Drag-and-drop between groups to move a saved tab.
+- Index-first lazy loading: group keys load first, group payloads load on demand.
 - Export/import JSON (append or replace), import from file, and OneTab import.
 - Restore rules: single restore uses the current window; restore all opens new windows per chunk, reusing the list window only when it is the sole tab.
 - List tab is pinned and reused if it already exists.
@@ -24,7 +26,9 @@ nufftabs is a minimal Chrome (MV3) extension to condense all tabs from the curre
 
 ### List page
 - Unlisted page at `/nufftabs.html`.
-- Renders saved tab groups from `chrome.storage.local`.
+- Reads `savedTabsIndex` first, then loads group payloads on demand.
+- Renders saved tab groups from `chrome.storage.local` and keeps the header count based on total saved tabs.
+- Filters visible rows and groups from the top app-bar search input.
 - Refreshes on storage changes and when the tab becomes visible.
 
 ### Performance tradeoffs (intentional)
@@ -36,7 +40,10 @@ tradeoffs. These are documented in code comments, but summarized here for mainta
   reorders or mid-list edits, resulting in a skipped re-render.
 - **Incremental list rendering:** only the first `RENDER_PAGE_SIZE` items render initially.
   Remaining tabs require a "Load more" click to render additional chunks. This bounds DOM
-  size but means not all tabs are immediately visible.
+  size but means not all rows are immediately visible.
+- **Index-first group loading:** the page loads `savedTabsIndex` first, then fetches each
+  `savedTabs:<groupKey>` payload as needed (viewport/search/expand). This keeps first paint
+  responsive, but initial renders can show loading placeholders for off-screen groups.
 - **Event delegation:** a single click handler on the list container routes actions via
   `data-action`. This reduces per-row listeners, but action handling depends on markup and
   attributes staying in sync.
@@ -56,6 +63,8 @@ tradeoffs. These are documented in code comments, but summarized here for mainta
   slightly from list order for large restores.
 - **Paged rendering.** Large groups only render the first `RENDER_PAGE_SIZE` items until
   the user clicks "Load more," which can look like missing tabs.
+- **Search semantics.** Search is case-insensitive substring matching over title + URL. It is
+  intentionally not fuzzy, tokenized, or regex-based.
 - **Local settings.** Settings are stored in `chrome.storage.local`, not sync, so they
   do not follow the user across machines.
 - **List tab reuse.** Condense may focus an existing list tab in another window and pins it,
@@ -126,6 +135,18 @@ The packaged extension zip is generated under `.output/`.
 1. On the list page, click the restore icon for a tab.
 2. The tab opens in the **current window**.
 3. The list item is removed from storage.
+
+### Search saved tabs
+1. Type in the search input in the fixed top bar.
+2. Matching is case-insensitive and checks both tab title and URL.
+3. Group cards with no matches are hidden.
+4. Matching groups show filtered counts (`x of y tabs`) and preserve all row/group actions.
+
+### Large lists and lazy loading
+- Group index (`savedTabsIndex`) is read first.
+- Group payloads are loaded when they are near the viewport, expanded, or needed by search.
+- Within each visible group, rows are rendered in pages (`RENDER_PAGE_SIZE`) with **Load more**.
+- Header tab count always reflects total saved tabs, not just loaded groups.
 
 ### Restore all (per group)
 1. Click **Restore all** on a group card.

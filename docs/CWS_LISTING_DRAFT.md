@@ -11,6 +11,8 @@ nufftabs helps you clear tab overload without losing context.
 
 - Condense all open tabs with one click
 - Restore one tab, a whole group, or all groups
+- Search saved tabs instantly from the top bar
+- Smooth loading for large saved lists
 - Keep everything local using `chrome.storage.local`
 - Import/export JSON backups
 - Import from OneTab exports
