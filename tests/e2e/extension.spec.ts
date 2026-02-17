@@ -303,6 +303,9 @@ test.describe('nufftabs extension e2e', () => {
     });
 
     const listPage = await getOrOpenListPage(context, listUrl);
+    // Explicitly reload to ensure fresh state, avoiding any potential view reuse issues
+    // from previous tests or initial load race conditions.
+    await listPage.reload();
     await expect(listPage.locator('.group-card')).toHaveCount(3);
 
     const cards = listPage.locator('.group-card');
