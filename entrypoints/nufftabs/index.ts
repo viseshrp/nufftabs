@@ -47,17 +47,35 @@ const ioPanelEl = document.querySelector<HTMLElement>('#ioPanel');
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
-let snackbarTimer: number | undefined;
-let currentGroups: SavedTabGroups = {};
-let visibleGroups: SavedTabGroups = {};
-let activeSearchTerm = '';
-let draggedTab: { groupKey: string; tabId: string } | null = null;
-let totalTabCount = 0;
-let indexedGroupKeys: string[] = [];
-let indexedGroupKeySet = new Set<string>();
-const groupLoadTasks = new Map<string, Promise<SavedTab[]>>();
-let viewportLoadFrame = 0;
-let searchLoadToken = 0;
+type ListPageState = {
+  snackbarTimer?: number;
+  currentGroups: SavedTabGroups;
+  visibleGroups: SavedTabGroups;
+  activeSearchTerm: string;
+  draggedTab: { groupKey: string; tabId: string } | null;
+  totalTabCount: number;
+  indexedGroupKeys: string[];
+  indexedGroupKeySet: Set<string>;
+  groupLoadTasks: Map<string, Promise<SavedTab[]>>;
+  viewportLoadFrame: number;
+  searchLoadToken: number;
+  scrollUpdateFrame: number;
+};
+
+const state: ListPageState = {
+  snackbarTimer: undefined,
+  currentGroups: {},
+  visibleGroups: {},
+  activeSearchTerm: '',
+  draggedTab: null,
+  totalTabCount: 0,
+  indexedGroupKeys: [],
+  indexedGroupKeySet: new Set<string>(),
+  groupLoadTasks: new Map<string, Promise<SavedTab[]>>(),
+  viewportLoadFrame: 0,
+  searchLoadToken: 0,
+  scrollUpdateFrame: 0,
+};
 
 // Render only a subset of each group at first paint to keep DOM size bounded; users can
 // load additional rows in chunks via the "Load more" control.
@@ -86,8 +104,8 @@ function setStatus(message: string): void {
   if (!snackbarEl) return;
   snackbarEl.textContent = message;
   snackbarEl.classList.add('show');
-  if (snackbarTimer) window.clearTimeout(snackbarTimer);
-  snackbarTimer = window.setTimeout(() => {
+  if (state.snackbarTimer) window.clearTimeout(state.snackbarTimer);
+  state.snackbarTimer = window.setTimeout(() => {
     snackbarEl.classList.remove('show');
   }, 2200);
 }
@@ -144,7 +162,7 @@ function updateGroupHeader(
   visibleTabCount: number,
   createdAt: number,
 ): void {
-  if (activeSearchTerm && visibleTabCount !== totalTabCount) {
+  if (state.activeSearchTerm && visibleTabCount !== totalTabCount) {
     view.titleEl.textContent = `${visibleTabCount} of ${totalTabCount} tabs`;
   } else {
     view.titleEl.textContent = `${totalTabCount} tab${totalTabCount === 1 ? '' : 's'}`;
@@ -191,7 +209,7 @@ function appendGroupItems(view: GroupView, groupKey: string, tabs: SavedTab[], s
 
     item.addEventListener('dragstart', (e) => {
       if (e.dataTransfer) {
-        draggedTab = { groupKey, tabId: tab.id };
+        state.draggedTab = { groupKey, tabId: tab.id };
         e.dataTransfer.effectAllowed = 'move';
         e.dataTransfer.setData('text/plain', tab.url);
         // Defer class addition to avoid hiding the element immediately during drag generation
@@ -202,7 +220,7 @@ function appendGroupItems(view: GroupView, groupKey: string, tabs: SavedTab[], s
     });
 
     item.addEventListener('dragend', () => {
-      draggedTab = null;
+      state.draggedTab = null;
       item.classList.remove('is-dragging');
     });
 
@@ -330,7 +348,7 @@ function renderGroupItems(view: GroupView, groupKey: string, tabs: SavedTab[]): 
 
 function renderMoreItems(groupKey: string): void {
   const view = groupViews.get(groupKey);
-  const tabs = visibleGroups[groupKey];
+  const tabs = state.visibleGroups[groupKey];
   if (!view || !tabs) return;
   const nextCount = Math.min(tabs.length, view.renderedCount + RENDER_PAGE_SIZE);
   if (view.loadMoreItem?.isConnected) {
@@ -491,7 +509,7 @@ function createGroupView(groupKey: string): GroupView {
 
   itemsWrap.addEventListener('dragover', (e) => {
     e.preventDefault();
-    if (draggedTab && draggedTab.groupKey !== groupKey) {
+    if (state.draggedTab && state.draggedTab.groupKey !== groupKey) {
       if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
       itemsWrap.classList.add('drag-over');
     }
@@ -504,7 +522,7 @@ function createGroupView(groupKey: string): GroupView {
   itemsWrap.addEventListener('drop', (e) => {
     e.preventDefault();
     itemsWrap.classList.remove('drag-over');
-    if (draggedTab && draggedTab.groupKey !== groupKey) {
+    if (state.draggedTab && state.draggedTab.groupKey !== groupKey) {
       runAsyncTask(handleDrop(groupKey), 'Failed to move tab between groups');
     }
   });
@@ -559,48 +577,48 @@ function updateEmptyStateText(message: 'saved' | 'matching'): void {
 }
 
 function getSortedGroupKeys(): string[] {
-  return indexedGroupKeys
+  return state.indexedGroupKeys
     .slice()
     .sort((a, b) => (parseGroupCreationTime(b) ?? 0) - (parseGroupCreationTime(a) ?? 0));
 }
 
 function isGroupLoaded(groupKey: string): boolean {
-  return Object.hasOwn(currentGroups, groupKey);
+  return Object.hasOwn(state.currentGroups, groupKey);
 }
 
 function upsertIndexedGroupKey(groupKey: string): void {
-  if (indexedGroupKeySet.has(groupKey)) return;
-  indexedGroupKeys.push(groupKey);
-  indexedGroupKeySet.add(groupKey);
+  if (state.indexedGroupKeySet.has(groupKey)) return;
+  state.indexedGroupKeys.push(groupKey);
+  state.indexedGroupKeySet.add(groupKey);
 }
 
 function removeIndexedGroupKey(groupKey: string): void {
-  if (!indexedGroupKeySet.has(groupKey)) return;
-  indexedGroupKeys = indexedGroupKeys.filter((key) => key !== groupKey);
-  indexedGroupKeySet.delete(groupKey);
-  delete currentGroups[groupKey];
-  delete visibleGroups[groupKey];
-  groupLoadTasks.delete(groupKey);
+  if (!state.indexedGroupKeySet.has(groupKey)) return;
+  state.indexedGroupKeys = state.indexedGroupKeys.filter((key) => key !== groupKey);
+  state.indexedGroupKeySet.delete(groupKey);
+  delete state.currentGroups[groupKey];
+  delete state.visibleGroups[groupKey];
+  state.groupLoadTasks.delete(groupKey);
 }
 
 function setIndexedGroups(nextKeys: string[]): void {
-  indexedGroupKeys = nextKeys.slice();
-  indexedGroupKeySet = new Set(nextKeys);
-  for (const key of Object.keys(currentGroups)) {
-    if (!indexedGroupKeySet.has(key)) delete currentGroups[key];
+  state.indexedGroupKeys = nextKeys.slice();
+  state.indexedGroupKeySet = new Set(nextKeys);
+  for (const key of Object.keys(state.currentGroups)) {
+    if (!state.indexedGroupKeySet.has(key)) delete state.currentGroups[key];
   }
-  for (const key of Object.keys(visibleGroups)) {
-    if (!indexedGroupKeySet.has(key)) delete visibleGroups[key];
+  for (const key of Object.keys(state.visibleGroups)) {
+    if (!state.indexedGroupKeySet.has(key)) delete state.visibleGroups[key];
   }
-  for (const key of groupLoadTasks.keys()) {
-    if (!indexedGroupKeySet.has(key)) groupLoadTasks.delete(key);
+  for (const key of state.groupLoadTasks.keys()) {
+    if (!state.indexedGroupKeySet.has(key)) state.groupLoadTasks.delete(key);
   }
 }
 
 function applyLoadedGroup(groupKey: string, tabs: SavedTab[]): void {
   if (tabs.length > 0) {
     upsertIndexedGroupKey(groupKey);
-    currentGroups[groupKey] = tabs;
+    state.currentGroups[groupKey] = tabs;
   } else {
     removeIndexedGroupKey(groupKey);
   }
@@ -610,37 +628,37 @@ function applyLoadedGroup(groupKey: string, tabs: SavedTab[]): void {
 function applyFullGroups(nextGroups: SavedTabGroups): void {
   const keys = Object.keys(nextGroups);
   setIndexedGroups(keys);
-  currentGroups = cloneGroups(nextGroups);
+  state.currentGroups = cloneGroups(nextGroups);
   renderGroups();
 }
 
 async function ensureGroupLoaded(groupKey: string): Promise<SavedTab[]> {
-  if (!indexedGroupKeySet.has(groupKey)) return [];
-  if (isGroupLoaded(groupKey)) return currentGroups[groupKey] ?? [];
-  const pending = groupLoadTasks.get(groupKey);
+  if (!state.indexedGroupKeySet.has(groupKey)) return [];
+  if (isGroupLoaded(groupKey)) return state.currentGroups[groupKey] ?? [];
+  const pending = state.groupLoadTasks.get(groupKey);
   if (pending) return pending;
 
   const task = (async () => {
     const tabs = await readSavedGroup(groupKey);
-    if (!indexedGroupKeySet.has(groupKey)) return tabs;
-    currentGroups[groupKey] = tabs;
+    if (!state.indexedGroupKeySet.has(groupKey)) return tabs;
+    state.currentGroups[groupKey] = tabs;
     renderGroups();
     return tabs;
   })().finally(() => {
-    groupLoadTasks.delete(groupKey);
+    state.groupLoadTasks.delete(groupKey);
   });
 
-  groupLoadTasks.set(groupKey, task);
+  state.groupLoadTasks.set(groupKey, task);
   return task;
 }
 
 async function loadGroupsNearViewport(): Promise<void> {
-  if (activeSearchTerm || indexedGroupKeys.length === 0) return;
+  if (state.activeSearchTerm || state.indexedGroupKeys.length === 0) return;
   const preload = Math.max(window.innerHeight, 600);
   const toLoad: string[] = [];
 
   for (const [key, view] of groupViews.entries()) {
-    if (!indexedGroupKeySet.has(key) || isGroupLoaded(key) || groupLoadTasks.has(key)) continue;
+    if (!state.indexedGroupKeySet.has(key) || isGroupLoaded(key) || state.groupLoadTasks.has(key)) continue;
     const rect = view.card.getBoundingClientRect();
     const nearViewport = rect.top <= window.innerHeight + preload && rect.bottom >= -preload;
     if (nearViewport) toLoad.push(key);
@@ -655,36 +673,36 @@ async function loadGroupsNearViewport(): Promise<void> {
 }
 
 function scheduleViewportGroupLoad(): void {
-  if (activeSearchTerm) return;
-  if (viewportLoadFrame) return;
-  viewportLoadFrame = window.requestAnimationFrame(() => {
-    viewportLoadFrame = 0;
+  if (state.activeSearchTerm) return;
+  if (state.viewportLoadFrame) return;
+  state.viewportLoadFrame = window.requestAnimationFrame(() => {
+    state.viewportLoadFrame = 0;
     runAsyncTask(loadGroupsNearViewport(), 'Failed to load groups for viewport');
   });
 }
 
 async function loadGroupsForSearch(loadToken: number): Promise<void> {
   for (const groupKey of getSortedGroupKeys()) {
-    if (loadToken !== searchLoadToken || !activeSearchTerm) return;
+    if (loadToken !== state.searchLoadToken || !state.activeSearchTerm) return;
     if (isGroupLoaded(groupKey)) continue;
     await ensureGroupLoaded(groupKey);
   }
 }
 
 function scheduleSearchGroupLoad(): void {
-  if (!activeSearchTerm) return;
-  searchLoadToken += 1;
-  runAsyncTask(loadGroupsForSearch(searchLoadToken), 'Failed to load groups for search');
+  if (!state.activeSearchTerm) return;
+  state.searchLoadToken += 1;
+  runAsyncTask(loadGroupsForSearch(state.searchLoadToken), 'Failed to load groups for search');
 }
 
 function setTabCount(count: number): void {
-  totalTabCount = Math.max(0, count);
+  state.totalTabCount = Math.max(0, count);
   if (!tabCountEl) return;
-  tabCountEl.textContent = String(totalTabCount);
+  tabCountEl.textContent = String(state.totalTabCount);
 }
 
 function adjustTabCount(delta: number): void {
-  setTabCount(totalTabCount + delta);
+  setTabCount(state.totalTabCount + delta);
 }
 
 async function refreshTotalTabCount(): Promise<void> {
@@ -693,7 +711,7 @@ async function refreshTotalTabCount(): Promise<void> {
 }
 
 function areAllIndexedGroupsLoaded(): boolean {
-  return indexedGroupKeys.every((groupKey) => isGroupLoaded(groupKey));
+  return state.indexedGroupKeys.every((groupKey) => isGroupLoaded(groupKey));
 }
 
 function renderGroups(): void {
@@ -702,10 +720,10 @@ function renderGroups(): void {
     .map((groupKey) => {
       const createdAt = parseGroupCreationTime(groupKey) ?? 0;
       const loaded = isGroupLoaded(groupKey);
-      const tabs = loaded ? (currentGroups[groupKey] ?? []) : [];
+      const tabs = loaded ? (state.currentGroups[groupKey] ?? []) : [];
       if (loaded && tabs.length === 0) return null;
-      const visibleTabs = activeSearchTerm ? filterGroupTabs(tabs, activeSearchTerm) : tabs;
-      if (activeSearchTerm && (!loaded || visibleTabs.length === 0)) return null;
+      const visibleTabs = state.activeSearchTerm ? filterGroupTabs(tabs, state.activeSearchTerm) : tabs;
+      if (state.activeSearchTerm && (!loaded || visibleTabs.length === 0)) return null;
       return {
         groupKey,
         createdAt,
@@ -716,11 +734,11 @@ function renderGroups(): void {
     })
     .filter((entry): entry is NonNullable<typeof entry> => entry !== null);
 
-  const hasSavedTabs = indexedGroupKeys.length > 0;
+  const hasSavedTabs = state.indexedGroupKeys.length > 0;
   const hasEntries = entries.length > 0;
   if (!hasSavedTabs || !hasEntries) {
     emptyEl.style.display = 'block';
-    updateEmptyStateText(activeSearchTerm && hasSavedTabs ? 'matching' : 'saved');
+    updateEmptyStateText(state.activeSearchTerm && hasSavedTabs ? 'matching' : 'saved');
   } else {
     emptyEl.style.display = 'none';
   }
@@ -747,7 +765,7 @@ function renderGroups(): void {
     if (loaded) {
       updateGroupHeader(view, tabs.length, visibleTabs.length, createdAt);
       nextVisibleGroups[groupKey] = visibleTabs;
-      const previousTabs = visibleGroups[groupKey];
+      const previousTabs = state.visibleGroups[groupKey];
       if (!isSameGroup(previousTabs, visibleTabs)) {
         renderGroupItems(view, groupKey, visibleTabs);
       } else {
@@ -768,10 +786,10 @@ function renderGroups(): void {
   }
 
   groupsEl.replaceChildren(fragment);
-  visibleGroups = nextVisibleGroups;
+  state.visibleGroups = nextVisibleGroups;
   updateScrollControls();
 
-  if (!activeSearchTerm) {
+  if (!state.activeSearchTerm) {
     scheduleViewportGroupLoad();
   }
 }
@@ -779,17 +797,17 @@ function renderGroups(): void {
 async function refreshList(changedGroupKeys?: string[]): Promise<void> {
   if (changedGroupKeys && changedGroupKeys.length > 0) {
     for (const groupKey of changedGroupKeys) {
-      delete currentGroups[groupKey];
-      delete visibleGroups[groupKey];
-      groupLoadTasks.delete(groupKey);
+      delete state.currentGroups[groupKey];
+      delete state.visibleGroups[groupKey];
+      state.groupLoadTasks.delete(groupKey);
     }
   }
   const index = await readSavedGroupsIndex();
   setIndexedGroups(index);
   renderGroups();
-  if (activeSearchTerm) {
-    searchLoadToken += 1;
-    await loadGroupsForSearch(searchLoadToken);
+  if (state.activeSearchTerm) {
+    state.searchLoadToken += 1;
+    await loadGroupsForSearch(state.searchLoadToken);
   } else {
     await loadGroupsNearViewport();
   }
@@ -982,8 +1000,8 @@ async function deleteGroup(groupKey: string): Promise<void> {
 
 
 async function handleDrop(targetGroupKey: string): Promise<void> {
-  if (!draggedTab) return;
-  const { groupKey: sourceGroupKey, tabId } = draggedTab;
+  if (!state.draggedTab) return;
+  const { groupKey: sourceGroupKey, tabId } = state.draggedTab;
   if (sourceGroupKey === targetGroupKey) return;
 
   const sourceCurrent = await ensureGroupLoaded(sourceGroupKey);
@@ -1017,17 +1035,17 @@ async function handleDrop(targetGroupKey: string): Promise<void> {
   if (sourceGroup.length === 0) {
     removeIndexedGroupKey(sourceGroupKey);
   } else {
-    currentGroups[sourceGroupKey] = sourceGroup;
+    state.currentGroups[sourceGroupKey] = sourceGroup;
   }
   upsertIndexedGroupKey(targetGroupKey);
-  currentGroups[targetGroupKey] = targetGroup;
+  state.currentGroups[targetGroupKey] = targetGroup;
   renderGroups();
   setStatus('Moved 1 tab.');
 }
 
 async function exportJson(): Promise<void> {
   if (!jsonAreaEl) return;
-  const savedGroups = areAllIndexedGroupsLoaded() ? cloneGroups(currentGroups) : await readSavedGroups();
+  const savedGroups = areAllIndexedGroupsLoaded() ? cloneGroups(state.currentGroups) : await readSavedGroups();
   const total = countTotalTabs(savedGroups);
   jsonAreaEl.value = JSON.stringify({ savedTabs: savedGroups }, null, 2);
 
@@ -1133,7 +1151,7 @@ async function importOneTab(): Promise<void> {
     return;
   }
   const groupKey = await getCurrentWindowKey();
-  const existing = indexedGroupKeySet.has(groupKey) ? await ensureGroupLoaded(groupKey) : [];
+  const existing = state.indexedGroupKeySet.has(groupKey) ? await ensureGroupLoaded(groupKey) : [];
   const updatedGroup = [...existing, ...imported];
   const saved = await writeSavedGroup(groupKey, updatedGroup);
   if (!saved) {
@@ -1142,22 +1160,22 @@ async function importOneTab(): Promise<void> {
     return;
   }
   upsertIndexedGroupKey(groupKey);
-  currentGroups[groupKey] = updatedGroup;
+  state.currentGroups[groupKey] = updatedGroup;
   renderGroups();
   adjustTabCount(imported.length);
   setStatus(`Imported ${imported.length} tab${imported.length === 1 ? '' : 's'}, skipped ${skipped}.`);
 }
 
 async function init(): Promise<void> {
-  activeSearchTerm = normalizeSearchTerm(searchTabsEl?.value ?? '');
+  state.activeSearchTerm = normalizeSearchTerm(searchTabsEl?.value ?? '');
   await refreshList();
 
   searchTabsEl?.addEventListener('input', () => {
     const nextSearchTerm = normalizeSearchTerm(searchTabsEl.value);
-    if (nextSearchTerm === activeSearchTerm) return;
-    activeSearchTerm = nextSearchTerm;
+    if (nextSearchTerm === state.activeSearchTerm) return;
+    state.activeSearchTerm = nextSearchTerm;
     renderGroups();
-    if (activeSearchTerm) {
+    if (state.activeSearchTerm) {
       scheduleSearchGroupLoad();
     }
   });
@@ -1258,12 +1276,10 @@ function getListBottomScrollTarget(): number {
   return Math.min(target, maxScroll);
 }
 
-let scrollUpdateFrame = 0;
-
 function scheduleScrollControlsUpdate(): void {
-  if (scrollUpdateFrame) return;
-  scrollUpdateFrame = window.requestAnimationFrame(() => {
-    scrollUpdateFrame = 0;
+  if (state.scrollUpdateFrame) return;
+  state.scrollUpdateFrame = window.requestAnimationFrame(() => {
+    state.scrollUpdateFrame = 0;
     updateScrollControls();
   });
 }
