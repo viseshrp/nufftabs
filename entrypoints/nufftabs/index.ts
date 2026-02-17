@@ -31,6 +31,7 @@ const listSectionEl = document.querySelector<HTMLElement>('.list-section');
 const scrollTopEl = document.querySelector<HTMLButtonElement>('#scrollTop');
 const scrollBottomEl = document.querySelector<HTMLButtonElement>('#scrollBottom');
 const tabCountEl = document.querySelector<HTMLSpanElement>('#tabCount');
+const searchTabsEl = document.querySelector<HTMLInputElement>('#searchTabs');
 const toggleIoEl = document.querySelector<HTMLButtonElement>('#toggleIo');
 const exportJsonEl = document.querySelector<HTMLButtonElement>('#exportJson');
 const importJsonEl = document.querySelector<HTMLButtonElement>('#importJson');
@@ -46,6 +47,8 @@ const SVG_NS = 'http://www.w3.org/2000/svg';
 
 let snackbarTimer: number | undefined;
 let currentGroups: SavedTabGroups = {};
+let visibleGroups: SavedTabGroups = {};
+let activeSearchTerm = '';
 let draggedTab: { groupKey: string; tabId: string } | null = null;
 
 // Render only a subset of each group at first paint to keep DOM size bounded; users can
@@ -127,8 +130,17 @@ async function initTheme(): Promise<void> {
 
 runAsyncTask(initTheme(), 'Failed to initialize theme');
 
-function updateGroupHeader(view: GroupView, tabs: SavedTab[], createdAt: number): void {
-  view.titleEl.textContent = `${tabs.length} tab${tabs.length === 1 ? '' : 's'}`;
+function updateGroupHeader(
+  view: GroupView,
+  totalTabCount: number,
+  visibleTabCount: number,
+  createdAt: number,
+): void {
+  if (activeSearchTerm && visibleTabCount !== totalTabCount) {
+    view.titleEl.textContent = `${visibleTabCount} of ${totalTabCount} tabs`;
+  } else {
+    view.titleEl.textContent = `${totalTabCount} tab${totalTabCount === 1 ? '' : 's'}`;
+  }
   view.metaEl.textContent = createdAt > 0 ? `Created ${formatCreatedAt(createdAt)}` : 'Created -';
 }
 
@@ -310,7 +322,7 @@ function renderGroupItems(view: GroupView, groupKey: string, tabs: SavedTab[]): 
 
 function renderMoreItems(groupKey: string): void {
   const view = groupViews.get(groupKey);
-  const tabs = currentGroups[groupKey];
+  const tabs = visibleGroups[groupKey];
   if (!view || !tabs) return;
   const nextCount = Math.min(tabs.length, view.renderedCount + RENDER_PAGE_SIZE);
   if (view.loadMoreItem?.isConnected) {
@@ -514,9 +526,33 @@ function parseGroupCreationTime(key: string): number | null {
   return Number.isFinite(timestamp) && timestamp > 0 ? timestamp : null;
 }
 
-function renderGroups(savedGroups: SavedTabGroups, previousGroups: SavedTabGroups): void {
+function normalizeSearchTerm(value: string): string {
+  return value.trim().toLowerCase();
+}
+
+function filterGroupTabs(tabs: SavedTab[], searchTerm: string): SavedTab[] {
+  if (!searchTerm) return tabs;
+  return tabs.filter((tab) => {
+    const title = tab.title.toLowerCase();
+    const url = tab.url.toLowerCase();
+    return title.includes(searchTerm) || url.includes(searchTerm);
+  });
+}
+
+function updateEmptyStateText(hasSavedTabs: boolean, hasMatches: boolean): void {
+  if (!emptyEl) return;
+  const label = emptyEl.querySelector('div');
+  if (!label) return;
+  if (!hasSavedTabs) {
+    label.textContent = 'No saved tabs';
+    return;
+  }
+  label.textContent = hasMatches ? 'No saved tabs' : 'No matching tabs';
+}
+
+function renderGroups(savedGroups: SavedTabGroups): void {
   if (!groupsEl || !emptyEl) return;
-  const entries = Object.entries(savedGroups)
+  const allEntries = Object.entries(savedGroups)
     .filter(([, tabs]) => tabs.length > 0)
     .map(([key, tabs]) => {
       const createdAt = parseGroupCreationTime(key) ?? 0;
@@ -525,20 +561,22 @@ function renderGroups(savedGroups: SavedTabGroups, previousGroups: SavedTabGroup
         tabs,
         createdAt,
       };
-    })
-    .sort((a, b) => b.createdAt - a.createdAt);
-  const totalCount = entries.reduce((sum, entry) => sum + entry.tabs.length, 0);
+    });
+  const totalCount = allEntries.reduce((sum, entry) => sum + entry.tabs.length, 0);
   if (tabCountEl) tabCountEl.textContent = String(totalCount);
 
-  if (totalCount === 0) {
-    emptyEl.style.display = 'block';
-    groupsEl.replaceChildren();
-    groupViews.clear();
-    updateScrollControls();
-    return;
-  }
+  const entries = allEntries
+    .map((entry) => ({
+      ...entry,
+      visibleTabs: filterGroupTabs(entry.tabs, activeSearchTerm),
+    }))
+    .filter((entry) => entry.visibleTabs.length > 0)
+    .sort((a, b) => b.createdAt - a.createdAt);
+  const hasSavedTabs = totalCount > 0;
+  const hasMatches = entries.length > 0;
+  emptyEl.style.display = hasSavedTabs && hasMatches ? 'none' : 'block';
+  updateEmptyStateText(hasSavedTabs, hasMatches);
 
-  emptyEl.style.display = 'none';
   const activeKeys = new Set(entries.map((entry) => entry.key));
   for (const [key, view] of groupViews.entries()) {
     if (!activeKeys.has(key)) {
@@ -547,18 +585,20 @@ function renderGroups(savedGroups: SavedTabGroups, previousGroups: SavedTabGroup
     }
   }
 
+  const nextVisibleGroups: SavedTabGroups = {};
   const fragment = document.createDocumentFragment();
   for (const entry of entries) {
     const groupKey = entry.key;
-    const tabs = entry.tabs;
+    const tabs = entry.visibleTabs;
+    nextVisibleGroups[groupKey] = tabs;
     let view = groupViews.get(groupKey);
     if (!view) {
       view = createGroupView(groupKey);
       groupViews.set(groupKey, view);
     }
-    updateGroupHeader(view, tabs, entry.createdAt);
+    updateGroupHeader(view, entry.tabs.length, tabs.length, entry.createdAt);
     view.itemsWrap.hidden = view.card.classList.contains('is-collapsed');
-    const previousTabs = previousGroups[groupKey];
+    const previousTabs = visibleGroups[groupKey];
     if (!isSameGroup(previousTabs, tabs)) {
       renderGroupItems(view, groupKey, tabs);
     } else {
@@ -568,6 +608,7 @@ function renderGroups(savedGroups: SavedTabGroups, previousGroups: SavedTabGroup
   }
 
   groupsEl.replaceChildren(fragment);
+  visibleGroups = nextVisibleGroups;
   updateScrollControls();
 }
 
@@ -630,9 +671,8 @@ function handleGroupAction(event: Event): void {
 
 function applyGroups(savedGroups: SavedTabGroups): void {
   if (areGroupsEquivalent(currentGroups, savedGroups)) return;
-  const previous = currentGroups;
   currentGroups = savedGroups;
-  renderGroups(savedGroups, previous);
+  renderGroups(savedGroups);
 }
 
 async function refreshList(nextGroups?: SavedTabGroups): Promise<void> {
@@ -927,7 +967,15 @@ async function importOneTab(): Promise<void> {
 }
 
 async function init(): Promise<void> {
+  activeSearchTerm = normalizeSearchTerm(searchTabsEl?.value ?? '');
   await refreshList();
+
+  searchTabsEl?.addEventListener('input', () => {
+    const nextSearchTerm = normalizeSearchTerm(searchTabsEl.value);
+    if (nextSearchTerm === activeSearchTerm) return;
+    activeSearchTerm = nextSearchTerm;
+    renderGroups(currentGroups);
+  });
 
   toggleIoEl?.addEventListener('click', () => {
     if (!ioPanelEl) return;
