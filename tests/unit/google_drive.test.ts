@@ -108,6 +108,16 @@ describe('google_drive', () => {
               expect.any(Object)
           );
       });
+
+      it('should throw error when findFile fetch fails', async () => {
+          const mockResponse = {
+              ok: false,
+              statusText: 'Server Error',
+          };
+          mockFetch.mockResolvedValue(mockResponse);
+
+          await expect(findFile('token', 'backup.json')).rejects.toThrow('Failed to find file: Server Error');
+      });
   });
 
   describe('uploadFile', () => {
@@ -186,6 +196,44 @@ describe('google_drive', () => {
             expect.objectContaining({
                 method: 'POST',
             })
+        );
+    });
+
+    it('should throw error when upload fetch fails', async () => {
+        const mockResponse = {
+            ok: false,
+            status: 500,
+            statusText: 'Internal Server Error',
+            text: async () => 'Upload failed',
+        };
+        mockFetch.mockResolvedValue(mockResponse);
+
+        await expect(uploadFile('token', '{}', 'backup.json', 'new')).rejects.toThrow(
+            'Failed to upload file: 500 Internal Server Error - Upload failed'
+        );
+    });
+
+    it('should ignore error finding file and proceed to create new one', async () => {
+        const mockFindResponse = {
+            ok: false,
+            statusText: 'Not Found',
+        };
+        const mockUploadResponse = {
+            ok: true,
+            text: async () => '{"id": "new-id"}',
+        };
+
+        mockFetch
+            .mockResolvedValueOnce(mockFindResponse)
+            .mockResolvedValueOnce(mockUploadResponse);
+
+        await uploadFile('token', '{}', 'backup.json', 'overwrite');
+
+        // Should attempt upload (create) even if find failed
+        expect(mockFetch).toHaveBeenCalledTimes(2);
+        expect(mockFetch).toHaveBeenNthCalledWith(2,
+            'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart',
+            expect.objectContaining({ method: 'POST' })
         );
     });
   });
