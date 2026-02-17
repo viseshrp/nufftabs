@@ -10,7 +10,7 @@ export default defineConfig({
   reporter: [['list']],
   outputDir: 'test-results',
   use: {
-    headless: false,
+    headless: true,
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
     video: 'retain-on-failure',

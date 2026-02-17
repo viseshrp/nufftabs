@@ -271,4 +271,70 @@ test.describe('nufftabs extension e2e', () => {
 
     await context.close();
   });
+
+  test('collapse/expand all and default collapse behavior', async () => {
+    const { context, extensionId, page } = await launchExtension();
+    const listUrl = extensionUrl(extensionId, 'nufftabs.html');
+
+    // Open options page to establish context for storage manipulation
+    await page.goto(extensionUrl(extensionId, 'options.html'));
+
+    // Seed 3 groups with timestamps to ensure specific ordering (Newest -> Oldest)
+    await page.evaluate(async () => {
+      const groups = [
+        { key: '1-3000000000000-a', urls: ['http://a.com'] }, // Newest
+        { key: '1-2000000000000-b', urls: ['http://b.com'] },
+        { key: '1-1000000000000-c', urls: ['http://c.com'] }, // Oldest
+      ];
+
+      const index = groups.map((g) => g.key);
+      const storage: Record<string, unknown> = { savedTabsIndex: index };
+
+      for (const g of groups) {
+        storage[`savedTabs:${g.key}`] = g.urls.map((url) => ({
+          id: crypto.randomUUID(),
+          url,
+          title: url,
+          savedAt: Date.now(),
+        }));
+      }
+
+      await chrome.storage.local.set(storage);
+    });
+
+    const listPage = await getOrOpenListPage(context, listUrl);
+    await expect(listPage.locator('.group-card')).toHaveCount(3);
+
+    const cards = listPage.locator('.group-card');
+
+    // 1. Default behavior: First group expanded, others collapsed
+    await expect(cards.nth(0)).not.toHaveClass(/is-collapsed/);
+    await expect(cards.nth(0).locator('.group-items')).toBeVisible();
+
+    await expect(cards.nth(1)).toHaveClass(/is-collapsed/);
+    await expect(cards.nth(1).locator('.group-items')).toBeHidden();
+
+    await expect(cards.nth(2)).toHaveClass(/is-collapsed/);
+    await expect(cards.nth(2).locator('.group-items')).toBeHidden();
+
+    // 2. Expand All
+    await listPage.locator('#expandAll').click();
+    await expect(cards.nth(0)).not.toHaveClass(/is-collapsed/);
+    await expect(cards.nth(0).locator('.group-items')).toBeVisible();
+    await expect(cards.nth(1)).not.toHaveClass(/is-collapsed/);
+    await expect(cards.nth(1).locator('.group-items')).toBeVisible();
+    await expect(cards.nth(2)).not.toHaveClass(/is-collapsed/);
+    await expect(cards.nth(2).locator('.group-items')).toBeVisible();
+
+    // 3. Collapse All
+    await listPage.locator('#collapseAll').click();
+    await expect(cards.nth(0)).toHaveClass(/is-collapsed/);
+    await expect(cards.nth(0).locator('.group-items')).toBeHidden();
+    await expect(cards.nth(1)).toHaveClass(/is-collapsed/);
+    await expect(cards.nth(1).locator('.group-items')).toBeHidden();
+    await expect(cards.nth(2)).toHaveClass(/is-collapsed/);
+    await expect(cards.nth(2).locator('.group-items')).toBeHidden();
+
+    await context.close();
+  });
 });
