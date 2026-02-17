@@ -60,6 +60,9 @@ type ListPageState = {
   viewportLoadFrame: number;
   searchLoadToken: number;
   scrollUpdateFrame: number;
+  renderGroupsFrame: number;
+  renderGroupsScheduled: boolean;
+  renderGroupsFallbackTimer?: number;
 };
 
 const state: ListPageState = {
@@ -75,6 +78,9 @@ const state: ListPageState = {
   viewportLoadFrame: 0,
   searchLoadToken: 0,
   scrollUpdateFrame: 0,
+  renderGroupsFrame: 0,
+  renderGroupsScheduled: false,
+  renderGroupsFallbackTimer: undefined,
 };
 
 // Render only a subset of each group at first paint to keep DOM size bounded; users can
@@ -622,14 +628,14 @@ function applyLoadedGroup(groupKey: string, tabs: SavedTab[]): void {
   } else {
     removeIndexedGroupKey(groupKey);
   }
-  renderGroups();
+  scheduleRenderGroups();
 }
 
 function applyFullGroups(nextGroups: SavedTabGroups): void {
   const keys = Object.keys(nextGroups);
   setIndexedGroups(keys);
   state.currentGroups = cloneGroups(nextGroups);
-  renderGroups();
+  scheduleRenderGroups();
 }
 
 async function ensureGroupLoaded(groupKey: string): Promise<SavedTab[]> {
@@ -642,7 +648,7 @@ async function ensureGroupLoaded(groupKey: string): Promise<SavedTab[]> {
     const tabs = await readSavedGroup(groupKey);
     if (!state.indexedGroupKeySet.has(groupKey)) return tabs;
     state.currentGroups[groupKey] = tabs;
-    renderGroups();
+    scheduleRenderGroups();
     return tabs;
   })().finally(() => {
     state.groupLoadTasks.delete(groupKey);
@@ -712,6 +718,38 @@ async function refreshTotalTabCount(): Promise<void> {
 
 function areAllIndexedGroupsLoaded(): boolean {
   return state.indexedGroupKeys.every((groupKey) => isGroupLoaded(groupKey));
+}
+
+function cancelScheduledRenderGroups(): void {
+  if (state.renderGroupsFrame) {
+    window.cancelAnimationFrame(state.renderGroupsFrame);
+    state.renderGroupsFrame = 0;
+  }
+  if (state.renderGroupsFallbackTimer) {
+    window.clearTimeout(state.renderGroupsFallbackTimer);
+    state.renderGroupsFallbackTimer = undefined;
+  }
+  state.renderGroupsScheduled = false;
+}
+
+function scheduleRenderGroups(): void {
+  if (state.renderGroupsScheduled) return;
+  state.renderGroupsScheduled = true;
+  const flush = () => {
+    if (!state.renderGroupsScheduled) return;
+    state.renderGroupsScheduled = false;
+    if (state.renderGroupsFallbackTimer) {
+      window.clearTimeout(state.renderGroupsFallbackTimer);
+      state.renderGroupsFallbackTimer = undefined;
+    }
+    state.renderGroupsFrame = 0;
+    renderGroups();
+  };
+  state.renderGroupsFrame = window.requestAnimationFrame(() => {
+    flush();
+  });
+  // Fallback for test environments where requestAnimationFrame may be stubbed as a no-op.
+  state.renderGroupsFallbackTimer = window.setTimeout(flush, 0);
 }
 
 function renderGroups(): void {
@@ -804,6 +842,7 @@ async function refreshList(changedGroupKeys?: string[]): Promise<void> {
   }
   const index = await readSavedGroupsIndex();
   setIndexedGroups(index);
+  cancelScheduledRenderGroups();
   renderGroups();
   if (state.activeSearchTerm) {
     state.searchLoadToken += 1;
@@ -975,7 +1014,7 @@ async function restoreGroup(groupKey: string): Promise<void> {
     return;
   }
   removeIndexedGroupKey(groupKey);
-  renderGroups();
+  scheduleRenderGroups();
   adjustTabCount(-groupTabs.length);
   setStatus('Restored all tabs.');
 }
@@ -993,7 +1032,7 @@ async function deleteGroup(groupKey: string): Promise<void> {
     return;
   }
   removeIndexedGroupKey(groupKey);
-  renderGroups();
+  scheduleRenderGroups();
   adjustTabCount(-groupTabs.length);
   setStatus('Deleted tabs.');
 }
@@ -1039,7 +1078,7 @@ async function handleDrop(targetGroupKey: string): Promise<void> {
   }
   upsertIndexedGroupKey(targetGroupKey);
   state.currentGroups[targetGroupKey] = targetGroup;
-  renderGroups();
+  scheduleRenderGroups();
   setStatus('Moved 1 tab.');
 }
 
@@ -1161,7 +1200,7 @@ async function importOneTab(): Promise<void> {
   }
   upsertIndexedGroupKey(groupKey);
   state.currentGroups[groupKey] = updatedGroup;
-  renderGroups();
+  scheduleRenderGroups();
   adjustTabCount(imported.length);
   setStatus(`Imported ${imported.length} tab${imported.length === 1 ? '' : 's'}, skipped ${skipped}.`);
 }
@@ -1174,7 +1213,7 @@ async function init(): Promise<void> {
     const nextSearchTerm = normalizeSearchTerm(searchTabsEl.value);
     if (nextSearchTerm === state.activeSearchTerm) return;
     state.activeSearchTerm = nextSearchTerm;
-    renderGroups();
+    scheduleRenderGroups();
     if (state.activeSearchTerm) {
       scheduleSearchGroupLoad();
     }
