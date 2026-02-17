@@ -9,11 +9,19 @@ export type SavedTab = {
 
 export type SavedTabGroups = Record<string, SavedTab[]>;
 
+export type GoogleDriveBackupSettings = {
+  enabled: boolean;
+  filename: string;
+  mode: 'overwrite' | 'new';
+  lastSync: number;
+};
+
 export type Settings = {
   excludePinned: boolean;
   restoreBatchSize: number;
   discardRestoredTabs: boolean;
   theme: 'os' | 'light' | 'dark';
+  googleDriveBackup: GoogleDriveBackupSettings;
 };
 
 export type SettingsInput = {
@@ -21,6 +29,7 @@ export type SettingsInput = {
   restoreBatchSize?: number;
   discardRestoredTabs?: boolean;
   theme?: 'os' | 'light' | 'dark';
+  googleDriveBackup?: Partial<GoogleDriveBackupSettings>;
 };
 
 export const STORAGE_KEYS = {
@@ -33,6 +42,12 @@ export const DEFAULT_SETTINGS: Settings = {
   restoreBatchSize: 100,
   discardRestoredTabs: false,
   theme: 'os',
+  googleDriveBackup: {
+    enabled: false,
+    filename: 'nufftabs-backup.json',
+    mode: 'overwrite',
+    lastSync: 0,
+  },
 };
 
 export const LIST_PAGE_PATH = 'nufftabs.html';
@@ -157,6 +172,7 @@ export function normalizeSettings(value: unknown): Settings {
   const restoreBatchSize = (value as { restoreBatchSize?: unknown }).restoreBatchSize;
   const discardRestoredTabs = (value as { discardRestoredTabs?: unknown }).discardRestoredTabs;
   const theme = (value as { theme?: unknown }).theme;
+  const googleDriveBackup = (value as { googleDriveBackup?: unknown }).googleDriveBackup;
 
   const parsedBatchSize =
     typeof restoreBatchSize === 'number' && Number.isFinite(restoreBatchSize)
@@ -168,12 +184,27 @@ export function normalizeSettings(value: unknown): Settings {
       ? (theme as Settings['theme'])
       : DEFAULT_SETTINGS.theme;
 
+  let parsedGoogleDriveBackup = { ...DEFAULT_SETTINGS.googleDriveBackup };
+  if (googleDriveBackup && typeof googleDriveBackup === 'object') {
+    const gd = googleDriveBackup as Partial<GoogleDriveBackupSettings>;
+    parsedGoogleDriveBackup = {
+      enabled: typeof gd.enabled === 'boolean' ? gd.enabled : DEFAULT_SETTINGS.googleDriveBackup.enabled,
+      filename:
+        typeof gd.filename === 'string' && gd.filename.length > 0
+          ? gd.filename
+          : DEFAULT_SETTINGS.googleDriveBackup.filename,
+      mode: gd.mode === 'overwrite' || gd.mode === 'new' ? gd.mode : DEFAULT_SETTINGS.googleDriveBackup.mode,
+      lastSync: typeof gd.lastSync === 'number' ? gd.lastSync : DEFAULT_SETTINGS.googleDriveBackup.lastSync,
+    };
+  }
+
   return {
     excludePinned: typeof excludePinned === 'boolean' ? excludePinned : DEFAULT_SETTINGS.excludePinned,
     restoreBatchSize: parsedBatchSize > 0 ? parsedBatchSize : DEFAULT_SETTINGS.restoreBatchSize,
     discardRestoredTabs:
       typeof discardRestoredTabs === 'boolean' ? discardRestoredTabs : DEFAULT_SETTINGS.discardRestoredTabs,
     theme: parsedTheme,
+    googleDriveBackup: parsedGoogleDriveBackup,
   };
 }
 
@@ -285,23 +316,46 @@ export async function readSettings(): Promise<Settings> {
 
 export async function writeSettings(settings: SettingsInput): Promise<boolean> {
   try {
-    const payload: SettingsInput = { excludePinned: settings.excludePinned };
-    if (
-      typeof settings.restoreBatchSize === 'number' &&
-      Number.isFinite(settings.restoreBatchSize) &&
-      settings.restoreBatchSize > 0
-    ) {
-      payload.restoreBatchSize = Math.floor(settings.restoreBatchSize);
+    const current = await readSettings();
+    // Start with current state to support partial updates
+    const payload: Partial<Settings> = { ...current };
+
+    if (Object.hasOwn(settings, 'excludePinned')) {
+      payload.excludePinned = settings.excludePinned;
     }
-    if (typeof settings.discardRestoredTabs === 'boolean') {
+
+    if (Object.hasOwn(settings, 'restoreBatchSize')) {
+      const val = settings.restoreBatchSize;
+      if (typeof val === 'number' && Number.isFinite(val) && val > 0) {
+        payload.restoreBatchSize = Math.floor(val);
+      } else {
+        // Clear setting if explicitly provided as undefined/null/invalid
+        delete payload.restoreBatchSize;
+      }
+    }
+
+    if (Object.hasOwn(settings, 'discardRestoredTabs')) {
       payload.discardRestoredTabs = settings.discardRestoredTabs;
     }
-    if (
-      typeof settings.theme === 'string' &&
-      ['os', 'light', 'dark'].includes(settings.theme)
-    ) {
-      payload.theme = settings.theme;
+
+    if (Object.hasOwn(settings, 'theme')) {
+      const val = settings.theme;
+      if (typeof val === 'string' && ['os', 'light', 'dark'].includes(val)) {
+        payload.theme = val as Settings['theme'];
+      }
     }
+
+    if (settings.googleDriveBackup) {
+      const currentGD = current.googleDriveBackup;
+      const inputGD = settings.googleDriveBackup;
+      payload.googleDriveBackup = {
+        enabled: inputGD.enabled ?? currentGD.enabled,
+        filename: inputGD.filename ?? currentGD.filename,
+        mode: inputGD.mode ?? currentGD.mode,
+        lastSync: inputGD.lastSync ?? currentGD.lastSync,
+      };
+    }
+
     await chrome.storage.local.set({ [STORAGE_KEYS.settings]: payload });
     return true;
   } catch (error) {

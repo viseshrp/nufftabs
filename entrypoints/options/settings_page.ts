@@ -31,12 +31,24 @@ export async function initSettingsPage(documentRef: Document = document): Promis
     documentRef.querySelectorAll<HTMLInputElement>('input[name="theme"]'),
   );
   const statusEl = documentRef.querySelector<HTMLDivElement>('#status');
+  const googleDriveEnabledEl = documentRef.querySelector<HTMLInputElement>('#googleDriveEnabled');
+  const googleDriveFilenameEl = documentRef.querySelector<HTMLInputElement>('#googleDriveFilename');
+  const googleDriveModeRadios = Array.from(
+    documentRef.querySelectorAll<HTMLInputElement>('input[name="googleDriveMode"]'),
+  );
+  const configureAuthBtn = documentRef.querySelector<HTMLButtonElement>('#configureAuthBtn');
 
   if (!excludePinnedEl || !restoreBatchSizeEl || discardRadios.length === 0 || themeRadios.length === 0) return;
 
   const setDiscardRadios = (enabled: boolean) => {
     for (const radio of discardRadios) {
       radio.checked = radio.value === String(enabled);
+    }
+  };
+
+  const setGoogleDriveModeRadios = (mode: 'overwrite' | 'new') => {
+    for (const radio of googleDriveModeRadios) {
+      radio.checked = radio.value === mode;
     }
   };
 
@@ -49,6 +61,11 @@ export async function initSettingsPage(documentRef: Document = document): Promis
   const getDiscardSelection = () => {
     const selected = discardRadios.find((radio) => radio.checked);
     return selected?.value === 'true';
+  };
+
+  const getGoogleDriveModeSelection = (): 'overwrite' | 'new' => {
+    const selected = googleDriveModeRadios.find((radio) => radio.checked);
+    return selected?.value === 'new' ? 'new' : 'overwrite';
   };
 
   const getThemeSelection = (): Settings['theme'] => {
@@ -83,6 +100,9 @@ export async function initSettingsPage(documentRef: Document = document): Promis
   restoreBatchSizeEl.value = hasCustomBatchSize ? String(settings.restoreBatchSize) : '';
   setDiscardRadios(settings.discardRestoredTabs);
   setThemeRadios(settings.theme);
+  if (googleDriveEnabledEl) googleDriveEnabledEl.checked = settings.googleDriveBackup.enabled;
+  if (googleDriveFilenameEl) googleDriveFilenameEl.value = settings.googleDriveBackup.filename;
+  setGoogleDriveModeRadios(settings.googleDriveBackup.mode);
   applyTheme(settings.theme);
 
   let customBatchSize = hasCustomBatchSize;
@@ -94,6 +114,9 @@ export async function initSettingsPage(documentRef: Document = document): Promis
       restoreBatchSizeEl.value = customBatchSize ? String(settings.restoreBatchSize) : '';
       setDiscardRadios(settings.discardRestoredTabs);
       setThemeRadios(settings.theme);
+      if (googleDriveEnabledEl) googleDriveEnabledEl.checked = settings.googleDriveBackup.enabled;
+      if (googleDriveFilenameEl) googleDriveFilenameEl.value = settings.googleDriveBackup.filename;
+      setGoogleDriveModeRadios(settings.googleDriveBackup.mode);
       applyTheme(settings.theme);
       setStatus(statusEl, 'Failed to save settings.');
       return;
@@ -109,6 +132,12 @@ export async function initSettingsPage(documentRef: Document = document): Promis
           ? nextSettings.discardRestoredTabs
           : DEFAULT_SETTINGS.discardRestoredTabs,
       theme: nextSettings.theme ?? settings.theme,
+      googleDriveBackup: {
+        enabled: nextSettings.googleDriveBackup?.enabled ?? settings.googleDriveBackup.enabled,
+        filename: nextSettings.googleDriveBackup?.filename ?? settings.googleDriveBackup.filename,
+        mode: nextSettings.googleDriveBackup?.mode ?? settings.googleDriveBackup.mode,
+        lastSync: nextSettings.googleDriveBackup?.lastSync ?? settings.googleDriveBackup.lastSync,
+      },
     };
     customBatchSize =
       typeof nextSettings.restoreBatchSize === 'number' && Number.isFinite(nextSettings.restoreBatchSize);
@@ -122,6 +151,11 @@ export async function initSettingsPage(documentRef: Document = document): Promis
       restoreBatchSize: getRestoreBatchSizeSetting(),
       discardRestoredTabs: getDiscardSelection(),
       theme: getThemeSelection(),
+      googleDriveBackup: {
+        enabled: googleDriveEnabledEl?.checked,
+        filename: googleDriveFilenameEl?.value,
+        mode: getGoogleDriveModeSelection(),
+      },
     };
     await saveSettings(nextSettings);
     // Explicitly clear invalid input if parsing failed (returned undefined)
@@ -159,4 +193,15 @@ export async function initSettingsPage(documentRef: Document = document): Promis
       runUpdate();
     });
   }
+
+  googleDriveEnabledEl?.addEventListener('change', runUpdate);
+  googleDriveFilenameEl?.addEventListener('change', runUpdate);
+  googleDriveFilenameEl?.addEventListener('blur', runUpdate);
+  for (const radio of googleDriveModeRadios) {
+    radio.addEventListener('change', runUpdate);
+  }
+
+  configureAuthBtn?.addEventListener('click', () => {
+    chrome.tabs.create({ url: chrome.runtime.getURL('auth.html') });
+  });
 }

@@ -87,3 +87,21 @@ export function logExtensionError(
   const devLabel = import.meta.env.DEV && resolved.operation ? `[unexpected:${resolved.operation}] ` : '';
   logger(`${devLabel}${context}:`, error);
 }
+
+/**
+ * Creates a debounced function that delays invoking `func` until after `wait` milliseconds
+ * have elapsed since the last time the debounced function was invoked.
+ *
+ * @param func The function to debounce.
+ * @param wait The number of milliseconds to delay.
+ * @returns A new debounced function.
+ */
+export function debounce<T extends (...args: any[]) => any>(func: T, wait: number): (...args: Parameters<T>) => void {
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  return (...args: Parameters<T>) => {
+    if (timeout) clearTimeout(timeout);
+    timeout = setTimeout(() => {
+      func(...args);
+    }, wait);
+  };
+}

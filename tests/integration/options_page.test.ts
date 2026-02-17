@@ -99,6 +99,8 @@ describe('options settings page', () => {
     restoreBatchSizeEl.value = '';
     restoreBatchSizeEl.dispatchEvent(new Event('blur'));
 
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
     const saved = mock.storageData[STORAGE_KEYS.settings] as {
       restoreBatchSize?: number;
     };
