@@ -52,6 +52,32 @@
           <span>Enabled</span>
         </label>
       </div>
+      <div class="setting-group" role="group" aria-labelledby="googleDriveBackupLabel">
+        <div id="googleDriveBackupLabel" class="setting-label">Google Drive Backup</div>
+        <p class="setting-help">
+          Automatically backup your saved tabs to Google Drive.
+        </p>
+        <label class="setting">
+          <input id="googleDriveEnabled" type="checkbox" />
+          <span>Enable Auto-Backup</span>
+        </label>
+        <label class="setting">
+          <span>Backup Filename</span>
+          <input id="googleDriveFilename" type="text" placeholder="nufftabs-backup.json" />
+        </label>
+        <div class="setting-label">Backup Mode</div>
+        <label class="setting-radio">
+          <input id="googleDriveModeOverwrite" type="radio" name="googleDriveMode" value="overwrite" checked />
+          <span>Overwrite existing file</span>
+        </label>
+        <label class="setting-radio">
+          <input id="googleDriveModeNew" type="radio" name="googleDriveMode" value="new" />
+          <span>Create new file for each backup</span>
+        </label>
+        <div style="margin-top: 1rem;">
+           <button id="configureAuthBtn" type="button" class="tonal-button">Configure Authentication</button>
+        </div>
+      </div>
     </section>
     <div id="status" class="status" role="status" aria-live="polite"></div>
   </main>

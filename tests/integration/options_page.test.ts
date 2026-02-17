@@ -99,6 +99,8 @@ describe('options settings page', () => {
     restoreBatchSizeEl.value = '';
     restoreBatchSizeEl.dispatchEvent(new Event('blur'));
 
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
     const saved = mock.storageData[STORAGE_KEYS.settings] as {
       restoreBatchSize?: number;
     };
@@ -140,5 +142,108 @@ describe('options settings page', () => {
 
     const status = document.querySelector<HTMLDivElement>('#status');
     expect(status?.textContent).toContain('Failed');
+  });
+
+  it('reverts UI on save failure', async () => {
+    const mock = createMockChrome({
+      initialStorage: {
+        [STORAGE_KEYS.settings]: { excludePinned: true },
+      },
+    });
+    setMockChrome(mock.chrome);
+    // Mock writeSettings failure by making storage.set return false/throw or by mocking the module
+    // Since we are integration testing, we can make the storage write fail.
+    mock.chrome.storage.local.set = async () => {
+        return Promise.reject(new Error('Write failed'));
+    };
+
+    document.body.innerHTML = `
+      <input id="excludePinned" type="checkbox" />
+      <input id="restoreBatchSize" type="number" />
+      <input id="discardRestoredTabsDisabled" type="radio" name="discardRestoredTabs" value="false" />
+      <input id="discardRestoredTabsEnabled" type="radio" name="discardRestoredTabs" value="true" />
+      <input id="themeOs" type="radio" name="theme" value="os" />
+      <input id="themeLight" type="radio" name="theme" value="light" />
+      <input id="themeDark" type="radio" name="theme" value="dark" />
+      <div id="status"></div>
+    `;
+
+    await initSettingsPage(document);
+
+    const excludePinnedEl = document.querySelector<HTMLInputElement>('#excludePinned');
+    if (!excludePinnedEl) throw new Error('Missing input');
+
+    // Change value
+    excludePinnedEl.checked = false;
+    excludePinnedEl.dispatchEvent(new Event('change'));
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    // Should revert to true
+    expect(excludePinnedEl.checked).toBe(true);
+    const status = document.querySelector<HTMLDivElement>('#status');
+    expect(status?.textContent).toContain('Failed');
+  });
+
+  it('handles missing elements gracefully', async () => {
+    // Empty body to simulate missing elements
+    document.body.innerHTML = '';
+    await expect(initSettingsPage(document)).resolves.not.toThrow();
+  });
+
+  it('updates settings when google drive inputs change', async () => {
+    const mock = createMockChrome({
+        initialStorage: {
+            [STORAGE_KEYS.settings]: { excludePinned: true },
+        },
+    });
+    setMockChrome(mock.chrome);
+
+    document.body.innerHTML = `
+      <input id="excludePinned" type="checkbox" />
+      <input id="restoreBatchSize" type="number" />
+      <input id="discardRestoredTabsDisabled" type="radio" name="discardRestoredTabs" value="false" />
+      <input id="discardRestoredTabsEnabled" type="radio" name="discardRestoredTabs" value="true" />
+      <input id="themeOs" type="radio" name="theme" value="os" />
+      <input id="themeLight" type="radio" name="theme" value="light" />
+      <input id="themeDark" type="radio" name="theme" value="dark" />
+      <input id="googleDriveEnabled" type="checkbox" />
+      <input id="googleDriveFilename" type="text" />
+      <input id="googleDriveModeOverwrite" type="radio" name="googleDriveMode" value="overwrite" />
+      <input id="googleDriveModeNew" type="radio" name="googleDriveMode" value="new" />
+      <button id="configureAuthBtn" type="button"></button>
+      <div id="status"></div>
+    `;
+
+    await initSettingsPage(document);
+
+    const driveEnabled = document.querySelector<HTMLInputElement>('#googleDriveEnabled');
+    const driveFilename = document.querySelector<HTMLInputElement>('#googleDriveFilename');
+    const driveModeNew = document.querySelector<HTMLInputElement>('#googleDriveModeNew');
+    const authBtn = document.querySelector<HTMLButtonElement>('#configureAuthBtn');
+
+    if (!driveEnabled || !driveFilename || !driveModeNew || !authBtn) throw new Error('Missing drive inputs');
+
+    // Toggle enabled
+    driveEnabled.checked = true;
+    driveEnabled.dispatchEvent(new Event('change'));
+
+    // Change filename
+    driveFilename.value = 'my-backup.json';
+    driveFilename.dispatchEvent(new Event('blur'));
+
+    // Change mode
+    driveModeNew.checked = true;
+    driveModeNew.dispatchEvent(new Event('change'));
+
+    // Click auth button
+    authBtn.click();
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const saved = mock.storageData[STORAGE_KEYS.settings] as any;
+    expect(saved.googleDriveBackup.enabled).toBe(true);
+    expect(saved.googleDriveBackup.filename).toBe('my-backup.json');
+    expect(saved.googleDriveBackup.mode).toBe('new');
   });
 });
