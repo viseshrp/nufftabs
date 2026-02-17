@@ -52,6 +52,7 @@ let currentGroups: SavedTabGroups = {};
 let visibleGroups: SavedTabGroups = {};
 let activeSearchTerm = '';
 let draggedTab: { groupKey: string; tabId: string } | null = null;
+let totalTabCount = 0;
 let indexedGroupKeys: string[] = [];
 let indexedGroupKeySet = new Set<string>();
 const groupLoadTasks = new Map<string, Promise<SavedTab[]>>();
@@ -676,10 +677,19 @@ function scheduleSearchGroupLoad(): void {
   runAsyncTask(loadGroupsForSearch(searchLoadToken), 'Failed to load groups for search');
 }
 
-function updateTabCount(): void {
+function setTabCount(count: number): void {
+  totalTabCount = Math.max(0, count);
   if (!tabCountEl) return;
-  const loadedTotal = Object.values(currentGroups).reduce((sum, tabs) => sum + tabs.length, 0);
-  tabCountEl.textContent = String(loadedTotal);
+  tabCountEl.textContent = String(totalTabCount);
+}
+
+function adjustTabCount(delta: number): void {
+  setTabCount(totalTabCount + delta);
+}
+
+async function refreshTotalTabCount(): Promise<void> {
+  const savedGroups = await readSavedGroups();
+  setTabCount(countTotalTabs(savedGroups));
 }
 
 function areAllIndexedGroupsLoaded(): boolean {
@@ -705,8 +715,6 @@ function renderGroups(): void {
       };
     })
     .filter((entry): entry is NonNullable<typeof entry> => entry !== null);
-
-  updateTabCount();
 
   const hasSavedTabs = indexedGroupKeys.length > 0;
   const hasEntries = entries.length > 0;
@@ -785,6 +793,7 @@ async function refreshList(changedGroupKeys?: string[]): Promise<void> {
   } else {
     await loadGroupsNearViewport();
   }
+  await refreshTotalTabCount();
 }
 
 function handleGroupAction(event: Event): void {
@@ -906,6 +915,7 @@ async function restoreSingle(groupKey: string, id: string): Promise<void> {
     return;
   }
   applyLoadedGroup(groupKey, updatedGroup);
+  adjustTabCount(-1);
   setStatus('Restored 1 tab.');
 }
 
@@ -923,6 +933,7 @@ async function deleteSingle(groupKey: string, id: string): Promise<void> {
     return;
   }
   applyLoadedGroup(groupKey, updatedGroup);
+  adjustTabCount(-1);
   setStatus('Deleted 1 tab.');
 }
 
@@ -947,6 +958,7 @@ async function restoreGroup(groupKey: string): Promise<void> {
   }
   removeIndexedGroupKey(groupKey);
   renderGroups();
+  adjustTabCount(-groupTabs.length);
   setStatus('Restored all tabs.');
 }
 
@@ -964,6 +976,7 @@ async function deleteGroup(groupKey: string): Promise<void> {
   }
   removeIndexedGroupKey(groupKey);
   renderGroups();
+  adjustTabCount(-groupTabs.length);
   setStatus('Deleted tabs.');
 }
 
@@ -1068,6 +1081,7 @@ async function importJsonText(text: string, mode: 'append' | 'replace'): Promise
       return;
     }
     applyFullGroups(nextGroups);
+    setTabCount(countTotalTabs(nextGroups));
     setStatus(`Imported ${importedCount} tab${importedCount === 1 ? '' : 's'}, skipped 0.`);
   } catch (error) {
     logExtensionError('Failed to import JSON payload', error, { operation: 'runtime_context' });
@@ -1130,6 +1144,7 @@ async function importOneTab(): Promise<void> {
   upsertIndexedGroupKey(groupKey);
   currentGroups[groupKey] = updatedGroup;
   renderGroups();
+  adjustTabCount(imported.length);
   setStatus(`Imported ${imported.length} tab${imported.length === 1 ? '' : 's'}, skipped ${skipped}.`);
 }
 
