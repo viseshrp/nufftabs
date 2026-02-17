@@ -25,7 +25,7 @@ export type Settings = {
 };
 
 export type SettingsInput = {
-  excludePinned: boolean;
+  excludePinned?: boolean;
   restoreBatchSize?: number;
   discardRestoredTabs?: boolean;
   theme?: 'os' | 'light' | 'dark';

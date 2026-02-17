@@ -122,7 +122,7 @@ export async function initSettingsPage(documentRef: Document = document): Promis
       return;
     }
     settings = {
-      excludePinned: nextSettings.excludePinned,
+      excludePinned: nextSettings.excludePinned ?? settings.excludePinned,
       restoreBatchSize:
         typeof nextSettings.restoreBatchSize === 'number' && Number.isFinite(nextSettings.restoreBatchSize)
           ? Math.floor(nextSettings.restoreBatchSize)

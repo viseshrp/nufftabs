@@ -6,11 +6,11 @@ const CLOSE_DELIMITER = `\r\n--${MULTIPART_BOUNDARY}--`;
 
 export async function authenticate(interactive: boolean): Promise<string> {
   return new Promise((resolve, reject) => {
-    chrome.identity.getAuthToken({ interactive }, (token) => {
+    chrome.identity.getAuthToken({ interactive }, (result) => {
       if (chrome.runtime.lastError) {
         reject(chrome.runtime.lastError);
-      } else if (token) {
-        resolve(token);
+      } else if (result?.token) {
+        resolve(result.token);
       } else {
         reject(new Error('Failed to retrieve token'));
       }

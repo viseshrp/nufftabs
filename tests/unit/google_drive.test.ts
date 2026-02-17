@@ -27,7 +27,7 @@ describe('google_drive', () => {
   describe('authenticate', () => {
     it('should resolve with token when successful', async () => {
       mockGetAuthToken.mockImplementation((options, callback) => {
-        callback('mock-token');
+        callback({ token: 'mock-token' });
       });
 
       const token = await authenticate(true);
@@ -37,8 +37,8 @@ describe('google_drive', () => {
 
     it('should reject when chrome.runtime.lastError is set', async () => {
       mockGetAuthToken.mockImplementation((options, callback) => {
-        globalThis.chrome.runtime.lastError = { message: 'Auth failed' };
-        callback(undefined);
+        (globalThis.chrome.runtime as any).lastError = { message: 'Auth failed' };
+        callback({});
       });
 
       await expect(authenticate(false)).rejects.toEqual({ message: 'Auth failed' });
