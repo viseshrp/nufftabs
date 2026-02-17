@@ -30,6 +30,8 @@ const groupsEl = document.querySelector<HTMLDivElement>('#groups');
 const emptyEl = document.querySelector<HTMLDivElement>('#empty');
 const snackbarEl = document.querySelector<HTMLDivElement>('#snackbar');
 const listSectionEl = document.querySelector<HTMLElement>('.list-section');
+const expandAllEl = document.querySelector<HTMLButtonElement>('#expandAll');
+const collapseAllEl = document.querySelector<HTMLButtonElement>('#collapseAll');
 const scrollTopEl = document.querySelector<HTMLButtonElement>('#scrollTop');
 const scrollBottomEl = document.querySelector<HTMLButtonElement>('#scrollBottom');
 const tabCountEl = document.querySelector<HTMLSpanElement>('#tabCount');
@@ -136,6 +138,7 @@ type GroupView = {
   loadMoreItem?: HTMLLIElement;
   loadMoreButton?: HTMLButtonElement;
   renderedCount: number;
+  hasUserInteraction: boolean;
 };
 
 const groupViews = new Map<string, GroupView>();
@@ -366,6 +369,14 @@ function renderMoreItems(groupKey: string): void {
   updateScrollControls();
 }
 
+function setGroupCollapseState(view: GroupView, collapsed: boolean): void {
+  view.card.classList.toggle('is-collapsed', collapsed);
+  view.itemsWrap.hidden = collapsed;
+  const label = collapsed ? 'Expand list' : 'Collapse list';
+  view.collapseButton.setAttribute('aria-label', label);
+  view.collapseButton.setAttribute('title', label);
+}
+
 function createGroupView(groupKey: string): GroupView {
   const card = document.createElement('section');
   card.className = 'group-card';
@@ -548,6 +559,7 @@ function createGroupView(groupKey: string): GroupView {
     itemsWrap,
     list,
     renderedCount: 0,
+    hasUserInteraction: false,
   };
 }
 
@@ -792,12 +804,22 @@ function renderGroups(): void {
   const fragment = document.createDocumentFragment();
   const nextVisibleGroups: SavedTabGroups = {};
 
-  for (const entry of entries) {
+  for (const [index, entry] of entries.entries()) {
     const { groupKey, createdAt, loaded, tabs, visibleTabs } = entry;
     let view = groupViews.get(groupKey);
     if (!view) {
       view = createGroupView(groupKey);
       groupViews.set(groupKey, view);
+    }
+
+    // Default collapse behavior: collapse all groups except the most recent one (index 0).
+    // Enforce this state until the user interacts with the group or a global action occurs.
+    if (!view.hasUserInteraction) {
+      const shouldBeCollapsed = index > 0;
+      const isCollapsed = view.card.classList.contains('is-collapsed');
+      if (shouldBeCollapsed !== isCollapsed) {
+        setGroupCollapseState(view, shouldBeCollapsed);
+      }
     }
 
     if (loaded) {
@@ -869,12 +891,13 @@ function handleGroupAction(event: Event): void {
   switch (action) {
     case 'toggle-collapse': {
       if (!card || !groupKey) return;
-      const isCollapsed = card.classList.toggle('is-collapsed');
-      const label = isCollapsed ? 'Expand list' : 'Collapse list';
-      button.setAttribute('aria-label', label);
-      button.setAttribute('title', label);
       const view = groupViews.get(groupKey);
-      if (view) view.itemsWrap.hidden = isCollapsed;
+      if (!view) return;
+
+      view.hasUserInteraction = true;
+      const isCollapsed = !view.card.classList.contains('is-collapsed');
+      setGroupCollapseState(view, isCollapsed);
+
       if (!isCollapsed && !isGroupLoaded(groupKey)) {
         runAsyncTask(ensureGroupLoaded(groupKey), `Failed to load group (${groupKey})`);
       }
@@ -1279,6 +1302,14 @@ async function init(): Promise<void> {
     }
   });
 
+  expandAllEl?.addEventListener('click', () => {
+    runAsyncTask(expandAll(), 'Failed to expand all groups');
+  });
+
+  collapseAllEl?.addEventListener('click', () => {
+    collapseAll();
+  });
+
   scrollTopEl?.addEventListener('click', () => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   });
@@ -1335,4 +1366,39 @@ function updateScrollControls(): void {
   scrollBottomEl.classList.toggle('is-hidden', !hasOverflow);
   scrollTopEl.classList.toggle('is-disabled', !hasOverflow || nearTop);
   scrollBottomEl.classList.toggle('is-disabled', !hasOverflow || nearBottom);
+}
+
+/**
+ * Expands all group lists and loads their content if needed.
+ */
+async function expandAll(): Promise<void> {
+  const tasks: Promise<unknown>[] = [];
+  for (const [key, view] of groupViews.entries()) {
+    view.hasUserInteraction = true;
+    if (view.card.classList.contains('is-collapsed')) {
+      setGroupCollapseState(view, false);
+
+      // If the group isn't loaded, trigger a load so content appears.
+      if (!isGroupLoaded(key)) {
+        tasks.push(ensureGroupLoaded(key));
+      }
+    }
+  }
+  updateScrollControls();
+  if (tasks.length > 0) {
+    await Promise.all(tasks);
+  }
+}
+
+/**
+ * Collapses all group lists.
+ */
+function collapseAll(): void {
+  for (const view of groupViews.values()) {
+    view.hasUserInteraction = true;
+    if (!view.card.classList.contains('is-collapsed')) {
+      setGroupCollapseState(view, true);
+    }
+  }
+  updateScrollControls();
 }
