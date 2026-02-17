@@ -106,3 +106,4 @@ describe('list page init', () => {
     expect(document.querySelectorAll('.group-card')).toHaveLength(1);
   });
 });
+

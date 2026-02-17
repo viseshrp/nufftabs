@@ -189,6 +189,7 @@ describe('list page actions', () => {
     if (deleteButton) deleteButton.dataset.tabId = 'missing';
     deleteButton?.click();
 
+    await new Promise((resolve) => setTimeout(resolve, 0));
     const status = document.querySelector<HTMLDivElement>('#snackbar');
     expect(status?.textContent).toContain('Tab not found');
   });
@@ -218,5 +219,4 @@ describe('list page actions', () => {
     expect(status?.textContent).toContain('Failed to read file');
   });
 });
-
 

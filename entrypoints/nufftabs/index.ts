@@ -1,7 +1,6 @@
 import './style.css';
 import { parseOneTabExport } from './onetab_import';
 import {
-  areGroupsEquivalent,
   cloneGroups,
   countTotalTabs,
   formatCreatedAt,
@@ -12,8 +11,11 @@ import {
 import { createDiscardSession, getReuseWindowContext, restoreTabs } from './restore';
 import {
   readSettings,
+  readSavedGroup,
   readSavedGroups,
+  readSavedGroupsIndex,
   STORAGE_KEYS,
+  GROUP_KEY_PREFIX,
   isSavedGroupStorageKey,
   UNKNOWN_GROUP_KEY,
   writeSavedGroup,
@@ -50,6 +52,11 @@ let currentGroups: SavedTabGroups = {};
 let visibleGroups: SavedTabGroups = {};
 let activeSearchTerm = '';
 let draggedTab: { groupKey: string; tabId: string } | null = null;
+let indexedGroupKeys: string[] = [];
+let indexedGroupKeySet = new Set<string>();
+const groupLoadTasks = new Map<string, Promise<SavedTab[]>>();
+let viewportLoadFrame = 0;
+let searchLoadToken = 0;
 
 // Render only a subset of each group at first paint to keep DOM size bounded; users can
 // load additional rows in chunks via the "Load more" control.
@@ -539,45 +546,178 @@ function filterGroupTabs(tabs: SavedTab[], searchTerm: string): SavedTab[] {
   });
 }
 
-function updateEmptyStateText(hasSavedTabs: boolean, hasMatches: boolean): void {
+function updateEmptyStateText(message: 'saved' | 'matching'): void {
   if (!emptyEl) return;
   const label = emptyEl.querySelector('div');
   if (!label) return;
-  if (!hasSavedTabs) {
+  if (message === 'saved') {
     label.textContent = 'No saved tabs';
     return;
   }
-  label.textContent = hasMatches ? 'No saved tabs' : 'No matching tabs';
+  label.textContent = 'No matching tabs';
 }
 
-function renderGroups(savedGroups: SavedTabGroups): void {
+function getSortedGroupKeys(): string[] {
+  return indexedGroupKeys
+    .slice()
+    .sort((a, b) => (parseGroupCreationTime(b) ?? 0) - (parseGroupCreationTime(a) ?? 0));
+}
+
+function isGroupLoaded(groupKey: string): boolean {
+  return Object.hasOwn(currentGroups, groupKey);
+}
+
+function upsertIndexedGroupKey(groupKey: string): void {
+  if (indexedGroupKeySet.has(groupKey)) return;
+  indexedGroupKeys.push(groupKey);
+  indexedGroupKeySet.add(groupKey);
+}
+
+function removeIndexedGroupKey(groupKey: string): void {
+  if (!indexedGroupKeySet.has(groupKey)) return;
+  indexedGroupKeys = indexedGroupKeys.filter((key) => key !== groupKey);
+  indexedGroupKeySet.delete(groupKey);
+  delete currentGroups[groupKey];
+  delete visibleGroups[groupKey];
+  groupLoadTasks.delete(groupKey);
+}
+
+function setIndexedGroups(nextKeys: string[]): void {
+  indexedGroupKeys = nextKeys.slice();
+  indexedGroupKeySet = new Set(nextKeys);
+  for (const key of Object.keys(currentGroups)) {
+    if (!indexedGroupKeySet.has(key)) delete currentGroups[key];
+  }
+  for (const key of Object.keys(visibleGroups)) {
+    if (!indexedGroupKeySet.has(key)) delete visibleGroups[key];
+  }
+  for (const key of groupLoadTasks.keys()) {
+    if (!indexedGroupKeySet.has(key)) groupLoadTasks.delete(key);
+  }
+}
+
+function applyLoadedGroup(groupKey: string, tabs: SavedTab[]): void {
+  if (tabs.length > 0) {
+    upsertIndexedGroupKey(groupKey);
+    currentGroups[groupKey] = tabs;
+  } else {
+    removeIndexedGroupKey(groupKey);
+  }
+  renderGroups();
+}
+
+function applyFullGroups(nextGroups: SavedTabGroups): void {
+  const keys = Object.keys(nextGroups);
+  setIndexedGroups(keys);
+  currentGroups = cloneGroups(nextGroups);
+  renderGroups();
+}
+
+async function ensureGroupLoaded(groupKey: string): Promise<SavedTab[]> {
+  if (!indexedGroupKeySet.has(groupKey)) return [];
+  if (isGroupLoaded(groupKey)) return currentGroups[groupKey] ?? [];
+  const pending = groupLoadTasks.get(groupKey);
+  if (pending) return pending;
+
+  const task = (async () => {
+    const tabs = await readSavedGroup(groupKey);
+    if (!indexedGroupKeySet.has(groupKey)) return tabs;
+    currentGroups[groupKey] = tabs;
+    renderGroups();
+    return tabs;
+  })().finally(() => {
+    groupLoadTasks.delete(groupKey);
+  });
+
+  groupLoadTasks.set(groupKey, task);
+  return task;
+}
+
+async function loadGroupsNearViewport(): Promise<void> {
+  if (activeSearchTerm || indexedGroupKeys.length === 0) return;
+  const preload = Math.max(window.innerHeight, 600);
+  const toLoad: string[] = [];
+
+  for (const [key, view] of groupViews.entries()) {
+    if (!indexedGroupKeySet.has(key) || isGroupLoaded(key) || groupLoadTasks.has(key)) continue;
+    const rect = view.card.getBoundingClientRect();
+    const nearViewport = rect.top <= window.innerHeight + preload && rect.bottom >= -preload;
+    if (nearViewport) toLoad.push(key);
+  }
+
+  if (toLoad.length === 0) {
+    const fallback = getSortedGroupKeys().find((key) => !isGroupLoaded(key));
+    if (fallback) toLoad.push(fallback);
+  }
+
+  await Promise.all(toLoad.map((key) => ensureGroupLoaded(key)));
+}
+
+function scheduleViewportGroupLoad(): void {
+  if (activeSearchTerm) return;
+  if (viewportLoadFrame) return;
+  viewportLoadFrame = window.requestAnimationFrame(() => {
+    viewportLoadFrame = 0;
+    runAsyncTask(loadGroupsNearViewport(), 'Failed to load groups for viewport');
+  });
+}
+
+async function loadGroupsForSearch(loadToken: number): Promise<void> {
+  for (const groupKey of getSortedGroupKeys()) {
+    if (loadToken !== searchLoadToken || !activeSearchTerm) return;
+    if (isGroupLoaded(groupKey)) continue;
+    await ensureGroupLoaded(groupKey);
+  }
+}
+
+function scheduleSearchGroupLoad(): void {
+  if (!activeSearchTerm) return;
+  searchLoadToken += 1;
+  runAsyncTask(loadGroupsForSearch(searchLoadToken), 'Failed to load groups for search');
+}
+
+function updateTabCount(): void {
+  if (!tabCountEl) return;
+  const loadedTotal = Object.values(currentGroups).reduce((sum, tabs) => sum + tabs.length, 0);
+  tabCountEl.textContent = String(loadedTotal);
+}
+
+function areAllIndexedGroupsLoaded(): boolean {
+  return indexedGroupKeys.every((groupKey) => isGroupLoaded(groupKey));
+}
+
+function renderGroups(): void {
   if (!groupsEl || !emptyEl) return;
-  const allEntries = Object.entries(savedGroups)
-    .filter(([, tabs]) => tabs.length > 0)
-    .map(([key, tabs]) => {
-      const createdAt = parseGroupCreationTime(key) ?? 0;
+  const entries = getSortedGroupKeys()
+    .map((groupKey) => {
+      const createdAt = parseGroupCreationTime(groupKey) ?? 0;
+      const loaded = isGroupLoaded(groupKey);
+      const tabs = loaded ? (currentGroups[groupKey] ?? []) : [];
+      if (loaded && tabs.length === 0) return null;
+      const visibleTabs = activeSearchTerm ? filterGroupTabs(tabs, activeSearchTerm) : tabs;
+      if (activeSearchTerm && (!loaded || visibleTabs.length === 0)) return null;
       return {
-        key,
-        tabs,
+        groupKey,
         createdAt,
+        loaded,
+        tabs,
+        visibleTabs,
       };
-    });
-  const totalCount = allEntries.reduce((sum, entry) => sum + entry.tabs.length, 0);
-  if (tabCountEl) tabCountEl.textContent = String(totalCount);
+    })
+    .filter((entry): entry is NonNullable<typeof entry> => entry !== null);
 
-  const entries = allEntries
-    .map((entry) => ({
-      ...entry,
-      visibleTabs: filterGroupTabs(entry.tabs, activeSearchTerm),
-    }))
-    .filter((entry) => entry.visibleTabs.length > 0)
-    .sort((a, b) => b.createdAt - a.createdAt);
-  const hasSavedTabs = totalCount > 0;
-  const hasMatches = entries.length > 0;
-  emptyEl.style.display = hasSavedTabs && hasMatches ? 'none' : 'block';
-  updateEmptyStateText(hasSavedTabs, hasMatches);
+  updateTabCount();
 
-  const activeKeys = new Set(entries.map((entry) => entry.key));
+  const hasSavedTabs = indexedGroupKeys.length > 0;
+  const hasEntries = entries.length > 0;
+  if (!hasSavedTabs || !hasEntries) {
+    emptyEl.style.display = 'block';
+    updateEmptyStateText(activeSearchTerm && hasSavedTabs ? 'matching' : 'saved');
+  } else {
+    emptyEl.style.display = 'none';
+  }
+
+  const activeKeys = new Set(entries.map((entry) => entry.groupKey));
   for (const [key, view] of groupViews.entries()) {
     if (!activeKeys.has(key)) {
       view.card.remove();
@@ -585,31 +725,66 @@ function renderGroups(savedGroups: SavedTabGroups): void {
     }
   }
 
-  const nextVisibleGroups: SavedTabGroups = {};
   const fragment = document.createDocumentFragment();
+  const nextVisibleGroups: SavedTabGroups = {};
+
   for (const entry of entries) {
-    const groupKey = entry.key;
-    const tabs = entry.visibleTabs;
-    nextVisibleGroups[groupKey] = tabs;
+    const { groupKey, createdAt, loaded, tabs, visibleTabs } = entry;
     let view = groupViews.get(groupKey);
     if (!view) {
       view = createGroupView(groupKey);
       groupViews.set(groupKey, view);
     }
-    updateGroupHeader(view, entry.tabs.length, tabs.length, entry.createdAt);
-    view.itemsWrap.hidden = view.card.classList.contains('is-collapsed');
-    const previousTabs = visibleGroups[groupKey];
-    if (!isSameGroup(previousTabs, tabs)) {
-      renderGroupItems(view, groupKey, tabs);
+
+    if (loaded) {
+      updateGroupHeader(view, tabs.length, visibleTabs.length, createdAt);
+      nextVisibleGroups[groupKey] = visibleTabs;
+      const previousTabs = visibleGroups[groupKey];
+      if (!isSameGroup(previousTabs, visibleTabs)) {
+        renderGroupItems(view, groupKey, visibleTabs);
+      } else {
+        updateLoadMore(view, groupKey, visibleTabs);
+      }
     } else {
-      updateLoadMore(view, groupKey, tabs);
+      view.titleEl.textContent = 'Loading tabs...';
+      view.metaEl.textContent = createdAt > 0 ? `Created ${formatCreatedAt(createdAt)}` : 'Created -';
+      if (view.loadMoreItem?.isConnected) view.loadMoreItem.remove();
+      if (view.list.childElementCount > 0) {
+        view.list.replaceChildren();
+      }
+      view.renderedCount = 0;
     }
+
+    view.itemsWrap.hidden = view.card.classList.contains('is-collapsed');
     fragment.appendChild(view.card);
   }
 
   groupsEl.replaceChildren(fragment);
   visibleGroups = nextVisibleGroups;
   updateScrollControls();
+
+  if (!activeSearchTerm) {
+    scheduleViewportGroupLoad();
+  }
+}
+
+async function refreshList(changedGroupKeys?: string[]): Promise<void> {
+  if (changedGroupKeys && changedGroupKeys.length > 0) {
+    for (const groupKey of changedGroupKeys) {
+      delete currentGroups[groupKey];
+      delete visibleGroups[groupKey];
+      groupLoadTasks.delete(groupKey);
+    }
+  }
+  const index = await readSavedGroupsIndex();
+  setIndexedGroups(index);
+  renderGroups();
+  if (activeSearchTerm) {
+    searchLoadToken += 1;
+    await loadGroupsForSearch(searchLoadToken);
+  } else {
+    await loadGroupsNearViewport();
+  }
 }
 
 function handleGroupAction(event: Event): void {
@@ -634,6 +809,9 @@ function handleGroupAction(event: Event): void {
       button.setAttribute('title', label);
       const view = groupViews.get(groupKey);
       if (view) view.itemsWrap.hidden = isCollapsed;
+      if (!isCollapsed && !isGroupLoaded(groupKey)) {
+        runAsyncTask(ensureGroupLoaded(groupKey), `Failed to load group (${groupKey})`);
+      }
       updateScrollControls();
       break;
     }
@@ -661,6 +839,10 @@ function handleGroupAction(event: Event): void {
     }
     case 'load-more': {
       if (!groupKey) return;
+      if (!isGroupLoaded(groupKey)) {
+        runAsyncTask(ensureGroupLoaded(groupKey), `Failed to load group (${groupKey})`);
+        return;
+      }
       renderMoreItems(groupKey);
       break;
     }
@@ -669,19 +851,8 @@ function handleGroupAction(event: Event): void {
   }
 }
 
-function applyGroups(savedGroups: SavedTabGroups): void {
-  if (areGroupsEquivalent(currentGroups, savedGroups)) return;
-  currentGroups = savedGroups;
-  renderGroups(savedGroups);
-}
-
-async function refreshList(nextGroups?: SavedTabGroups): Promise<void> {
-  const savedGroups = nextGroups ?? (await readSavedGroups());
-  applyGroups(savedGroups);
-}
-
 async function restoreSingle(groupKey: string, id: string): Promise<void> {
-  const groupTabs = currentGroups[groupKey] ?? [];
+  const groupTabs = await ensureGroupLoaded(groupKey);
   const tab = groupTabs.find((entry) => entry.id === id);
   if (!tab) {
     setStatus('Tab not found.');
@@ -734,18 +905,12 @@ async function restoreSingle(groupKey: string, id: string): Promise<void> {
     await refreshList();
     return;
   }
-  const nextGroups = cloneGroups(currentGroups);
-  if (updatedGroup.length > 0) {
-    nextGroups[groupKey] = updatedGroup;
-  } else {
-    delete nextGroups[groupKey];
-  }
-  applyGroups(nextGroups);
+  applyLoadedGroup(groupKey, updatedGroup);
   setStatus('Restored 1 tab.');
 }
 
 async function deleteSingle(groupKey: string, id: string): Promise<void> {
-  const groupTabs = currentGroups[groupKey] ?? [];
+  const groupTabs = await ensureGroupLoaded(groupKey);
   const updatedGroup = groupTabs.filter((entry) => entry.id !== id);
   if (updatedGroup.length === groupTabs.length) {
     setStatus('Tab not found.');
@@ -757,18 +922,12 @@ async function deleteSingle(groupKey: string, id: string): Promise<void> {
     await refreshList();
     return;
   }
-  const nextGroups = cloneGroups(currentGroups);
-  if (updatedGroup.length > 0) {
-    nextGroups[groupKey] = updatedGroup;
-  } else {
-    delete nextGroups[groupKey];
-  }
-  applyGroups(nextGroups);
+  applyLoadedGroup(groupKey, updatedGroup);
   setStatus('Deleted 1 tab.');
 }
 
 async function restoreGroup(groupKey: string): Promise<void> {
-  const groupTabs = currentGroups[groupKey] ?? [];
+  const groupTabs = await ensureGroupLoaded(groupKey);
   if (groupTabs.length === 0) {
     setStatus('No tabs to restore.');
     return;
@@ -786,14 +945,13 @@ async function restoreGroup(groupKey: string): Promise<void> {
     await refreshList();
     return;
   }
-  const nextGroups = cloneGroups(currentGroups);
-  delete nextGroups[groupKey];
-  applyGroups(nextGroups);
+  removeIndexedGroupKey(groupKey);
+  renderGroups();
   setStatus('Restored all tabs.');
 }
 
 async function deleteGroup(groupKey: string): Promise<void> {
-  const groupTabs = currentGroups[groupKey] ?? [];
+  const groupTabs = await ensureGroupLoaded(groupKey);
   if (groupTabs.length === 0) {
     setStatus('No tabs to delete.');
     return;
@@ -804,9 +962,8 @@ async function deleteGroup(groupKey: string): Promise<void> {
     await refreshList();
     return;
   }
-  const nextGroups = cloneGroups(currentGroups);
-  delete nextGroups[groupKey];
-  applyGroups(nextGroups);
+  removeIndexedGroupKey(groupKey);
+  renderGroups();
   setStatus('Deleted tabs.');
 }
 
@@ -816,8 +973,9 @@ async function handleDrop(targetGroupKey: string): Promise<void> {
   const { groupKey: sourceGroupKey, tabId } = draggedTab;
   if (sourceGroupKey === targetGroupKey) return;
 
-  const nextGroups = cloneGroups(currentGroups);
-  const sourceGroup = [...(nextGroups[sourceGroupKey] ?? [])]; // Copy array
+  const sourceCurrent = await ensureGroupLoaded(sourceGroupKey);
+  const targetCurrent = await ensureGroupLoaded(targetGroupKey);
+  const sourceGroup = [...sourceCurrent];
   if (sourceGroup.length === 0) return;
 
   const tabIndex = sourceGroup.findIndex((t) => t.id === tabId);
@@ -826,29 +984,37 @@ async function handleDrop(targetGroupKey: string): Promise<void> {
   const [tab] = sourceGroup.splice(tabIndex, 1);
   if (!tab) return;
 
-  if (sourceGroup.length === 0) {
-    delete nextGroups[sourceGroupKey];
-  } else {
-    nextGroups[sourceGroupKey] = sourceGroup;
-  }
-
-  const targetGroup = [...(nextGroups[targetGroupKey] ?? [])]; // Copy array
+  const targetGroup = [...targetCurrent];
   targetGroup.unshift(tab);
-  nextGroups[targetGroupKey] = targetGroup;
 
-  const saved = await writeSavedGroups(nextGroups);
-  if (!saved) {
+  const sourceSaved = await writeSavedGroup(sourceGroupKey, sourceGroup);
+  if (!sourceSaved) {
     setStatus('Failed to move tab.');
     await refreshList();
     return;
   }
-  applyGroups(nextGroups);
+  const targetSaved = await writeSavedGroup(targetGroupKey, targetGroup);
+  if (!targetSaved) {
+    await writeSavedGroup(sourceGroupKey, sourceCurrent);
+    setStatus('Failed to move tab.');
+    await refreshList();
+    return;
+  }
+
+  if (sourceGroup.length === 0) {
+    removeIndexedGroupKey(sourceGroupKey);
+  } else {
+    currentGroups[sourceGroupKey] = sourceGroup;
+  }
+  upsertIndexedGroupKey(targetGroupKey);
+  currentGroups[targetGroupKey] = targetGroup;
+  renderGroups();
   setStatus('Moved 1 tab.');
 }
 
 async function exportJson(): Promise<void> {
   if (!jsonAreaEl) return;
-  const savedGroups = currentGroups;
+  const savedGroups = areAllIndexedGroupsLoaded() ? cloneGroups(currentGroups) : await readSavedGroups();
   const total = countTotalTabs(savedGroups);
   jsonAreaEl.value = JSON.stringify({ savedTabs: savedGroups }, null, 2);
 
@@ -892,15 +1058,16 @@ async function importJsonText(text: string, mode: 'append' | 'replace'): Promise
       return;
     }
     const importedCount = countTotalTabs(normalized);
+    const existing = mode === 'replace' ? {} : await readSavedGroups();
     const nextGroups =
-      mode === 'replace' ? normalized : mergeGroups(cloneGroups(currentGroups), normalized);
+      mode === 'replace' ? normalized : mergeGroups(existing, normalized);
     const saved = await writeSavedGroups(nextGroups);
     if (!saved) {
       setStatus('Failed to save changes.');
       await refreshList();
       return;
     }
-    applyGroups(nextGroups);
+    applyFullGroups(nextGroups);
     setStatus(`Imported ${importedCount} tab${importedCount === 1 ? '' : 's'}, skipped 0.`);
   } catch (error) {
     logExtensionError('Failed to import JSON payload', error, { operation: 'runtime_context' });
@@ -952,7 +1119,7 @@ async function importOneTab(): Promise<void> {
     return;
   }
   const groupKey = await getCurrentWindowKey();
-  const existing = currentGroups[groupKey] ?? [];
+  const existing = indexedGroupKeySet.has(groupKey) ? await ensureGroupLoaded(groupKey) : [];
   const updatedGroup = [...existing, ...imported];
   const saved = await writeSavedGroup(groupKey, updatedGroup);
   if (!saved) {
@@ -960,9 +1127,9 @@ async function importOneTab(): Promise<void> {
     await refreshList();
     return;
   }
-  const nextGroups = cloneGroups(currentGroups);
-  nextGroups[groupKey] = updatedGroup;
-  applyGroups(nextGroups);
+  upsertIndexedGroupKey(groupKey);
+  currentGroups[groupKey] = updatedGroup;
+  renderGroups();
   setStatus(`Imported ${imported.length} tab${imported.length === 1 ? '' : 's'}, skipped ${skipped}.`);
 }
 
@@ -974,7 +1141,10 @@ async function init(): Promise<void> {
     const nextSearchTerm = normalizeSearchTerm(searchTabsEl.value);
     if (nextSearchTerm === activeSearchTerm) return;
     activeSearchTerm = nextSearchTerm;
-    renderGroups(currentGroups);
+    renderGroups();
+    if (activeSearchTerm) {
+      scheduleSearchGroupLoad();
+    }
   });
 
   toggleIoEl?.addEventListener('click', () => {
@@ -1025,7 +1195,10 @@ async function init(): Promise<void> {
       Boolean(changes[STORAGE_KEYS.savedTabsIndex]) ||
       changeKeys.some((key) => isSavedGroupStorageKey(key));
     if (!hasSavedTabsChange) return;
-    runAsyncTask(refreshList(), 'Failed to refresh tab list after storage change');
+    const changedGroupKeys = changeKeys
+      .filter((key) => isSavedGroupStorageKey(key))
+      .map((key) => key.slice(GROUP_KEY_PREFIX.length));
+    runAsyncTask(refreshList(changedGroupKeys), 'Failed to refresh tab list after storage change');
   });
 
   document.addEventListener('visibilitychange', () => {
@@ -1043,9 +1216,20 @@ async function init(): Promise<void> {
     window.scrollTo({ top: target, behavior: 'smooth' });
   });
 
-  window.addEventListener('scroll', scheduleScrollControlsUpdate, { passive: true });
-  window.addEventListener('resize', scheduleScrollControlsUpdate);
+  window.addEventListener(
+    'scroll',
+    () => {
+      scheduleScrollControlsUpdate();
+      scheduleViewportGroupLoad();
+    },
+    { passive: true },
+  );
+  window.addEventListener('resize', () => {
+    scheduleScrollControlsUpdate();
+    scheduleViewportGroupLoad();
+  });
   updateScrollControls();
+  scheduleViewportGroupLoad();
 }
 
 runAsyncTask(init(), 'Failed to initialize nufftabs page');
