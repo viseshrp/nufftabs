@@ -814,6 +814,8 @@ function renderGroups(): void {
 
     // Default collapse behavior: collapse all groups except the most recent one (index 0).
     // Enforce this state until the user interacts with the group or a global action occurs.
+    // Default collapse behavior: collapse all groups except the most recent one (index 0).
+    // Enforce this state until the user interacts with the group or a global action occurs.
     if (!view.hasUserInteraction) {
       const shouldBeCollapsed = index > 0;
       const isCollapsed = view.card.classList.contains('is-collapsed');
