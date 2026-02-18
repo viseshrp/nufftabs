@@ -771,7 +771,8 @@ function renderGroups(): void {
       const createdAt = parseGroupCreationTime(groupKey) ?? 0;
       const loaded = isGroupLoaded(groupKey);
       const tabs = loaded ? (state.currentGroups[groupKey] ?? []) : [];
-      if (loaded && tabs.length === 0) return null;
+      // Allowing empty groups to render ensures index stability for collapse logic
+      // if (loaded && tabs.length === 0) return null;
       const visibleTabs = state.activeSearchTerm ? filterGroupTabs(tabs, state.activeSearchTerm) : tabs;
       if (state.activeSearchTerm && (!loaded || visibleTabs.length === 0)) return null;
       return {
@@ -804,7 +805,8 @@ function renderGroups(): void {
   const fragment = document.createDocumentFragment();
   const nextVisibleGroups: SavedTabGroups = {};
 
-  for (const [index, entry] of entries.entries()) {
+  for (let i = 0; i < entries.length; i++) {
+    const entry = entries[i];
     const { groupKey, createdAt, loaded, tabs, visibleTabs } = entry;
     let view = groupViews.get(groupKey);
     if (!view) {
@@ -814,14 +816,11 @@ function renderGroups(): void {
 
     // Default collapse behavior: collapse all groups except the most recent one (index 0).
     // Enforce this state until the user interacts with the group or a global action occurs.
-    // Default collapse behavior: collapse all groups except the most recent one (index 0).
-    // Enforce this state until the user interacts with the group or a global action occurs.
     if (!view.hasUserInteraction) {
-      const shouldBeCollapsed = index > 0;
+      const shouldBeCollapsed = i > 0;
       const isCollapsed = view.card.classList.contains('is-collapsed');
-      if (shouldBeCollapsed !== isCollapsed) {
-        setGroupCollapseState(view, shouldBeCollapsed);
-      }
+      view.card.dataset.renderIndex = String(i);
+      setGroupCollapseState(view, shouldBeCollapsed);
     }
 
     if (loaded) {
