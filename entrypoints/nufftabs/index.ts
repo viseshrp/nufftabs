@@ -1,3 +1,8 @@
+/**
+ * Main list page UI for the nufftabs extension.
+ * Handles rendering saved tab groups, search filtering, drag-and-drop
+ * reordering, group collapse/expand, import/export, and tab restoration.
+ */
 import './style.css';
 import { parseOneTabExport } from './onetab_import';
 import {
@@ -27,6 +32,7 @@ import {
 } from '../shared/storage';
 import { logExtensionError, type ExtensionErrorOperation } from '../shared/utils';
 
+// ── DOM element references (queried once at module load) ──
 const groupsEl = document.querySelector<HTMLDivElement>('#groups');
 const emptyEl = document.querySelector<HTMLDivElement>('#empty');
 const snackbarEl = document.querySelector<HTMLDivElement>('#snackbar');
@@ -36,6 +42,8 @@ const scrollBottomEl = document.querySelector<HTMLButtonElement>('#scrollBottom'
 const tabCountEl = document.querySelector<HTMLSpanElement>('#tabCount');
 const searchTabsEl = document.querySelector<HTMLInputElement>('#searchTabs');
 const toggleIoEl = document.querySelector<HTMLButtonElement>('#toggleIo');
+/** Button that collapses or expands every group card at once. */
+const toggleCollapseAllEl = document.querySelector<HTMLButtonElement>('#toggleCollapseAll');
 const exportJsonEl = document.querySelector<HTMLButtonElement>('#exportJson');
 const importJsonEl = document.querySelector<HTMLButtonElement>('#importJson');
 const importJsonReplaceEl = document.querySelector<HTMLButtonElement>('#importJsonReplace');
@@ -46,17 +54,23 @@ const clearJsonEl = document.querySelector<HTMLButtonElement>('#clearJson');
 const jsonAreaEl = document.querySelector<HTMLTextAreaElement>('#jsonArea');
 const ioPanelEl = document.querySelector<HTMLElement>('#ioPanel');
 
+/** SVG namespace URI used when creating inline SVG icons. */
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
+/** Mutable application state for the list page UI. */
 type ListPageState = {
   snackbarTimer?: number;
+  /** Full tab arrays keyed by group key (loaded from storage). */
   currentGroups: SavedTabGroups;
+  /** Filtered tab arrays after applying the active search term. */
   visibleGroups: SavedTabGroups;
   activeSearchTerm: string;
   draggedTab: { groupKey: string; tabId: string } | null;
   totalTabCount: number;
+  /** Ordered list of known group keys from the storage index. */
   indexedGroupKeys: string[];
   indexedGroupKeySet: Set<string>;
+  /** In-flight load promises per group key to avoid duplicate fetches. */
   groupLoadTasks: Map<string, Promise<SavedTab[]>>;
   viewportLoadFrame: number;
   searchLoadToken: number;
@@ -64,8 +78,13 @@ type ListPageState = {
   renderGroupsFrame: number;
   renderGroupsScheduled: boolean;
   renderGroupsFallbackTimer?: number;
+  /** Tracks whether all group cards are currently collapsed. */
+  allGroupsCollapsed: boolean;
+  /** Guards initial collapse so it only runs once on first render. */
+  initialCollapseApplied: boolean;
 };
 
+/** Singleton mutable state object for the list page. */
 const state: ListPageState = {
   snackbarTimer: undefined,
   currentGroups: {},
@@ -82,17 +101,20 @@ const state: ListPageState = {
   renderGroupsFrame: 0,
   renderGroupsScheduled: false,
   renderGroupsFallbackTimer: undefined,
+  allGroupsCollapsed: false,
+  initialCollapseApplied: false,
 };
 
-// Render only a subset of each group at first paint to keep DOM size bounded; users can
-// load additional rows in chunks via the "Load more" control.
+/** Maximum number of tab rows to render per group before showing a "Load more" control. */
 const RENDER_PAGE_SIZE = 200;
 
+/** Descriptor for a child element inside an SVG icon. */
 type SvgElementSpec = {
   tag: 'path' | 'rect';
   attrs: Record<string, string>;
 };
 
+/** Creates an inline SVG element from an array of child element descriptors. */
 function createSvgIcon(elements: SvgElementSpec[]): SVGSVGElement {
   const svg = document.createElementNS(SVG_NS, 'svg');
   svg.setAttribute('viewBox', '0 0 24 24');
@@ -107,6 +129,7 @@ function createSvgIcon(elements: SvgElementSpec[]): SVGSVGElement {
   return svg;
 }
 
+/** Briefly shows a snackbar notification with the given message. */
 function setStatus(message: string): void {
   if (!snackbarEl) return;
   snackbarEl.textContent = message;
@@ -117,6 +140,7 @@ function setStatus(message: string): void {
   }, 2200);
 }
 
+/** Fires-and-forgets an async task, logging errors with the given context string. */
 function runAsyncTask(
   task: Promise<unknown>,
   context: string,
@@ -127,6 +151,7 @@ function runAsyncTask(
   });
 }
 
+/** Holds the DOM nodes and render state for a single group card. */
 type GroupView = {
   card: HTMLElement;
   titleEl: HTMLDivElement;
@@ -136,11 +161,14 @@ type GroupView = {
   list: HTMLUListElement;
   loadMoreItem?: HTMLLIElement;
   loadMoreButton?: HTMLButtonElement;
+  /** Number of tab rows currently rendered from the group's tab array. */
   renderedCount: number;
 };
 
+/** Cache of group-key → GroupView for all currently rendered group cards. */
 const groupViews = new Map<string, GroupView>();
 
+/** Applies the given color theme to the document element via data attribute. */
 function applyTheme(theme: 'os' | 'light' | 'dark'): void {
   if (theme === 'os') {
     document.documentElement.removeAttribute('data-theme');
@@ -149,6 +177,7 @@ function applyTheme(theme: 'os' | 'light' | 'dark'): void {
   }
 }
 
+/** Reads and applies the persisted theme, and listens for live theme changes. */
 async function initTheme(): Promise<void> {
   const settings = await readSettings();
   applyTheme(settings.theme);
@@ -163,6 +192,7 @@ async function initTheme(): Promise<void> {
 
 runAsyncTask(initTheme(), 'Failed to initialize theme');
 
+/** Updates a group card's header text (tab count and creation timestamp). */
 function updateGroupHeader(
   view: GroupView,
   totalTabCount: number,
@@ -177,6 +207,7 @@ function updateGroupHeader(
   view.metaEl.textContent = createdAt > 0 ? `Created ${formatCreatedAt(createdAt)}` : 'Created -';
 }
 
+/** Lazily creates the "Load more" list item and button for a group card. */
 function ensureLoadMore(view: GroupView): void {
   if (view.loadMoreItem && view.loadMoreButton) return;
   const item = document.createElement('li');
@@ -190,6 +221,7 @@ function ensureLoadMore(view: GroupView): void {
   view.loadMoreButton = button;
 }
 
+/** Shows, updates, or hides the "Load more" control based on remaining un-rendered tabs. */
 function updateLoadMore(view: GroupView, groupKey: string, tabs: SavedTab[]): void {
   const remaining = tabs.length - view.renderedCount;
   if (remaining <= 0) {
@@ -203,6 +235,7 @@ function updateLoadMore(view: GroupView, groupKey: string, tabs: SavedTab[]): vo
   if (!view.loadMoreItem.isConnected) view.list.appendChild(view.loadMoreItem);
 }
 
+/** Renders a range of tab items into a group's list element using a document fragment. */
 function appendGroupItems(view: GroupView, groupKey: string, tabs: SavedTab[], start: number, end: number): void {
   const fragment = document.createDocumentFragment();
   for (let i = start; i < end; i += 1) {
@@ -343,6 +376,7 @@ function appendGroupItems(view: GroupView, groupKey: string, tabs: SavedTab[], s
   view.list.appendChild(fragment);
 }
 
+/** Replaces a group's rendered items with the initial page of tabs. */
 function renderGroupItems(view: GroupView, groupKey: string, tabs: SavedTab[]): void {
   // Only render the initial chunk of rows; the rest are loaded on demand.
   view.list.replaceChildren();
@@ -353,6 +387,7 @@ function renderGroupItems(view: GroupView, groupKey: string, tabs: SavedTab[]): 
   updateLoadMore(view, groupKey, tabs);
 }
 
+/** Appends the next page of tab items to a group's list element. */
 function renderMoreItems(groupKey: string): void {
   const view = groupViews.get(groupKey);
   const tabs = state.visibleGroups[groupKey];
@@ -367,6 +402,7 @@ function renderMoreItems(groupKey: string): void {
   updateScrollControls();
 }
 
+/** Builds a new GroupView (DOM card with header, action buttons, and drag-drop handlers). */
 function createGroupView(groupKey: string): GroupView {
   const card = document.createElement('section');
   card.className = 'group-card';
@@ -552,6 +588,7 @@ function createGroupView(groupKey: string): GroupView {
   };
 }
 
+/** Extracts the creation timestamp from a group key (format: `<windowId>-<timestamp>-<nonce>`). */
 function parseGroupCreationTime(key: string): number | null {
   const parts = key.split('-');
   if (parts.length < 3) return null;
@@ -559,10 +596,12 @@ function parseGroupCreationTime(key: string): number | null {
   return Number.isFinite(timestamp) && timestamp > 0 ? timestamp : null;
 }
 
+/** Trims and lowercases a search query for case-insensitive matching. */
 function normalizeSearchTerm(value: string): string {
   return value.trim().toLowerCase();
 }
 
+/** Filters a tab array to only those whose title or URL contains the search term. */
 function filterGroupTabs(tabs: SavedTab[], searchTerm: string): SavedTab[] {
   if (!searchTerm) return tabs;
   return tabs.filter((tab) => {
@@ -572,6 +611,7 @@ function filterGroupTabs(tabs: SavedTab[], searchTerm: string): SavedTab[] {
   });
 }
 
+/** Updates the empty-state label to indicate either "no saved tabs" or "no matching tabs". */
 function updateEmptyStateText(message: 'saved' | 'matching'): void {
   if (!emptyEl) return;
   const label = emptyEl.querySelector('div');
@@ -583,22 +623,26 @@ function updateEmptyStateText(message: 'saved' | 'matching'): void {
   label.textContent = 'No matching tabs';
 }
 
+/** Returns group keys sorted newest-first by creation timestamp. */
 function getSortedGroupKeys(): string[] {
   return state.indexedGroupKeys
     .slice()
     .sort((a, b) => (parseGroupCreationTime(b) ?? 0) - (parseGroupCreationTime(a) ?? 0));
 }
 
+/** Returns true if the group's tab array has been loaded from storage. */
 function isGroupLoaded(groupKey: string): boolean {
   return Object.hasOwn(state.currentGroups, groupKey);
 }
 
+/** Adds a group key to the indexed set if not already present. */
 function upsertIndexedGroupKey(groupKey: string): void {
   if (state.indexedGroupKeySet.has(groupKey)) return;
   state.indexedGroupKeys.push(groupKey);
   state.indexedGroupKeySet.add(groupKey);
 }
 
+/** Removes a group key from the index and clears its cached data. */
 function removeIndexedGroupKey(groupKey: string): void {
   if (!state.indexedGroupKeySet.has(groupKey)) return;
   state.indexedGroupKeys = state.indexedGroupKeys.filter((key) => key !== groupKey);
@@ -608,6 +652,7 @@ function removeIndexedGroupKey(groupKey: string): void {
   state.groupLoadTasks.delete(groupKey);
 }
 
+/** Replaces the entire indexed key set, pruning stale groups from caches. */
 function setIndexedGroups(nextKeys: string[]): void {
   state.indexedGroupKeys = nextKeys.slice();
   state.indexedGroupKeySet = new Set(nextKeys);
@@ -622,6 +667,7 @@ function setIndexedGroups(nextKeys: string[]): void {
   }
 }
 
+/** Updates the in-memory group data after a group load or mutation and triggers a re-render. */
 function applyLoadedGroup(groupKey: string, tabs: SavedTab[]): void {
   if (tabs.length > 0) {
     upsertIndexedGroupKey(groupKey);
@@ -632,6 +678,7 @@ function applyLoadedGroup(groupKey: string, tabs: SavedTab[]): void {
   scheduleRenderGroups();
 }
 
+/** Replaces all in-memory groups at once (used after full imports). */
 function applyFullGroups(nextGroups: SavedTabGroups): void {
   const keys = Object.keys(nextGroups);
   setIndexedGroups(keys);
@@ -639,6 +686,7 @@ function applyFullGroups(nextGroups: SavedTabGroups): void {
   scheduleRenderGroups();
 }
 
+/** Returns the group's tabs, loading them from storage if necessary (deduped). */
 async function ensureGroupLoaded(groupKey: string): Promise<SavedTab[]> {
   if (!state.indexedGroupKeySet.has(groupKey)) return [];
   if (isGroupLoaded(groupKey)) return state.currentGroups[groupKey] ?? [];
@@ -659,6 +707,7 @@ async function ensureGroupLoaded(groupKey: string): Promise<SavedTab[]> {
   return task;
 }
 
+/** Loads groups whose cards are near the viewport (or the first unloaded group as fallback). */
 async function loadGroupsNearViewport(): Promise<void> {
   if (state.activeSearchTerm || state.indexedGroupKeys.length === 0) return;
   const preload = Math.max(window.innerHeight, 600);
@@ -679,6 +728,7 @@ async function loadGroupsNearViewport(): Promise<void> {
   await Promise.all(toLoad.map((key) => ensureGroupLoaded(key)));
 }
 
+/** Schedules a viewport-based group load on the next animation frame. */
 function scheduleViewportGroupLoad(): void {
   if (state.activeSearchTerm) return;
   if (state.viewportLoadFrame) return;
@@ -688,6 +738,7 @@ function scheduleViewportGroupLoad(): void {
   });
 }
 
+/** Sequentially loads all groups from storage for search filtering, aborting if the token changes. */
 async function loadGroupsForSearch(loadToken: number): Promise<void> {
   for (const groupKey of getSortedGroupKeys()) {
     if (loadToken !== state.searchLoadToken || !state.activeSearchTerm) return;
@@ -696,31 +747,37 @@ async function loadGroupsForSearch(loadToken: number): Promise<void> {
   }
 }
 
+/** Increments the search load token and kicks off progressive group loading for search. */
 function scheduleSearchGroupLoad(): void {
   if (!state.activeSearchTerm) return;
   state.searchLoadToken += 1;
   runAsyncTask(loadGroupsForSearch(state.searchLoadToken), 'Failed to load groups for search');
 }
 
+/** Sets the total saved-tab count displayed in the header. */
 function setTabCount(count: number): void {
   state.totalTabCount = Math.max(0, count);
   if (!tabCountEl) return;
   tabCountEl.textContent = String(state.totalTabCount);
 }
 
+/** Increments or decrements the displayed tab count by the given delta. */
 function adjustTabCount(delta: number): void {
   setTabCount(state.totalTabCount + delta);
 }
 
+/** Re-reads all groups from storage and recomputes the total tab count. */
 async function refreshTotalTabCount(): Promise<void> {
   const savedGroups = await readSavedGroups();
   setTabCount(countTotalTabs(savedGroups));
 }
 
+/** Returns true when every indexed group key has been loaded from storage. */
 function areAllIndexedGroupsLoaded(): boolean {
   return state.indexedGroupKeys.every((groupKey) => isGroupLoaded(groupKey));
 }
 
+/** Cancels any pending `renderGroups` requestAnimationFrame or fallback timer. */
 function cancelScheduledRenderGroups(): void {
   if (state.renderGroupsFrame) {
     window.cancelAnimationFrame(state.renderGroupsFrame);
@@ -733,6 +790,7 @@ function cancelScheduledRenderGroups(): void {
   state.renderGroupsScheduled = false;
 }
 
+/** Schedules a `renderGroups` call via rAF with a setTimeout fallback for tests. */
 function scheduleRenderGroups(): void {
   if (state.renderGroupsScheduled) return;
   state.renderGroupsScheduled = true;
@@ -753,6 +811,122 @@ function scheduleRenderGroups(): void {
   state.renderGroupsFallbackTimer = window.setTimeout(flush, 0);
 }
 
+/**
+ * Sets the collapsed state of a single group card.
+ *
+ * When `collapsed` is true the group's item list is hidden and the per-group
+ * collapse toggle chevron rotates. When false the items become visible and,
+ * if the group's tab payload has not been fetched yet, a lazy-load is kicked off.
+ */
+function setGroupCollapsed(groupKey: string, collapsed: boolean): void {
+  const view = groupViews.get(groupKey);
+  if (!view) return;
+
+  // Synchronize the CSS class that drives the chevron rotation and item visibility.
+  view.card.classList.toggle('is-collapsed', collapsed);
+  view.itemsWrap.hidden = collapsed;
+
+  // Update the per-group collapse toggle button's accessible label.
+  const collapseLabel = collapsed ? 'Expand list' : 'Collapse list';
+  view.collapseButton.setAttribute('aria-label', collapseLabel);
+  view.collapseButton.setAttribute('title', collapseLabel);
+
+  // If the group is being expanded and its tabs haven't been loaded yet, fetch them.
+  if (!collapsed && !isGroupLoaded(groupKey)) {
+    runAsyncTask(ensureGroupLoaded(groupKey), `Failed to load group (${groupKey})`);
+  }
+}
+
+/**
+ * Sets the collapsed state of every rendered group card at once.
+ *
+ * When `collapsed` is true all groups are collapsed; when false all are
+ * expanded (triggering lazy-loads for any groups whose payloads haven't been
+ * fetched yet). Updates the global state flag and refreshes the toggle-all
+ * button's icon and label.
+ *
+ * @param collapsed - Whether every group should be collapsed.
+ */
+function setAllGroupsCollapsed(collapsed: boolean): void {
+  for (const groupKey of groupViews.keys()) {
+    setGroupCollapsed(groupKey, collapsed);
+  }
+  state.allGroupsCollapsed = collapsed;
+  updateToggleCollapseAllButton();
+  updateScrollControls();
+}
+
+/**
+ * Toggles between collapsing all and expanding all groups.
+ *
+ * Called when the user clicks the collapse-all button in the navbar.
+ */
+function toggleAllGroups(): void {
+  setAllGroupsCollapsed(!state.allGroupsCollapsed);
+}
+
+/**
+ * Re-derives `state.allGroupsCollapsed` from the actual DOM state of every
+ * rendered group card.
+ *
+ * Called whenever a single group is individually toggled so the navbar button
+ * stays in sync.
+ */
+function syncAllGroupsCollapsedState(): void {
+  if (groupViews.size === 0) {
+    state.allGroupsCollapsed = false;
+  } else {
+    // All groups collapsed only when every card carries the `is-collapsed` class.
+    state.allGroupsCollapsed = Array.from(groupViews.values()).every((view) =>
+      view.card.classList.contains('is-collapsed'),
+    );
+  }
+  updateToggleCollapseAllButton();
+}
+
+/**
+ * Updates the collapse-all navbar button's CSS class, aria-label, and title
+ * to reflect whether all groups are currently collapsed or expanded.
+ *
+ * When collapsed the double-chevron icon rotates 180° via CSS to point down,
+ * visually indicating "expand all".
+ */
+function updateToggleCollapseAllButton(): void {
+  if (!toggleCollapseAllEl) return;
+  toggleCollapseAllEl.classList.toggle('is-all-collapsed', state.allGroupsCollapsed);
+  const label = state.allGroupsCollapsed ? 'Expand all groups' : 'Collapse all groups';
+  toggleCollapseAllEl.setAttribute('aria-label', label);
+  toggleCollapseAllEl.setAttribute('title', label);
+}
+
+/**
+ * Applies the default collapse behavior on first render: collapses every group
+ * except the first one in the sorted list (the most recent).
+ *
+ * This keeps the page compact on initial load while still showing the newest
+ * group's tabs immediately.
+ *
+ * @param sortedGroupKeys - Group keys already sorted newest-first.
+ */
+function applyDefaultCollapse(sortedGroupKeys: string[]): void {
+  state.initialCollapseApplied = true;
+
+  // Only one group (or none) — nothing to collapse.
+  if (sortedGroupKeys.length <= 1) return;
+
+  // Collapse every group except the first (most recent).
+  for (let i = 1; i < sortedGroupKeys.length; i++) {
+    const groupKey = sortedGroupKeys[i];
+    if (groupKey) {
+      setGroupCollapsed(groupKey, true);
+    }
+  }
+
+  // Derivation: not *all* groups are collapsed because the first one stays open.
+  state.allGroupsCollapsed = false;
+}
+
+/** Diffs current state against the DOM, reconciles group cards, and triggers lazy loading. */
 function renderGroups(): void {
   if (!groupsEl || !emptyEl) return;
   const entries = getSortedGroupKeys()
@@ -820,19 +994,37 @@ function renderGroups(): void {
       view.renderedCount = 0;
     }
 
-    view.itemsWrap.hidden = view.card.classList.contains('is-collapsed');
     fragment.appendChild(view.card);
+  }
+
+  // On the very first render with multiple groups, collapse all except the most
+  // recent one so the page is not overwhelmed with open cards. Must run before
+  // replaceChildren so that the itemsWrap.hidden check below picks up the class.
+  if (!state.initialCollapseApplied && entries.length > 0) {
+    applyDefaultCollapse(entries.map((e) => e.groupKey));
+  }
+
+  // Sync each card's item visibility with its collapsed class.
+  // Done after applyDefaultCollapse so the initial collapse is reflected.
+  for (const entry of entries) {
+    const view = groupViews.get(entry.groupKey);
+    if (view) {
+      view.itemsWrap.hidden = view.card.classList.contains('is-collapsed');
+    }
   }
 
   groupsEl.replaceChildren(fragment);
   state.visibleGroups = nextVisibleGroups;
+
   updateScrollControls();
+  updateToggleCollapseAllButton();
 
   if (!state.activeSearchTerm) {
     scheduleViewportGroupLoad();
   }
 }
 
+/** Reloads the index and optionally invalidates specific groups, then re-renders. */
 async function refreshList(changedGroupKeys?: string[]): Promise<void> {
   if (changedGroupKeys && changedGroupKeys.length > 0) {
     for (const groupKey of changedGroupKeys) {
@@ -854,6 +1046,7 @@ async function refreshList(changedGroupKeys?: string[]): Promise<void> {
   await refreshTotalTabCount();
 }
 
+/** Delegated click handler for all group-card buttons (collapse, restore, delete, load more). */
 function handleGroupAction(event: Event): void {
   // Event delegation keeps listeners bounded; relies on data-action attributes and DOM
   // structure staying in sync. Markup changes can silently break actions.
@@ -879,6 +1072,8 @@ function handleGroupAction(event: Event): void {
       if (!isCollapsed && !isGroupLoaded(groupKey)) {
         runAsyncTask(ensureGroupLoaded(groupKey), `Failed to load group (${groupKey})`);
       }
+      // Sync the global collapse state after a single group is toggled.
+      syncAllGroupsCollapsedState();
       updateScrollControls();
       break;
     }
@@ -918,6 +1113,7 @@ function handleGroupAction(event: Event): void {
   }
 }
 
+/** Opens a single saved tab in the browser and removes it from its group. */
 async function restoreSingle(groupKey: string, id: string): Promise<void> {
   const groupTabs = await ensureGroupLoaded(groupKey);
   const tab = groupTabs.find((entry) => entry.id === id);
@@ -977,6 +1173,7 @@ async function restoreSingle(groupKey: string, id: string): Promise<void> {
   setStatus('Restored 1 tab.');
 }
 
+/** Removes a single tab from its group without restoring it. */
 async function deleteSingle(groupKey: string, id: string): Promise<void> {
   const groupTabs = await ensureGroupLoaded(groupKey);
   const updatedGroup = groupTabs.filter((entry) => entry.id !== id);
@@ -995,6 +1192,7 @@ async function deleteSingle(groupKey: string, id: string): Promise<void> {
   setStatus('Deleted 1 tab.');
 }
 
+/** Restores all tabs in a group to browser windows and removes the group from storage. */
 async function restoreGroup(groupKey: string): Promise<void> {
   const groupTabs = await ensureGroupLoaded(groupKey);
   if (groupTabs.length === 0) {
@@ -1020,6 +1218,7 @@ async function restoreGroup(groupKey: string): Promise<void> {
   setStatus('Restored all tabs.');
 }
 
+/** Deletes an entire group of tabs from storage without restoring any of them. */
 async function deleteGroup(groupKey: string): Promise<void> {
   const groupTabs = await ensureGroupLoaded(groupKey);
   if (groupTabs.length === 0) {
@@ -1039,6 +1238,7 @@ async function deleteGroup(groupKey: string): Promise<void> {
 }
 
 
+/** Moves a dragged tab from its source group into the target group (drag-and-drop handler). */
 async function handleDrop(targetGroupKey: string): Promise<void> {
   if (!state.draggedTab) return;
   const { groupKey: sourceGroupKey, tabId } = state.draggedTab;
@@ -1083,6 +1283,7 @@ async function handleDrop(targetGroupKey: string): Promise<void> {
   setStatus('Moved 1 tab.');
 }
 
+/** Serializes all saved tabs to JSON, copies to clipboard, and downloads a backup file. */
 async function exportJson(): Promise<void> {
   if (!jsonAreaEl) return;
   const savedGroups = areAllIndexedGroupsLoaded() ? cloneGroups(state.currentGroups) : await readSavedGroups();
@@ -1124,6 +1325,7 @@ async function exportJson(): Promise<void> {
   setStatus(`Exported ${total} tab${total === 1 ? '' : 's'}${extras ? ` (${extras})` : ''}.`);
 }
 
+/** Parses JSON text and imports tabs in append or replace mode. */
 async function importJsonText(text: string, mode: 'append' | 'replace'): Promise<void> {
   try {
     const parsed = JSON.parse(text);
@@ -1153,16 +1355,19 @@ async function importJsonText(text: string, mode: 'append' | 'replace'): Promise
   }
 }
 
+/** Imports tabs from the IO textarea in append mode. */
 async function importJson(): Promise<void> {
   if (!jsonAreaEl) return;
   await importJsonText(jsonAreaEl.value, 'append');
 }
 
+/** Imports tabs from the IO textarea in replace mode (overwrites existing data). */
 async function importJsonReplace(): Promise<void> {
   if (!jsonAreaEl) return;
   await importJsonText(jsonAreaEl.value, 'replace');
 }
 
+/** Reads a JSON file selected via the file input and imports its tabs. */
 async function importJsonFile(file: File): Promise<void> {
   try {
     const text = await file.text();
@@ -1174,6 +1379,7 @@ async function importJsonFile(file: File): Promise<void> {
   }
 }
 
+/** Returns the window ID of the current tab, or undefined if unavailable. */
 async function getCurrentWindowId(): Promise<number | undefined> {
   try {
     const currentTab = await chrome.tabs.getCurrent();
@@ -1187,6 +1393,7 @@ async function getCurrentWindowId(): Promise<number | undefined> {
   return undefined;
 }
 
+/** Parses OneTab export text from the IO textarea and appends the resulting tabs. */
 async function importOneTab(): Promise<void> {
   if (!jsonAreaEl) return;
   const text = jsonAreaEl.value;
@@ -1214,6 +1421,7 @@ async function importOneTab(): Promise<void> {
   setStatus(`Successfully imported ${imported.length} tab${imported.length === 1 ? '' : 's'}${skippedMsg}.`);
 }
 
+/** Initializes the list page: loads data, binds all event listeners, and starts lazy loading. */
 async function init(): Promise<void> {
   state.activeSearchTerm = normalizeSearchTerm(searchTabsEl?.value ?? '');
   await refreshList();
@@ -1232,6 +1440,11 @@ async function init(): Promise<void> {
     if (!ioPanelEl) return;
     ioPanelEl.hidden = !ioPanelEl.hidden;
     updateScrollControls();
+  });
+
+  // Wire the collapse/expand-all toggle button.
+  toggleCollapseAllEl?.addEventListener('click', () => {
+    toggleAllGroups();
   });
 
   groupsEl?.addEventListener('click', handleGroupAction);
@@ -1315,6 +1528,7 @@ async function init(): Promise<void> {
 
 runAsyncTask(init(), 'Failed to initialize nufftabs page');
 
+/** Returns the scroll offset for the bottom of the list section (used by "scroll to bottom"). */
 function getListBottomScrollTarget(): number {
   if (!listSectionEl) return 0;
   const rect = listSectionEl.getBoundingClientRect();
@@ -1324,6 +1538,7 @@ function getListBottomScrollTarget(): number {
   return Math.min(target, maxScroll);
 }
 
+/** Schedules scroll control visibility update on the next animation frame. */
 function scheduleScrollControlsUpdate(): void {
   if (state.scrollUpdateFrame) return;
   state.scrollUpdateFrame = window.requestAnimationFrame(() => {
@@ -1332,6 +1547,7 @@ function scheduleScrollControlsUpdate(): void {
   });
 }
 
+/** Enables/disables the scroll-to-top and scroll-to-bottom buttons based on scroll position. */
 function updateScrollControls(): void {
   if (!scrollTopEl || !scrollBottomEl) return;
   const maxScroll = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
@@ -1340,8 +1556,8 @@ function updateScrollControls(): void {
   const bottomTarget = getListBottomScrollTarget();
   const nearBottom = window.scrollY >= bottomTarget - 24;
 
-  scrollTopEl.classList.toggle('is-hidden', !hasOverflow);
-  scrollBottomEl.classList.toggle('is-hidden', !hasOverflow);
+  // Scroll buttons stay visible at all times to prevent layout shifts in the
+  // navbar; they are simply disabled when scrolling is not possible.
   scrollTopEl.classList.toggle('is-disabled', !hasOverflow || nearTop);
   scrollBottomEl.classList.toggle('is-disabled', !hasOverflow || nearBottom);
 }

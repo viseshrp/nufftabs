@@ -1,8 +1,16 @@
+/**
+ * Orchestrates the condense workflow: query tabs, save eligible ones,
+ * close them, and focus/create the list page tab.
+ */
 import { LIST_PAGE_PATH, appendSavedGroup, readSettings } from '../shared/storage';
 import { createCondenseGroupKey, filterEligibleTabs, resolveWindowId, saveTabsToList } from '../shared/condense';
 import { logExtensionError } from '../shared/utils';
 import { focusExistingListTabOrCreate } from './list_tab';
 
+/**
+ * Main condense action: queries all tabs in the target (or current) window,
+ * saves eligible ones to storage, closes them, and opens the list page.
+ */
 export async function condenseCurrentWindow(targetWindowId?: number): Promise<void> {
   const settings = await readSettings();
   let tabs: chrome.tabs.Tab[] = [];

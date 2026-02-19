@@ -1,3 +1,7 @@
+/**
+ * Smoke check: verifies that critical project files exist.
+ * Intended as a fast CI gate before running the full build.
+ */
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 

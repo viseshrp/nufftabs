@@ -1,3 +1,6 @@
+/**
+ * Options page entrypoint. Loads shared styles and bootstraps the settings UI.
+ */
 import './style.css';
 import { initSettingsPage } from './settings_page';
 import { logExtensionError } from '../shared/utils';

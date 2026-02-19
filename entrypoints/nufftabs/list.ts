@@ -1,15 +1,25 @@
+/**
+ * Pure utility functions for the list page: cloning, comparing, counting,
+ * formatting, normalizing, and merging saved tab groups.
+ */
 import { createSavedTab, type SavedTab, type SavedTabGroups } from '../shared/storage';
 
+/** Shallow-copies a groups map so callers can replace arrays without mutating the original. */
 export function cloneGroups(groups: SavedTabGroups): SavedTabGroups {
   // Shallow copy only; tab arrays are shared. Callers must replace arrays instead of mutating
   // them in place or the original state will be modified and change detection can be skipped.
   return { ...groups };
 }
 
+/** Returns the total number of individual tabs across all groups. */
 export function countTotalTabs(groups: SavedTabGroups): number {
   return Object.values(groups).reduce((sum, tabs) => sum + tabs.length, 0);
 }
 
+/**
+ * Heuristic equality check for two tab arrays by comparing first, middle,
+ * and last IDs. Avoids O(n) full comparison but may miss internal reorders.
+ */
 export function isSameGroup(prev: SavedTab[] | undefined, next: SavedTab[]): boolean {
   // Heuristic: compare first/middle/last IDs to avoid O(n) checks. This can miss reorders
   // or edits that don't affect these pivot points, so the UI may skip a needed re-render.
@@ -25,6 +35,7 @@ export function isSameGroup(prev: SavedTab[] | undefined, next: SavedTab[]): boo
   );
 }
 
+/** Deep equality check across all group keys using `isSameGroup` per entry. */
 export function areGroupsEquivalent(prev: SavedTabGroups, next: SavedTabGroups): boolean {
   const prevKeys = Object.keys(prev);
   const nextKeys = Object.keys(next);
@@ -35,6 +46,7 @@ export function areGroupsEquivalent(prev: SavedTabGroups, next: SavedTabGroups):
   return true;
 }
 
+/** Returns the earliest `savedAt` timestamp in a tab array (used as the group creation time). */
 export function getGroupCreatedAt(tabs: SavedTab[]): number {
   let earliest = Number.POSITIVE_INFINITY;
   for (const tab of tabs) {
@@ -44,6 +56,7 @@ export function getGroupCreatedAt(tabs: SavedTab[]): number {
   return Number.isFinite(earliest) ? earliest : Number.NEGATIVE_INFINITY;
 }
 
+/** Formats an epoch-ms timestamp into a locale-aware date/time string. */
 export function formatCreatedAt(timestamp: number): string {
   const date = new Date(timestamp);
   return date.toLocaleString(undefined, {
@@ -56,6 +69,7 @@ export function formatCreatedAt(timestamp: number): string {
   });
 }
 
+/** Validates and normalizes an unknown array into `SavedTab[]`, returning null if the shape is invalid. */
 export function normalizeTabArray(data: unknown): SavedTab[] | null {
   if (!Array.isArray(data)) return null;
 
@@ -83,6 +97,10 @@ export function normalizeTabArray(data: unknown): SavedTab[] | null {
   return normalized;
 }
 
+/**
+ * Normalizes unknown imported data into `SavedTabGroups`.
+ * Handles flat arrays, `{ savedTabs: ... }` wrappers, and direct group objects.
+ */
 export function normalizeImportedGroups(data: unknown, fallbackKey: string): SavedTabGroups | null {
   const payload = Array.isArray(data)
     ? data
@@ -111,6 +129,7 @@ export function normalizeImportedGroups(data: unknown, fallbackKey: string): Sav
   return null;
 }
 
+/** Merges incoming groups into existing ones by concatenating tab arrays per group key. */
 export function mergeGroups(existing: SavedTabGroups, incoming: SavedTabGroups): SavedTabGroups {
   const merged = cloneGroups(existing);
   for (const [groupKey, tabs] of Object.entries(incoming)) {

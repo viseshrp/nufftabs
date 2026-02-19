@@ -1,5 +1,10 @@
+/**
+ * Helpers for managing the nufftabs list page tab:
+ * finding the most recently accessed one and focusing or creating it.
+ */
 import { logExtensionError } from '../shared/utils';
 
+/** Returns the most recently accessed list-page tab, preferring active tabs on ties. */
 export function pickMostRecentListTab(tabs: chrome.tabs.Tab[]): chrome.tabs.Tab | undefined {
   return tabs.reduce<chrome.tabs.Tab | undefined>((best, tab) => {
     if (!best) return tab;
@@ -11,6 +16,10 @@ export function pickMostRecentListTab(tabs: chrome.tabs.Tab[]): chrome.tabs.Tab 
   }, undefined);
 }
 
+/**
+ * Focuses an existing list-page tab (pinning it) or creates a new one.
+ * Falls back to a new tab if focusing the existing one fails.
+ */
 export async function focusExistingListTabOrCreate(
   listTabs: chrome.tabs.Tab[],
   listUrl: string,

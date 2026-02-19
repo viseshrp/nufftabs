@@ -173,6 +173,7 @@ Groups are rendered as cards. Each group can be collapsed without deleting data.
 
 ## UI behavior reference
 - **Collapse group:** hides rows but does not delete data.
+- **Collapse/expand all:** a navbar button toggles every group open or closed. Default on initial load: all groups start collapsed except the most recent one.
 - **Restore all:** restores all tabs in the group, then deletes the group.
 - **Delete all:** deletes the entire group without opening tabs.
 - **Restore single:** opens one tab, then removes it from the group.

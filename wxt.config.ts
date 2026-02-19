@@ -1,3 +1,4 @@
+/** WXT framework configuration for building the nufftabs Chrome extension. */
 import { defineConfig } from 'wxt';
 
 const manifestVersion = process.env.RELEASE_VERSION ?? process.env.npm_package_version ?? '1.0.0';

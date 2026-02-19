@@ -1,9 +1,13 @@
-/*
- * Logging utilities mirrored from Wordspotting.
+/**
+ * Logging and error-handling utilities for the nufftabs extension.
+ * Provides structured error logging with per-operation suppression of
+ * expected Chrome API errors (e.g. "no tab with id" after a tab closes).
  */
 
+/** Severity level used when emitting console log messages. */
 type LogLevel = 'warn' | 'error';
 
+/** Chrome API operation categories; each maps to a set of ignorable error patterns. */
 export type ExtensionErrorOperation =
   | 'tab_query'
   | 'tab_message'
@@ -13,11 +17,16 @@ export type ExtensionErrorOperation =
   | 'notification'
   | 'runtime_context';
 
+/** Options accepted by `logExtensionError` for controlling log level and suppression. */
 type LogExtensionErrorOptions = {
   level?: LogLevel;
   operation?: ExtensionErrorOperation;
 };
 
+/**
+ * Regex patterns for Chrome API errors that are safe to suppress per operation.
+ * Matching errors are swallowed instead of being logged to the console.
+ */
 const IGNORABLE_EXTENSION_ERROR_PATTERNS: Record<ExtensionErrorOperation, RegExp[]> = {
   tab_query: [
     /no tab with id/i,
@@ -53,6 +62,7 @@ const IGNORABLE_EXTENSION_ERROR_PATTERNS: Record<ExtensionErrorOperation, RegExp
   runtime_context: [/extension context invalidated/i],
 };
 
+/** Logs a timestamped debug message in development builds only. */
 export function logit(message: string): void {
   if (import.meta.env.PROD) return;
   const dt = new Date();
@@ -60,16 +70,22 @@ export function logit(message: string): void {
   console.log(`[${utcDate}]\t${message}`);
 }
 
+/** Extracts a human-readable message from an unknown error value. */
 export function getErrorMessage(error: unknown): string {
   if (error instanceof Error) return error.message;
   return String(error);
 }
 
+/** Returns true if the error matches a known-ignorable pattern for the given operation. */
 export function isIgnorableExtensionError(error: unknown, operation: ExtensionErrorOperation): boolean {
   const message = getErrorMessage(error);
   return IGNORABLE_EXTENSION_ERROR_PATTERNS[operation].some((pattern) => pattern.test(message));
 }
 
+/**
+ * Logs an extension error unless it matches a known-ignorable pattern.
+ * In production, only 'error'-level messages are emitted; warnings are suppressed.
+ */
 export function logExtensionError(
   context: string,
   error: unknown,
