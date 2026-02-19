@@ -1,21 +1,37 @@
+/**
+ * Persistence layer for saved tab groups and extension settings.
+ * All data is stored in `chrome.storage.local` using a two-level scheme:
+ *   • An index array (`savedTabsIndex`) listing group keys.
+ *   • Individual group entries keyed as `savedTabs:<groupKey>`.
+ */
 import { logExtensionError } from './utils';
 
+/** A single tab persisted by the extension. */
 export type SavedTab = {
+  /** Unique identifier (UUID) for this saved tab entry. */
   id: string;
   url: string;
   title: string;
+  /** Epoch-ms timestamp of when the tab was condensed/imported. */
   savedAt: number;
 };
 
+/** Map of group-key → array of saved tabs. Each key represents one condense session. */
 export type SavedTabGroups = Record<string, SavedTab[]>;
 
+/** Fully resolved extension settings with all fields guaranteed present. */
 export type Settings = {
+  /** Whether pinned tabs are excluded from condense operations. */
   excludePinned: boolean;
+  /** Maximum number of tabs to restore per browser window. */
   restoreBatchSize: number;
+  /** When true, restored tabs are immediately discarded to save RAM. */
   discardRestoredTabs: boolean;
+  /** UI color scheme: follow OS, force light, or force dark. */
   theme: 'os' | 'light' | 'dark';
 };
 
+/** Partial settings input used when writing user preferences; missing fields keep defaults. */
 export type SettingsInput = {
   excludePinned: boolean;
   restoreBatchSize?: number;
@@ -23,11 +39,13 @@ export type SettingsInput = {
   theme?: 'os' | 'light' | 'dark';
 };
 
+/** Top-level keys used in `chrome.storage.local`. */
 export const STORAGE_KEYS = {
   savedTabsIndex: 'savedTabsIndex',
   settings: 'settings',
 } as const;
 
+/** Fallback settings applied when stored values are missing or invalid. */
 export const DEFAULT_SETTINGS: Settings = {
   excludePinned: true,
   restoreBatchSize: 100,
@@ -35,12 +53,16 @@ export const DEFAULT_SETTINGS: Settings = {
   theme: 'os',
 };
 
+/** Relative path to the main list page used by `chrome.runtime.getURL`. */
 export const LIST_PAGE_PATH = 'nufftabs.html';
 
+/** Fallback group key when the originating window ID is unavailable. */
 export const UNKNOWN_GROUP_KEY = 'unknown';
 
+/** Storage key prefix prepended to each group key for individual group entries. */
 export const GROUP_KEY_PREFIX = 'savedTabs:';
 
+/** Input shape accepted by `createSavedTab`; optional fields receive generated defaults. */
 type SavedTabInput = {
   url: string;
   title?: string;
@@ -48,10 +70,12 @@ type SavedTabInput = {
   id?: string;
 };
 
+/** Type-guard that narrows `unknown` to a finite number. */
 function isFiniteNumber(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value);
 }
 
+/** Creates a `SavedTab` with a generated UUID and sensible defaults for missing fields. */
 export function createSavedTab(input: SavedTabInput): SavedTab {
   const savedAt = isFiniteNumber(input.savedAt) ? input.savedAt : Date.now();
   return {
@@ -62,6 +86,7 @@ export function createSavedTab(input: SavedTabInput): SavedTab {
   };
 }
 
+/** Attempts to coerce an unknown value into a valid `SavedTab`, returning null on failure. */
 function normalizeSavedTab(value: unknown, now = Date.now()): SavedTab | null {
   if (!value || typeof value !== 'object') return null;
   const url = (value as { url?: unknown }).url;
@@ -79,6 +104,7 @@ function normalizeSavedTab(value: unknown, now = Date.now()): SavedTab | null {
   });
 }
 
+/** Normalizes an unknown value into an array of valid `SavedTab` objects, dropping invalid entries. */
 function normalizeSavedTabArray(value: unknown, now = Date.now()): SavedTab[] {
   if (!Array.isArray(value)) return [];
   const normalized: SavedTab[] = [];
@@ -89,10 +115,12 @@ function normalizeSavedTabArray(value: unknown, now = Date.now()): SavedTab[] {
   return normalized;
 }
 
+/** Type-guard that narrows `unknown` to a non-empty string. */
 function isNonEmptyString(value: unknown): value is string {
   return typeof value === 'string' && value.length > 0;
 }
 
+/** Coerces an unknown value into a deduplicated array of non-empty group key strings. */
 function normalizeIndex(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
   const index: string[] = [];
@@ -102,19 +130,23 @@ function normalizeIndex(value: unknown): string[] {
   return Array.from(new Set(index));
 }
 
+/** Returns the `chrome.storage.local` key for a given group key. */
 function groupStorageKey(groupKey: string): string {
   return `${GROUP_KEY_PREFIX}${groupKey}`;
 }
 
+/** Returns true if the storage key represents an individual saved-tab group entry. */
 export function isSavedGroupStorageKey(key: string): boolean {
   return key.startsWith(GROUP_KEY_PREFIX);
 }
 
+/** Reads the ordered list of group keys from storage. */
 export async function readSavedGroupsIndex(): Promise<string[]> {
   const result = await chrome.storage.local.get([STORAGE_KEYS.savedTabsIndex]);
   return normalizeIndex(result[STORAGE_KEYS.savedTabsIndex]);
 }
 
+/** Atomically writes all groups to storage and removes stale group entries. */
 async function writeAllGroupsInternal(savedTabs: SavedTabGroups, existingIndex: string[]): Promise<void> {
   const entries = Object.entries(savedTabs).filter(([, tabs]) => tabs.length > 0);
   const nextIndex = entries.map(([key]) => key);
@@ -136,6 +168,7 @@ async function writeAllGroupsInternal(savedTabs: SavedTabGroups, existingIndex: 
   }
 }
 
+/** Coerces an unknown value into a valid `SavedTabGroups` map, using `fallbackKey` for flat arrays. */
 export function normalizeSavedGroups(value: unknown, fallbackKey = UNKNOWN_GROUP_KEY): SavedTabGroups {
   const now = Date.now();
   if (Array.isArray(value)) {
@@ -151,6 +184,7 @@ export function normalizeSavedGroups(value: unknown, fallbackKey = UNKNOWN_GROUP
   return groups;
 }
 
+/** Parses and validates an unknown value into fully resolved `Settings`, filling in defaults. */
 export function normalizeSettings(value: unknown): Settings {
   if (!value || typeof value !== 'object') return { ...DEFAULT_SETTINGS };
   const excludePinned = (value as { excludePinned?: unknown }).excludePinned;
@@ -177,6 +211,7 @@ export function normalizeSettings(value: unknown): Settings {
   };
 }
 
+/** Reads all saved tab groups from storage, normalizing each group's tab array. */
 export async function readSavedGroups(_fallbackKey = UNKNOWN_GROUP_KEY): Promise<SavedTabGroups> {
   try {
     const index = await readSavedGroupsIndex();
@@ -196,6 +231,7 @@ export async function readSavedGroups(_fallbackKey = UNKNOWN_GROUP_KEY): Promise
   }
 }
 
+/** Replaces all saved groups in storage, returning true on success. */
 export async function writeSavedGroups(savedTabs: SavedTabGroups): Promise<boolean> {
   try {
     const existingIndex = await readSavedGroupsIndex();
@@ -207,6 +243,7 @@ export async function writeSavedGroups(savedTabs: SavedTabGroups): Promise<boole
   }
 }
 
+/** Reads a single group's tab array from storage by its group key. */
 export async function readSavedGroup(groupKey: string): Promise<SavedTab[]> {
   try {
     const result = await chrome.storage.local.get([groupStorageKey(groupKey)]);
@@ -217,6 +254,7 @@ export async function readSavedGroup(groupKey: string): Promise<SavedTab[]> {
   }
 }
 
+/** Writes a single group to storage, updating the index. An empty array removes the group. */
 export async function writeSavedGroup(groupKey: string, tabs: SavedTab[]): Promise<boolean> {
   try {
     const index = await readSavedGroupsIndex();
@@ -240,6 +278,10 @@ export async function writeSavedGroup(groupKey: string, tabs: SavedTab[]): Promi
   }
 }
 
+/**
+ * Appends a new group to storage with optimistic concurrency control.
+ * Retries up to `maxAttempts` times if a concurrent write drops the key from the index.
+ */
 export async function appendSavedGroup(
   groupKey: string,
   tabs: SavedTab[],
@@ -273,6 +315,7 @@ export async function appendSavedGroup(
   return false;
 }
 
+/** Reads the user's extension settings from storage, returning defaults on failure. */
 export async function readSettings(): Promise<Settings> {
   try {
     const result = await chrome.storage.local.get([STORAGE_KEYS.settings]);
@@ -283,6 +326,7 @@ export async function readSettings(): Promise<Settings> {
   }
 }
 
+/** Persists the given settings input to storage, returning true on success. */
 export async function writeSettings(settings: SettingsInput): Promise<boolean> {
   try {
     const payload: SettingsInput = { excludePinned: settings.excludePinned };

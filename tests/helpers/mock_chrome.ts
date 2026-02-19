@@ -1,3 +1,8 @@
+/**
+ * In-memory mock of the Chrome Extension APIs for unit tests.
+ * Provides controllable implementations of `chrome.tabs`, `chrome.windows`,
+ * `chrome.storage.local`, and associated event emitters.
+ */
 export type MockTab = chrome.tabs.Tab;
 export type MockWindow = chrome.windows.Window;
 type TabChangeInfo = { url?: string };
@@ -6,11 +11,13 @@ type StorageValue = unknown;
 type StorageRecord = Record<string, StorageValue>;
 type StorageGetKeys = string | string[] | StorageRecord | null | undefined;
 
+/** Callback signature for `chrome.storage.onChanged` listeners. */
 type StorageListener = (
   changes: Record<string, { oldValue?: unknown; newValue?: unknown }>,
   areaName: 'local' | 'sync' | 'managed' | 'session',
 ) => void;
 
+/** Shape of the mock Chrome API object exposed by `createMockChrome`. */
 export type MockChrome = {
   runtime: {
     getURL: (path: string) => string;
@@ -52,8 +59,10 @@ export type MockChrome = {
   };
 };
 
+/** Callback used by `setMockDefineBackground` to intercept WXT's `defineBackground`. */
 export type MockDefineBackground = (callback: () => void) => void;
 
+/** Installs a mock `chrome` object on `globalThis` for use in tests. */
 export function setMockChrome(mockChrome: MockChrome): void {
   Object.defineProperty(globalThis, 'chrome', {
     value: mockChrome,
@@ -62,6 +71,7 @@ export function setMockChrome(mockChrome: MockChrome): void {
   });
 }
 
+/** Installs a mock `defineBackground` on `globalThis` to capture WXT entry registration. */
 export function setMockDefineBackground(handler: MockDefineBackground): void {
   Object.defineProperty(globalThis, 'defineBackground', {
     value: handler,
@@ -70,6 +80,7 @@ export function setMockDefineBackground(handler: MockDefineBackground): void {
   });
 }
 
+/** Creates a fully functional in-memory mock of the Chrome Extension API surface used by nufftabs. */
 export function createMockChrome(options?: { initialStorage?: StorageRecord }) {
   const storageData: StorageRecord = { ...(options?.initialStorage ?? {}) };
   const storageListeners = new Set<StorageListener>();

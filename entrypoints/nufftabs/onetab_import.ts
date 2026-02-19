@@ -1,9 +1,16 @@
+/**
+ * Parser for the OneTab plain-text export format.
+ * Each line is expected as `<url>|<title>`. Lines with non-http(s)/file
+ * URLs are silently skipped.
+ */
 import { createSavedTab, type SavedTab } from '../shared/storage';
 
+/** Returns true if the URL uses an allowed scheme (http, https, or file). */
 function isAllowedUrl(value: string): boolean {
   return /^(https?|file):\/\//i.test(value);
 }
 
+/** Parses OneTab export text into saved tabs, returning parsed tabs and total non-empty line count. */
 export function parseOneTabExport(text: string): { tabs: SavedTab[]; totalLines: number } {
   const lines = text.split(/\r?\n/);
   const savedTabs: SavedTab[] = [];

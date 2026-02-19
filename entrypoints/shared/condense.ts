@@ -1,5 +1,10 @@
+/**
+ * Pure helper functions for the condense ("save and close tabs") workflow.
+ * These are shared between the background service worker and the list page.
+ */
 import { UNKNOWN_GROUP_KEY, createSavedTab, type SavedTab } from './storage';
 
+/** Resolves the effective window ID from an explicit target or the first tab's window. */
 export function resolveWindowId(
   tabs: chrome.tabs.Tab[],
   targetWindowId?: number,
@@ -8,6 +13,7 @@ export function resolveWindowId(
   return tabs.find((tab) => typeof tab.windowId === 'number')?.windowId;
 }
 
+/** Generates a unique group key combining window ID, timestamp, and a random nonce. */
 export function createCondenseGroupKey(
   windowId?: number,
   now = Date.now(),
@@ -18,6 +24,7 @@ export function createCondenseGroupKey(
   return `${baseKey}-${now}-${nonce}`;
 }
 
+/** Filters open tabs to only those eligible for condensing (excludes the list page itself and optionally pinned tabs). */
 export function filterEligibleTabs(
   tabs: chrome.tabs.Tab[],
   listUrl: string,
@@ -33,6 +40,7 @@ export function filterEligibleTabs(
   });
 }
 
+/** Converts eligible Chrome tabs into `SavedTab` objects and prepends them to an existing list. */
 export function saveTabsToList(
   tabs: chrome.tabs.Tab[],
   existing: SavedTab[],

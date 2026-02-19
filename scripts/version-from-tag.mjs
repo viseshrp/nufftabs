@@ -1,4 +1,8 @@
 #!/usr/bin/env node
+/**
+ * Extracts a semver version string from a git tag (e.g. "v1.2.3" → "1.2.3").
+ * Reads the tag from a CLI argument or the GITHUB_REF_NAME environment variable.
+ */
 
 const input = process.argv[2] ?? process.env.GITHUB_REF_NAME;
 

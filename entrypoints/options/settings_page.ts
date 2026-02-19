@@ -1,3 +1,7 @@
+/**
+ * Settings page logic: reads current settings from storage, binds form
+ * controls, and persists changes on any user interaction.
+ */
 import {
   DEFAULT_SETTINGS,
   STORAGE_KEYS,
@@ -8,10 +12,12 @@ import {
 } from '../shared/storage';
 import { logExtensionError } from '../shared/utils';
 
+/** Updates the status element's text content (used for save/error feedback). */
 export function setStatus(statusEl: HTMLDivElement | null, message: string): void {
   if (statusEl) statusEl.textContent = message;
 }
 
+/** Parses and validates the batch-size input, returning null if empty or invalid. */
 export function getBatchSizeInput(input: HTMLInputElement): number | null {
   const rawValue = input.value.trim();
   if (rawValue.length === 0) return null;
@@ -21,6 +27,10 @@ export function getBatchSizeInput(input: HTMLInputElement): number | null {
   return parsed > 0 ? parsed : null;
 }
 
+/**
+ * Initializes the settings page: reads persisted settings, populates form
+ * controls, and attaches change listeners that auto-save on interaction.
+ */
 export async function initSettingsPage(documentRef: Document = document): Promise<void> {
   const excludePinnedEl = documentRef.querySelector<HTMLInputElement>('#excludePinned');
   const restoreBatchSizeEl = documentRef.querySelector<HTMLInputElement>('#restoreBatchSize');

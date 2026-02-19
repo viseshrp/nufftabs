@@ -1,28 +1,43 @@
+/**
+ * Tab restoration and memory-saving discard logic.
+ * Restores saved tabs into new or reused browser windows using concurrency-
+ * limited creation, with optional post-restore tab discarding to save RAM.
+ */
 import { LIST_PAGE_PATH, STORAGE_KEYS, normalizeSettings, readSettings, type SavedTab } from '../shared/storage';
 import { logExtensionError } from '../shared/utils';
 
-// Restore tabs in limited parallel batches to improve throughput; this can relax strict
-// tab ordering compared to fully sequential creation.
+/** Maximum number of tabs being created concurrently during a restore operation. */
 export const RESTORE_CONCURRENCY = 6;
+
+/** Maximum number of tabs being discarded concurrently after a restore operation. */
 const DISCARD_CONCURRENCY = 8;
+
+/** How long (ms) to wait for a tab's URL to resolve before giving up on discarding it. */
 const DISCARD_WAIT_TIMEOUT_MS = 5000;
 
+/** Internal bookkeeping for a tab whose URL readiness is being awaited. */
 type PendingDiscard = {
   resolve: (ready: boolean) => void;
   timeoutId: ReturnType<typeof setTimeout>;
 };
 
+/** Subset of `chrome.tabs.TabChangeInfo` used by the onUpdated listener. */
 type TabChangeInfo = {
   url?: string;
 };
 
+/** Map of tab IDs whose URL readiness is being monitored for discard. */
 const pendingDiscards = new Map<number, PendingDiscard>();
+
+/** Shared `tabs.onUpdated` listener; installed lazily and removed when idle. */
 let onUpdatedListener: ((tabId: number, changeInfo: TabChangeInfo, tab: chrome.tabs.Tab) => void) | null = null;
 
+/** Returns true if the tab is still on a placeholder URL (blank or missing). */
 function isPlaceholderUrl(url?: string | null): boolean {
   return !url || url === 'about:blank';
 }
 
+/** Removes the shared `onUpdated` listener when no pending discards remain. */
 function cleanupListenerIfIdle(): void {
   if (pendingDiscards.size === 0 && onUpdatedListener) {
     chrome.tabs.onUpdated.removeListener(onUpdatedListener);
@@ -30,6 +45,7 @@ function cleanupListenerIfIdle(): void {
   }
 }
 
+/** Installs the shared `tabs.onUpdated` listener if not already attached. */
 function ensureOnUpdatedListener(): void {
   if (onUpdatedListener) return;
   onUpdatedListener = (tabId, changeInfo, tab) => {
@@ -43,6 +59,7 @@ function ensureOnUpdatedListener(): void {
   chrome.tabs.onUpdated.addListener(onUpdatedListener);
 }
 
+/** Resolves all pending discard promises as `false` and removes the listener. */
 function cancelPendingDiscards(): void {
   const pendings = Array.from(pendingDiscards.values());
   pendingDiscards.clear();
@@ -53,6 +70,10 @@ function cancelPendingDiscards(): void {
   cleanupListenerIfIdle();
 }
 
+/**
+ * Returns a promise that resolves when the given tab has navigated to a real URL.
+ * Resolves `false` on timeout or abort signal.
+ */
 async function waitForTabUrlReady(
   tabId: number,
   timeoutMs = DISCARD_WAIT_TIMEOUT_MS,
@@ -91,10 +112,15 @@ async function waitForTabUrlReady(
   });
 }
 
+/** Handle returned by `createDiscardSession` to schedule batches of tabs for discard. */
 type DiscardSession = {
   schedule: (tabIds: Array<number | undefined | null>) => void;
 };
 
+/**
+ * Creates a discard session that monitors settings changes.
+ * If the user disables discarding mid-session, all pending discards are aborted.
+ */
 export function createDiscardSession(): DiscardSession {
   const abortController = new AbortController();
   let activeTasks = 0;
@@ -142,6 +168,7 @@ export function createDiscardSession(): DiscardSession {
   };
 }
 
+/** Discards tabs on a best-effort basis, waiting for each tab's URL to be ready first. */
 export async function discardTabsBestEffort(
   tabIds: Array<number | undefined | null>,
   signal?: AbortSignal,
@@ -163,6 +190,7 @@ export async function discardTabsBestEffort(
   });
 }
 
+/** Returns all tab IDs in a window, best-effort (returns empty on failure). */
 async function getWindowTabIdsBestEffort(windowId: number): Promise<number[]> {
   try {
     const tabs = await chrome.tabs.query({ windowId });
@@ -173,6 +201,10 @@ async function getWindowTabIdsBestEffort(windowId: number): Promise<number[]> {
   }
 }
 
+/**
+ * Runs async tasks over an item list with a bounded concurrency pool.
+ * Worker ordering is not guaranteed.
+ */
 export async function runWithConcurrency<T>(
   items: T[],
   limit: number,
@@ -191,6 +223,7 @@ export async function runWithConcurrency<T>(
   await Promise.all(workers);
 }
 
+/** Creates tabs in a specific window using concurrency-limited parallel creation. */
 export async function createTabsInWindow(windowId: number, urls: string[], startIndex?: number): Promise<number[]> {
   // Uses concurrency-limited creation; tabs may appear slightly out of order versus strict
   // sequential creation, which is accepted for better restore throughput.
@@ -212,6 +245,10 @@ export async function createTabsInWindow(windowId: number, urls: string[], start
   return createdIds;
 }
 
+/**
+ * Determines whether the current window can be reused for restoring tabs.
+ * Reuse is allowed only when the window contains exactly the nufftabs list tab.
+ */
 export async function getReuseWindowContext(): Promise<{
   shouldReuse: boolean;
   windowId?: number;
@@ -237,6 +274,10 @@ export async function getReuseWindowContext(): Promise<{
   }
 }
 
+/**
+ * Restores an array of saved tabs into new or reused browser windows.
+ * Returns true on success; false if an error prevented restoration.
+ */
 export async function restoreTabs(savedTabs: SavedTab[]): Promise<boolean> {
   const settings = await readSettings();
   const shouldDiscard = settings.discardRestoredTabs;
