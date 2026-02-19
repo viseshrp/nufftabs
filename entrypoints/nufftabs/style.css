@@ -317,6 +317,15 @@ button {
   transition: transform 0.2s ease;
 }
 
+/* Collapse-all button: rotates 180° when all groups are collapsed to indicate "expand" */
+#toggleCollapseAll svg {
+  transition: transform 0.2s ease;
+}
+
+#toggleCollapseAll.is-all-collapsed svg {
+  transform: rotate(180deg);
+}
+
 .group-card.is-collapsed .collapse-toggle svg {
   transform: rotate(-90deg);
 }

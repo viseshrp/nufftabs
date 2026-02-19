@@ -36,6 +36,8 @@ const scrollBottomEl = document.querySelector<HTMLButtonElement>('#scrollBottom'
 const tabCountEl = document.querySelector<HTMLSpanElement>('#tabCount');
 const searchTabsEl = document.querySelector<HTMLInputElement>('#searchTabs');
 const toggleIoEl = document.querySelector<HTMLButtonElement>('#toggleIo');
+/** Button that collapses or expands every group card at once. */
+const toggleCollapseAllEl = document.querySelector<HTMLButtonElement>('#toggleCollapseAll');
 const exportJsonEl = document.querySelector<HTMLButtonElement>('#exportJson');
 const importJsonEl = document.querySelector<HTMLButtonElement>('#importJson');
 const importJsonReplaceEl = document.querySelector<HTMLButtonElement>('#importJsonReplace');
@@ -64,6 +66,10 @@ type ListPageState = {
   renderGroupsFrame: number;
   renderGroupsScheduled: boolean;
   renderGroupsFallbackTimer?: number;
+  /** Tracks whether all group cards are currently collapsed. */
+  allGroupsCollapsed: boolean;
+  /** Guards initial collapse so it only runs once on first render. */
+  initialCollapseApplied: boolean;
 };
 
 const state: ListPageState = {
@@ -82,6 +88,8 @@ const state: ListPageState = {
   renderGroupsFrame: 0,
   renderGroupsScheduled: false,
   renderGroupsFallbackTimer: undefined,
+  allGroupsCollapsed: false,
+  initialCollapseApplied: false,
 };
 
 // Render only a subset of each group at first paint to keep DOM size bounded; users can
@@ -753,6 +761,136 @@ function scheduleRenderGroups(): void {
   state.renderGroupsFallbackTimer = window.setTimeout(flush, 0);
 }
 
+/**
+ * Sets the collapsed state of a single group card.
+ *
+ * When `collapsed` is true the group's item list is hidden and the per-group
+ * collapse toggle chevron rotates. When false the items become visible and,
+ * if the group's tab payload has not been fetched yet, a lazy-load is kicked off.
+ */
+function setGroupCollapsed(groupKey: string, collapsed: boolean): void {
+  const view = groupViews.get(groupKey);
+  if (!view) return;
+
+  // Synchronize the CSS class that drives the chevron rotation and item visibility.
+  view.card.classList.toggle('is-collapsed', collapsed);
+  view.itemsWrap.hidden = collapsed;
+
+  // Update the per-group collapse toggle button's accessible label.
+  const collapseLabel = collapsed ? 'Expand list' : 'Collapse list';
+  view.collapseButton.setAttribute('aria-label', collapseLabel);
+  view.collapseButton.setAttribute('title', collapseLabel);
+
+  // If the group is being expanded and its tabs haven't been loaded yet, fetch them.
+  if (!collapsed && !isGroupLoaded(groupKey)) {
+    runAsyncTask(ensureGroupLoaded(groupKey), `Failed to load group (${groupKey})`);
+  }
+}
+
+/**
+ * Collapses every group card that is currently rendered.
+ *
+ * After collapsing, updates the global state flag and refreshes the
+ * toggle-all button's icon and label.
+ */
+function collapseAllGroups(): void {
+  for (const groupKey of groupViews.keys()) {
+    setGroupCollapsed(groupKey, true);
+  }
+  state.allGroupsCollapsed = true;
+  updateToggleCollapseAllButton();
+  updateScrollControls();
+}
+
+/**
+ * Expands every group card that is currently rendered.
+ *
+ * Expanding a group whose tab payload has not yet been fetched will trigger
+ * lazy loading via `setGroupCollapsed`.
+ */
+function expandAllGroups(): void {
+  for (const groupKey of groupViews.keys()) {
+    setGroupCollapsed(groupKey, false);
+  }
+  state.allGroupsCollapsed = false;
+  updateToggleCollapseAllButton();
+  updateScrollControls();
+}
+
+/**
+ * Toggles between collapsing all and expanding all groups.
+ *
+ * Called when the user clicks the collapse-all button in the navbar.
+ */
+function toggleAllGroups(): void {
+  if (state.allGroupsCollapsed) {
+    expandAllGroups();
+  } else {
+    collapseAllGroups();
+  }
+}
+
+/**
+ * Re-derives `state.allGroupsCollapsed` from the actual DOM state of every
+ * rendered group card.
+ *
+ * Called whenever a single group is individually toggled so the navbar button
+ * stays in sync.
+ */
+function syncAllGroupsCollapsedState(): void {
+  if (groupViews.size === 0) {
+    state.allGroupsCollapsed = false;
+  } else {
+    // All groups collapsed only when every card carries the `is-collapsed` class.
+    state.allGroupsCollapsed = Array.from(groupViews.values()).every((view) =>
+      view.card.classList.contains('is-collapsed'),
+    );
+  }
+  updateToggleCollapseAllButton();
+}
+
+/**
+ * Updates the collapse-all navbar button's CSS class, aria-label, and title
+ * to reflect whether all groups are currently collapsed or expanded.
+ *
+ * When collapsed the double-chevron icon rotates 180° via CSS to point down,
+ * visually indicating "expand all".
+ */
+function updateToggleCollapseAllButton(): void {
+  if (!toggleCollapseAllEl) return;
+  toggleCollapseAllEl.classList.toggle('is-all-collapsed', state.allGroupsCollapsed);
+  const label = state.allGroupsCollapsed ? 'Expand all groups' : 'Collapse all groups';
+  toggleCollapseAllEl.setAttribute('aria-label', label);
+  toggleCollapseAllEl.setAttribute('title', label);
+}
+
+/**
+ * Applies the default collapse behavior on first render: collapses every group
+ * except the first one in the sorted list (the most recent).
+ *
+ * This keeps the page compact on initial load while still showing the newest
+ * group's tabs immediately.
+ *
+ * @param sortedGroupKeys - Group keys already sorted newest-first.
+ */
+function applyDefaultCollapse(sortedGroupKeys: string[]): void {
+  state.initialCollapseApplied = true;
+
+  // Only one group (or none) — nothing to collapse.
+  if (sortedGroupKeys.length <= 1) return;
+
+  // Collapse every group except the first (most recent).
+  for (let i = 1; i < sortedGroupKeys.length; i++) {
+    const groupKey = sortedGroupKeys[i];
+    if (groupKey) {
+      setGroupCollapsed(groupKey, true);
+    }
+  }
+
+  // Derivation: not *all* groups are collapsed because the first one stays open.
+  state.allGroupsCollapsed = false;
+}
+
 function renderGroups(): void {
   if (!groupsEl || !emptyEl) return;
   const entries = getSortedGroupKeys()
@@ -826,7 +964,15 @@ function renderGroups(): void {
 
   groupsEl.replaceChildren(fragment);
   state.visibleGroups = nextVisibleGroups;
+
+  // On the very first render with multiple groups, collapse all except the most
+  // recent one so the page is not overwhelmed with open cards.
+  if (!state.initialCollapseApplied && entries.length > 0) {
+    applyDefaultCollapse(entries.map((e) => e.groupKey));
+  }
+
   updateScrollControls();
+  updateToggleCollapseAllButton();
 
   if (!state.activeSearchTerm) {
     scheduleViewportGroupLoad();
@@ -879,6 +1025,8 @@ function handleGroupAction(event: Event): void {
       if (!isCollapsed && !isGroupLoaded(groupKey)) {
         runAsyncTask(ensureGroupLoaded(groupKey), `Failed to load group (${groupKey})`);
       }
+      // Sync the global collapse state after a single group is toggled.
+      syncAllGroupsCollapsedState();
       updateScrollControls();
       break;
     }
@@ -1232,6 +1380,11 @@ async function init(): Promise<void> {
     if (!ioPanelEl) return;
     ioPanelEl.hidden = !ioPanelEl.hidden;
     updateScrollControls();
+  });
+
+  // Wire the collapse/expand-all toggle button.
+  toggleCollapseAllEl?.addEventListener('click', () => {
+    toggleAllGroups();
   });
 
   groupsEl?.addEventListener('click', handleGroupAction);

@@ -367,4 +367,84 @@ describe('list page init', () => {
     expect(document.querySelectorAll('.group-card')).toHaveLength(1);
     expect(document.querySelectorAll('.item[data-tab-id]')).toHaveLength(1);
   });
+
+  it('collapses all groups except the most recent on initial load', async () => {
+    // Set up three groups with distinct timestamps so sort order is deterministic.
+    const listHtml = readFileSync(join(process.cwd(), 'entrypoints', 'nufftabs', 'index.html'), 'utf-8');
+    document.documentElement.innerHTML = listHtml;
+
+    const oldest = '1-1000-oldest';
+    const middle = '1-2000-middle';
+    const newest = '1-3000-newest';
+
+    const mock = createMockChrome({
+      initialStorage: {
+        [STORAGE_KEYS.savedTabsIndex]: [oldest, middle, newest],
+        [`savedTabs:${oldest}`]: [{ id: 'a', url: 'https://a.com', title: 'A', savedAt: 10 }],
+        [`savedTabs:${middle}`]: [{ id: 'b', url: 'https://b.com', title: 'B', savedAt: 20 }],
+        [`savedTabs:${newest}`]: [{ id: 'c', url: 'https://c.com', title: 'C', savedAt: 30 }],
+      },
+    });
+    setMockChrome(mock.chrome);
+
+    await import('../../entrypoints/nufftabs/index');
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    // Three group cards should render.
+    const cards = document.querySelectorAll<HTMLElement>('.group-card');
+    expect(cards).toHaveLength(3);
+
+    // The most recent group (newest, sorted first) should NOT be collapsed.
+    const newestCard = document.querySelector<HTMLElement>(`[data-group-key="${newest}"]`);
+    expect(newestCard?.classList.contains('is-collapsed')).toBe(false);
+
+    // The other two groups should be collapsed.
+    const middleCard = document.querySelector<HTMLElement>(`[data-group-key="${middle}"]`);
+    expect(middleCard?.classList.contains('is-collapsed')).toBe(true);
+
+    const oldestCard = document.querySelector<HTMLElement>(`[data-group-key="${oldest}"]`);
+    expect(oldestCard?.classList.contains('is-collapsed')).toBe(true);
+  });
+
+  it('toggleCollapseAll button expands and collapses all groups', async () => {
+    // Set up two groups so the default collapse applies (only newest expanded).
+    const listHtml = readFileSync(join(process.cwd(), 'entrypoints', 'nufftabs', 'index.html'), 'utf-8');
+    document.documentElement.innerHTML = listHtml;
+
+    const older = '1-1000-older';
+    const newer = '1-2000-newer';
+
+    const mock = createMockChrome({
+      initialStorage: {
+        [STORAGE_KEYS.savedTabsIndex]: [older, newer],
+        [`savedTabs:${older}`]: [{ id: 'x', url: 'https://x.com', title: 'X', savedAt: 10 }],
+        [`savedTabs:${newer}`]: [{ id: 'y', url: 'https://y.com', title: 'Y', savedAt: 20 }],
+      },
+    });
+    setMockChrome(mock.chrome);
+
+    await import('../../entrypoints/nufftabs/index');
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const toggleBtn = document.querySelector<HTMLButtonElement>('#toggleCollapseAll');
+    expect(toggleBtn).not.toBeNull();
+
+    // After initial load the older group should be collapsed and the newer one open.
+    const olderCard = document.querySelector<HTMLElement>(`[data-group-key="${older}"]`);
+    const newerCard = document.querySelector<HTMLElement>(`[data-group-key="${newer}"]`);
+    expect(olderCard?.classList.contains('is-collapsed')).toBe(true);
+    expect(newerCard?.classList.contains('is-collapsed')).toBe(false);
+
+    // Click: should collapse all groups (the newer one was still open).
+    toggleBtn?.click();
+    expect(olderCard?.classList.contains('is-collapsed')).toBe(true);
+    expect(newerCard?.classList.contains('is-collapsed')).toBe(true);
+    expect(toggleBtn?.getAttribute('aria-label')).toBe('Expand all groups');
+
+    // Click again: should expand all groups.
+    toggleBtn?.click();
+    expect(olderCard?.classList.contains('is-collapsed')).toBe(false);
+    expect(newerCard?.classList.contains('is-collapsed')).toBe(false);
+    expect(toggleBtn?.getAttribute('aria-label')).toBe('Collapse all groups');
+  });
 });
