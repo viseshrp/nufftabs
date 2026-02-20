@@ -26,6 +26,44 @@ describe('drive_api', () => {
     expect((init.headers as Headers).get('Authorization')).toBe('Bearer token-1');
   });
 
+  it('paginates through all file pages', async () => {
+    const fetchMock = vi.fn(async (url: string) => {
+      if (url.includes('pageToken=token-2')) {
+        return new Response(JSON.stringify({ files: [{ id: 'f3', name: 'backup-c.json' }] }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      return new Response(
+        JSON.stringify({
+          files: [
+            { id: 'f1', name: 'backup-a.json' },
+            { id: 'f2', name: 'backup-b.json' },
+          ],
+          nextPageToken: 'token-2',
+        }),
+        {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        },
+      );
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const files = await listFiles('folder-1', 'token-1');
+
+    expect(files).toEqual([
+      { id: 'f1', name: 'backup-a.json' },
+      { id: 'f2', name: 'backup-b.json' },
+      { id: 'f3', name: 'backup-c.json' },
+    ]);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    const [firstUrl] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    const [secondUrl] = fetchMock.mock.calls[1] as unknown as [string, RequestInit];
+    expect(firstUrl).toContain('fields=nextPageToken%2Cfiles');
+    expect(secondUrl).toContain('pageToken=token-2');
+  });
+
   it('returns existing folder id before attempting create', async () => {
     const fetchMock = vi.fn(async () => {
       return new Response(JSON.stringify({ files: [{ id: 'existing-folder' }] }), {

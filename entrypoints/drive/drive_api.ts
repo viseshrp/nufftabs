@@ -45,22 +45,33 @@ async function parseJsonResponse<T>(response: Response, context: string): Promis
  * timestamped backup names appear first.
  */
 export async function listFiles(folderId: string, token: string): Promise<DriveFileRecord[]> {
+  const allFiles: DriveFileRecord[] = [];
+  let nextPageToken: string | undefined;
   const query = [`'${escapeDriveQueryLiteral(folderId)}' in parents`, "trashed = false"].join(' and ');
-  const params = new URLSearchParams({
-    q: query,
-    orderBy: 'name desc',
-    pageSize: '200',
-    fields: 'files(id,name,createdTime,modifiedTime,size)',
-    supportsAllDrives: 'false',
-  });
+  do {
+    const params = new URLSearchParams({
+      q: query,
+      orderBy: 'name desc',
+      pageSize: '200',
+      fields: 'nextPageToken,files(id,name,createdTime,modifiedTime,size)',
+      supportsAllDrives: 'false',
+    });
+    if (nextPageToken) params.set('pageToken', nextPageToken);
 
-  const response = await fetch(`${DRIVE_API_BASE}/files?${params.toString()}`, {
-    method: 'GET',
-    headers: buildAuthHeaders(token),
-  });
+    const response = await fetch(`${DRIVE_API_BASE}/files?${params.toString()}`, {
+      method: 'GET',
+      headers: buildAuthHeaders(token),
+    });
 
-  const data = await parseJsonResponse<{ files?: DriveFileRecord[] }>(response, 'Drive list files');
-  return Array.isArray(data.files) ? data.files : [];
+    const data = await parseJsonResponse<{ files?: DriveFileRecord[]; nextPageToken?: string }>(
+      response,
+      'Drive list files',
+    );
+    if (Array.isArray(data.files)) allFiles.push(...data.files);
+    nextPageToken = data.nextPageToken;
+  } while (nextPageToken);
+
+  return allFiles;
 }
 
 /**

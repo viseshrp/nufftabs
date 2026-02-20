@@ -14,6 +14,8 @@ nufftabs supports optional manual backup and restore to Google Drive. This featu
 - Host permission: `https://www.googleapis.com/` for Drive API calls.
 - OAuth scope: `https://www.googleapis.com/auth/drive.file`.
 - OAuth client ID is configured in `wxt.config.ts`.
+- For local/unpacked builds, set a stable manifest key (`CHROME_EXTENSION_KEY` or `EXTENSION_MANIFEST_KEY`) so the extension ID matches the OAuth client's configured Chrome Extension ID.
+- `GOOGLE_OAUTH_CLIENT_ID` can override the default client ID in `wxt.config.ts`.
 
 ## Data model
 Drive folder layout:

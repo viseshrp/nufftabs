@@ -199,6 +199,15 @@ The packaged extension zip is generated under `.output/`.
 4. Click **Backup now** to upload a snapshot of saved tabs + settings.
 5. Use **Restore** on any listed backup row to overwrite local data from that backup.
 
+### Local OAuth setup for unpacked builds
+If you see `bad client id` or auth failures in dev, your unpacked extension ID likely does
+not match the OAuth client's configured Chrome Extension ID.
+1. Set `CHROME_EXTENSION_KEY` (or `EXTENSION_MANIFEST_KEY`) to a fixed extension private key.
+2. Set `GOOGLE_OAUTH_CLIENT_ID` to the OAuth client tied to that extension ID.
+3. Restart `pnpm dev` (or rebuild + reload extension).
+
+`wxt.config.ts` uses these env vars so your local extension ID remains stable and matches OAuth.
+
 ## Project structure
 - `entrypoints/background/index.ts` — action handler, condense logic, list tab focus/pin.
 - `entrypoints/nufftabs/` — list UI (`index.html`, `index.ts`, `style.css`).
@@ -218,6 +227,7 @@ The packaged extension zip is generated under `.output/`.
 - **List doesn’t update after condense:** reload the list tab or check the service worker console for errors.
 - **Condense closes tabs but list is empty:** check `chrome.storage.local` in DevTools and ensure the list tab is open.
 - **No action when clicking icon:** open `chrome://extensions`, click “service worker” for nufftabs, and check logs.
+- **Google Drive auth says `bad client id`:** ensure `GOOGLE_OAUTH_CLIENT_ID` is for a Chrome Extension OAuth client whose extension ID matches the one generated from `CHROME_EXTENSION_KEY`.
 
 ## FAQ
 
