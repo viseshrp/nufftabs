@@ -11,6 +11,16 @@ import {
   type SettingsInput,
 } from '../shared/storage';
 import { logExtensionError } from '../shared/utils';
+import { getAuthToken, getAuthTokenSilently } from '../drive/auth';
+import {
+  getBackupsWithFallback,
+  performBackup,
+  readLocalIndex,
+  readRetentionCount,
+  restoreFromBackup,
+  writeRetentionCount,
+} from '../drive/drive_backup';
+import { normalizeRetentionCount, type DriveBackupEntry } from '../drive/types';
 
 /** Updates the status element's text content (used for save/error feedback). */
 export function setStatus(statusEl: HTMLDivElement | null, message: string): void {
@@ -25,6 +35,183 @@ export function getBatchSizeInput(input: HTMLInputElement): number | null {
   if (!Number.isFinite(rawNumber)) return null;
   const parsed = Math.floor(rawNumber);
   return parsed > 0 ? parsed : null;
+}
+
+/** Formats epoch-ms timestamps into locale-friendly date/time strings for backup rows. */
+function formatBackupTimestamp(timestamp: number): string {
+  if (!Number.isFinite(timestamp) || timestamp <= 0) return 'Unknown';
+  return new Date(timestamp).toLocaleString();
+}
+
+/** Formats byte counts for backup rows without external dependencies. */
+function formatBytes(size: number): string {
+  if (!Number.isFinite(size) || size <= 0) return '0 B';
+  const units = ['B', 'KB', 'MB', 'GB'];
+  let value = size;
+  let unitIndex = 0;
+  while (value >= 1024 && unitIndex < units.length - 1) {
+    value /= 1024;
+    unitIndex += 1;
+  }
+  const rounded = value >= 10 || unitIndex === 0 ? Math.round(value) : Math.round(value * 10) / 10;
+  return `${rounded} ${units[unitIndex]}`;
+}
+
+/** Renders the Drive backup table body from current backup metadata. */
+function renderDriveBackups(listEl: HTMLTableSectionElement | null, backups: DriveBackupEntry[]): void {
+  if (!listEl) return;
+
+  if (backups.length === 0) {
+    listEl.innerHTML = '<tr><td class="row-empty" colspan="4">No backups found yet.</td></tr>';
+    return;
+  }
+
+  const rows = backups
+    .map((entry) => {
+      const when = formatBackupTimestamp(entry.timestamp);
+      const groups = entry.tabGroupCount;
+      const size = formatBytes(entry.size);
+      return [
+        '<tr>',
+        `<td>${when}</td>`,
+        `<td>${groups}</td>`,
+        `<td>${size}</td>`,
+        '<td>',
+        `<button type="button" data-action="restore-backup" data-file-id="${entry.fileId}">Restore</button>`,
+        '</td>',
+        '</tr>',
+      ].join('');
+    })
+    .join('');
+
+  listEl.innerHTML = rows;
+}
+
+/**
+ * Initializes the optional Drive backup section in options UI.
+ * This section is intentionally isolated so missing elements never break base settings.
+ */
+async function initDriveBackupSection(documentRef: Document): Promise<void> {
+  const openAuthEl = documentRef.querySelector<HTMLButtonElement>('#openDriveAuth');
+  const backupNowEl = documentRef.querySelector<HTMLButtonElement>('#backupNow');
+  const retentionEl = documentRef.querySelector<HTMLInputElement>('#driveRetentionCount');
+  const backupListEl = documentRef.querySelector<HTMLTableSectionElement>('#driveBackupList');
+  const driveStatusEl = documentRef.querySelector<HTMLDivElement>('#driveStatus');
+
+  if (!openAuthEl || !backupNowEl || !retentionEl || !backupListEl) return;
+
+  let busy = false;
+  const setBusy = (nextBusy: boolean) => {
+    busy = nextBusy;
+    backupNowEl.disabled = busy || backupNowEl.disabled;
+    retentionEl.disabled = busy;
+  };
+
+  const refreshAuthState = async () => {
+    const token = await getAuthTokenSilently();
+    backupNowEl.disabled = busy || !token;
+    if (token) {
+      setStatus(driveStatusEl, 'Connected. You can create manual backups.');
+    }
+  };
+
+  const refreshBackupList = async () => {
+    const localIndex = await readLocalIndex();
+    renderDriveBackups(backupListEl, localIndex.backups);
+
+    if (localIndex.backups.length > 0) return;
+    const token = await getAuthTokenSilently();
+    if (!token) return;
+
+    const backups = await getBackupsWithFallback(token);
+    renderDriveBackups(backupListEl, backups);
+  };
+
+  const retention = await readRetentionCount();
+  retentionEl.value = String(retention);
+
+  openAuthEl.addEventListener('click', () => {
+    void chrome.tabs
+      .create({ url: chrome.runtime.getURL('drive-auth.html'), active: true })
+      .catch((error) => {
+        logExtensionError('Failed to open Drive auth page', error, { operation: 'runtime_context' });
+        setStatus(driveStatusEl, 'Failed to open Drive auth page.');
+      });
+  });
+
+  retentionEl.addEventListener('change', () => {
+    void (async () => {
+      const normalized = normalizeRetentionCount(Number(retentionEl.value));
+      const saved = await writeRetentionCount(normalized);
+      retentionEl.value = String(saved);
+      setStatus(driveStatusEl, `Retention saved: keep latest ${saved} backup${saved === 1 ? '' : 's'}.`);
+    })().catch((error) => {
+      logExtensionError('Failed to save Drive retention setting', error, { operation: 'runtime_context' });
+      setStatus(driveStatusEl, 'Failed to save retention setting.');
+    });
+  });
+
+  backupNowEl.addEventListener('click', () => {
+    void (async () => {
+      setBusy(true);
+      setStatus(driveStatusEl, 'Starting backup...');
+
+      try {
+        const token = await getAuthToken(true);
+        const retentionCount = await writeRetentionCount(normalizeRetentionCount(Number(retentionEl.value)));
+        const backups = await performBackup(token, retentionCount);
+        retentionEl.value = String(retentionCount);
+        renderDriveBackups(backupListEl, backups);
+        setStatus(driveStatusEl, `Backup completed. ${backups.length} backup${backups.length === 1 ? '' : 's'} stored.`);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Backup failed.';
+        setStatus(driveStatusEl, message);
+      } finally {
+        setBusy(false);
+        await refreshAuthState();
+      }
+    })().catch((error) => {
+      logExtensionError('Failed to run Drive backup', error, { operation: 'runtime_context' });
+      setBusy(false);
+    });
+  });
+
+  backupListEl.addEventListener('click', (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLElement)) return;
+
+    const button = target.closest<HTMLButtonElement>('button[data-action="restore-backup"]');
+    if (!button) return;
+
+    const fileId = button.dataset.fileId;
+    if (!fileId) return;
+
+    void (async () => {
+      setBusy(true);
+      setStatus(driveStatusEl, 'Restoring backup...');
+
+      try {
+        const token = await getAuthToken(true);
+        const restored = await restoreFromBackup(fileId, token);
+        setStatus(
+          driveStatusEl,
+          `Restore completed. ${restored.restoredTabs} tab${restored.restoredTabs === 1 ? '' : 's'} across ${restored.restoredGroups} group${restored.restoredGroups === 1 ? '' : 's'}.`,
+        );
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Restore failed.';
+        setStatus(driveStatusEl, message);
+      } finally {
+        setBusy(false);
+        await refreshAuthState();
+      }
+    })().catch((error) => {
+      logExtensionError('Failed to restore from Drive backup', error, { operation: 'runtime_context' });
+      setBusy(false);
+    });
+  });
+
+  await refreshBackupList();
+  await refreshAuthState();
 }
 
 /**
@@ -169,4 +356,6 @@ export async function initSettingsPage(documentRef: Document = document): Promis
       runUpdate();
     });
   }
+
+  await initDriveBackupSection(documentRef);
 }

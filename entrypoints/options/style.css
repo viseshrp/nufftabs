@@ -135,6 +135,84 @@ h1 {
   text-align: center;
 }
 
+.drive-backup {
+  margin-top: 8px;
+  padding: 20px;
+  border-radius: var(--md-sys-shape-corner-medium);
+  border: 1px solid rgba(var(--md-sys-color-outline-rgb), 0.4);
+}
+
+.drive-backup h2 {
+  margin: 0 0 8px;
+  font-size: 20px;
+  font-weight: 500;
+}
+
+.drive-controls {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin: 8px 0 12px;
+}
+
+.drive-controls button {
+  border: 0;
+  border-radius: var(--md-sys-shape-corner-medium);
+  padding: 10px 14px;
+  font-size: 14px;
+  cursor: pointer;
+  background: var(--md-sys-color-primary);
+  color: var(--md-sys-color-on-primary);
+}
+
+.drive-controls button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.drive-list-wrap {
+  overflow-x: auto;
+}
+
+.drive-list-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 8px;
+  font-size: 14px;
+}
+
+.drive-list-table th,
+.drive-list-table td {
+  border-bottom: 1px solid rgba(var(--md-sys-color-outline-rgb), 0.3);
+  padding: 10px 8px;
+  text-align: left;
+  vertical-align: middle;
+}
+
+.drive-list-table th:last-child,
+.drive-list-table td:last-child {
+  text-align: right;
+}
+
+.drive-list-table .row-empty {
+  text-align: center;
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+.drive-list-table button {
+  border: 0;
+  border-radius: var(--md-sys-shape-corner-small);
+  padding: 6px 10px;
+  font-size: 13px;
+  cursor: pointer;
+  background: var(--md-sys-color-secondary-container);
+  color: var(--md-sys-color-on-secondary-container);
+}
+
+.drive-status {
+  margin-top: 14px;
+}
+
 @media (max-width: 600px) {
   body {
     padding: 16px;

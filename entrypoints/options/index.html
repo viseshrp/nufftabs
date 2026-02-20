@@ -53,6 +53,34 @@
         </label>
       </div>
     </section>
+    <section class="settings drive-backup" aria-labelledby="driveBackupTitle">
+      <h2 id="driveBackupTitle">Google Drive backup</h2>
+      <p class="setting-help">
+        Manual backup only. Nothing is uploaded unless you click Backup now.
+      </p>
+      <div class="drive-controls">
+        <button id="openDriveAuth" type="button">Connect to Google Drive</button>
+        <button id="backupNow" type="button">Backup now</button>
+      </div>
+      <label class="setting">
+        <span>Retention (backups kept)</span>
+        <input id="driveRetentionCount" type="number" min="1" max="500" step="1" placeholder="30" />
+      </label>
+      <div class="drive-list-wrap">
+        <table class="drive-list-table">
+          <thead>
+            <tr>
+              <th>When</th>
+              <th>Groups</th>
+              <th>Size</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody id="driveBackupList"></tbody>
+        </table>
+      </div>
+      <div id="driveStatus" class="status drive-status" role="status" aria-live="polite"></div>
+    </section>
     <div id="status" class="status" role="status" aria-live="polite"></div>
   </main>
   <script type="module" src="./index.ts"></script>

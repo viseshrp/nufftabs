@@ -15,7 +15,12 @@ export default defineConfig({
     name: 'nufftabs',
     description: 'Enough tabs. Condense and restore.',
     homepage_url: 'https://github.com/viseshrp/nufftabs',
-    permissions: ['tabs', 'storage'],
+    permissions: ['tabs', 'storage', 'identity'],
+    host_permissions: ['https://www.googleapis.com/'],
+    oauth2: {
+      client_id: '316914322209-3tclnhiqvs72o6807749be29llob6sgo.apps.googleusercontent.com',
+      scopes: ['https://www.googleapis.com/auth/drive.file'],
+    },
     action: {
       default_title: 'Condense tabs',
       default_icon: {

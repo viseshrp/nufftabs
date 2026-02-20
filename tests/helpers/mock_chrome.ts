@@ -22,6 +22,7 @@ export type MockChrome = {
   runtime: {
     getURL: (path: string) => string;
     onMessage: { addListener: (handler?: unknown) => void };
+    lastError?: { message: string };
   };
   action: { onClicked: { addListener: (handler?: unknown) => void } };
   storage: {
@@ -56,6 +57,16 @@ export type MockChrome = {
   windows: {
     create: (createData?: chrome.windows.CreateData) => Promise<MockWindow>;
     update: (windowId: number, updateInfo: chrome.windows.UpdateInfo) => Promise<MockWindow>;
+  };
+  identity: {
+    getAuthToken: (
+      details: chrome.identity.TokenDetails,
+      callback: (token?: string) => void,
+    ) => void;
+    removeCachedAuthToken: (
+      details: chrome.identity.InvalidTokenDetails,
+      callback?: () => void,
+    ) => void;
   };
 };
 
@@ -92,6 +103,7 @@ export function createMockChrome(options?: { initialStorage?: StorageRecord }) {
   let nextTabId = 1;
   let currentWindowId: number | undefined;
   let currentTabId: number | undefined;
+  let cachedAuthToken: string | null = 'mock-auth-token';
 
   const ensureWindow = (windowId?: number) => {
     if (typeof windowId === 'number' && windows.has(windowId)) return windowId;
@@ -311,6 +323,27 @@ export function createMockChrome(options?: { initialStorage?: StorageRecord }) {
         if (typeof updateInfo.focused === 'boolean') window.focused = updateInfo.focused;
         if (updateInfo.focused) currentWindowId = windowId;
         return window;
+      },
+    },
+    identity: {
+      getAuthToken(details: chrome.identity.TokenDetails, callback: (token?: string) => void) {
+        delete chrome.runtime.lastError;
+        if (details.interactive) {
+          if (!cachedAuthToken) cachedAuthToken = 'mock-auth-token';
+          callback(cachedAuthToken);
+          return;
+        }
+        if (cachedAuthToken) {
+          callback(cachedAuthToken);
+          return;
+        }
+        chrome.runtime.lastError = { message: 'No cached auth token available.' };
+        callback(undefined);
+      },
+      removeCachedAuthToken(details: chrome.identity.InvalidTokenDetails, callback?: () => void) {
+        if (cachedAuthToken === details.token) cachedAuthToken = null;
+        delete chrome.runtime.lastError;
+        callback?.();
       },
     },
   };

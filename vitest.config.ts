@@ -17,7 +17,12 @@ export default defineConfig({
       },
       include: ['entrypoints/**/*.ts'],
       // Exclude DOM-heavy glue code; behavior is validated via Playwright E2E coverage.
-      exclude: ['**/*.d.ts', 'entrypoints/nufftabs/index.ts'],
+      exclude: [
+        '**/*.d.ts',
+        'entrypoints/nufftabs/index.ts',
+        'entrypoints/drive-auth/index.ts',
+        'entrypoints/drive-auth/drive_auth_page.ts',
+      ],
     },
   },
 });

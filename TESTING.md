@@ -25,6 +25,9 @@ tests/
     mock_chrome.ts              # Chrome API mock used by unit/integration tests
   unit/
     condense_logic.test.ts      # filter/transform logic for condense
+    drive_api.test.ts           # Google Drive REST request/response handling
+    drive_auth.test.ts          # chrome.identity auth helper wrappers
+    drive_backup_utils.test.ts  # backup serialization/retention/restore helpers
     list_logic.test.ts          # list grouping/merge/normalize logic
     onetab_import.test.ts       # OneTab parsing rules
     settings_utils.test.ts      # settings input parsing
@@ -32,6 +35,7 @@ tests/
   integration/
     background_condense.test.ts # background condense flows w/ mocked chrome
     background_entrypoint.test.ts
+    drive_backup.test.ts        # options Drive backup/restore flows
     list_page.test.ts           # list UI flows: search, lazy loading, actions, count
     list_page_edge.test.ts      # DOM edge cases
     list_tab.test.ts            # list tab focus/reuse behavior
@@ -56,6 +60,9 @@ To keep runtime behavior the same but improve testability, logic is now separate
 - `entrypoints/nufftabs/list.ts` - list grouping/merge/normalize helpers.
 - `entrypoints/nufftabs/restore.ts` - restore rules + window reuse logic.
 - `entrypoints/options/settings_page.ts` - options page orchestration.
+- `entrypoints/drive/drive_api.ts` - Google Drive REST client wrappers.
+- `entrypoints/drive/drive_backup.ts` - backup orchestration + retention + restore.
+- `entrypoints/drive/auth.ts` - Promise wrappers around `chrome.identity` auth APIs.
 
 Entry-point files (`entrypoints/*/index.ts`) now delegate to these modules.
 
@@ -112,6 +119,7 @@ Unit + integration:
 - Search behavior (case-insensitive title/URL match, hidden non-matching groups)
 - Lazy loading behavior (index-first group fetch + per-group "Load more" paging)
 - Combined search + lazy scenarios (searching unloaded groups and preserving row actions)
+- Manual Drive backup/restore behavior (upload/list/retention/restore via mocked APIs)
 
 E2E:
 - Condense tabs
@@ -126,7 +134,7 @@ E2E:
 ## Coverage requirements
 - Enforced in Vitest with >= 90% for statements, branches, functions, and lines.
 - Coverage is collected from the TypeScript source in `entrypoints/`.
-- Exclusion: `entrypoints/nufftabs/index.ts` is excluded from unit/integration coverage because it is DOM-heavy glue code best validated via E2E; logic is covered in `list.ts`/`restore.ts`.
+- Exclusion: `entrypoints/nufftabs/index.ts` plus Drive auth page glue (`entrypoints/drive-auth/index.ts`, `entrypoints/drive-auth/drive_auth_page.ts`) are excluded from unit/integration coverage because they are DOM-heavy glue code best validated via integration/E2E style tests.
 
 ## CI structure (GitHub Actions)
 CI lives in `.github/workflows/ci.yml` and runs on PR + push.

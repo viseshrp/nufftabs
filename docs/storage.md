@@ -39,6 +39,24 @@ settings: {
 ```
 Settings are stored locally (not sync) for simplicity and to avoid conflicts.
 
+### 4) Optional Drive backup metadata
+```
+driveInstallId: string
+driveBackupIndex: {
+  installId: string;
+  backups: Array<{
+    fileId: string;
+    fileName: string;
+    timestamp: number;
+    size: number;
+    tabGroupCount: number;
+  }>;
+}
+driveRetentionCount: number
+```
+These keys support the manual Google Drive backup feature in options. They are local
+cache/settings only; backup file contents remain in the user's Google Drive.
+
 ## Example storage snapshot
 This is what storage might look like after two condense actions:
 
@@ -52,6 +70,14 @@ savedTabs:456-1700000001000-uuid-b: [
   { "id": "uuid-3", "url": "https://openai.com", "title": "OpenAI", "savedAt": 1737860100000 }
 ]
 settings: { "excludePinned": true, "restoreBatchSize": 100, "discardRestoredTabs": false, "theme": "os" }
+driveInstallId: "0f8fad5b-d9cb-469f-a165-70867728950e"
+driveRetentionCount: 30
+driveBackupIndex: {
+  "installId": "0f8fad5b-d9cb-469f-a165-70867728950e",
+  "backups": [
+    { "fileId": "1AbC...", "fileName": "backup-2026-02-19T20-10-45-120Z-g2.json", "timestamp": 1771531845120, "size": 1824, "tabGroupCount": 2 }
+  ]
+}
 ```
 
 ## Data model

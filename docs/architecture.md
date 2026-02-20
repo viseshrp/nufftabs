@@ -25,6 +25,11 @@ junior developers and useful for future maintenance.
 3) **Options page** (`entrypoints/options/`)
 - Manages settings like Exclude pinned tabs, Tabs per restore window, and
   Save memory when restoring tabs.
+- Hosts optional manual Google Drive backup controls (backup now, retention, restore).
+
+4) **Drive backup modules** (`entrypoints/drive/`, `entrypoints/drive-auth/`)
+- `entrypoints/drive/` contains auth wrappers, Drive REST client helpers, and backup orchestration.
+- `entrypoints/drive-auth/` provides a dedicated connect/disconnect auth tab.
 
 ## Data flow summary
 
@@ -45,6 +50,13 @@ List UI loads
   -> User restores/deletes/imports
   -> UI writes updated groups back to storage
   -> Storage change listener refreshes UI
+
+Optional Drive backup from options
+  -> Options page requests OAuth token via chrome.identity
+  -> Backup orchestration reads local groups/settings
+  -> Drive API uploads JSON snapshot
+  -> Retention removes old backups
+  -> Local Drive backup index cache is refreshed
 ```
 
 ## Key flows (pseudo-code)
@@ -218,6 +230,7 @@ For the full schema and reasoning, see `docs/storage.md`.
 - **List UI not updating:** `entrypoints/nufftabs/index.ts`
 - **Storage format issues:** `entrypoints/shared/storage.ts`
 - **Settings not respected:** `entrypoints/options/index.ts`
+- **Drive backup/auth issues:** `entrypoints/drive/` and `entrypoints/drive-auth/`
 
 ## Troubleshooting matrix
 - **Condense closes tabs but list is empty:** storage write failed; check background console
