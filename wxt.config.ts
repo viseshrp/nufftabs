@@ -9,6 +9,7 @@ const extensionKey =
   process.env.CHROME_EXTENSION_KEY ?? process.env.EXTENSION_MANIFEST_KEY ?? process.env.EXTENSION_KEY;
 
 export default defineConfig({
+  entrypointsDir: 'entrypoints',
   outDirTemplate: '{{browser}}-mv{{manifestVersion}}{{modeSuffix}}',
   vite: () => ({
     build: {
