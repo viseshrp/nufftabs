@@ -2,6 +2,9 @@
 import { defineConfig } from 'wxt';
 
 const manifestVersion = process.env.RELEASE_VERSION ?? process.env.npm_package_version ?? '1.0.0';
+const extensionKey =
+  process.env.EXTENSION_KEY ??
+  'MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAs8vuyu7fneop/Iiy33HTgpaLewlWEtm0iSEKRxJAVQvy4aeb8aXGzmnJEWDdvoK2GmoVmb6/VLEiNVjPKEVp03HjY19tQIYQvd4FwSMYB6zNWzQJbzr17M5eVMEyZ4CAgjcZ92q6FnxEnxCARN+CYraIf0fN6gQWbdaMPYaPtvs38TB6Qy1dVLV9a+yGVCOTObWr2Iyc5ChAOW7xQNkyYRM8I93C9UNWK1m2DtSyhwWr8ecgrWfYp9gg87oVykKsGuwmV2wL8o1X39/b5UsRV5Z81d26v9MZbGOr2fc+AkHg2aQylf9aaiK3yL20nktHcB20DCJe2vUIlklFYWEtxQIDAQAB';
 
 export default defineConfig({
   outDirTemplate: '{{browser}}-mv{{manifestVersion}}{{modeSuffix}}',
@@ -12,6 +15,7 @@ export default defineConfig({
   }),
   manifest: {
     version: manifestVersion,
+    key: extensionKey,
     name: 'nufftabs',
     description: 'Enough tabs. Condense and restore.',
     homepage_url: 'https://github.com/viseshrp/nufftabs',
