@@ -170,4 +170,14 @@ describe('options settings page', () => {
     const status = document.querySelector<HTMLDivElement>('#snackbar');
     expect(status?.textContent).toContain('Failed');
   });
+
+  it('returns early when required settings controls are missing', async () => {
+    const mock = createMockChrome();
+    setMockChrome(mock.chrome);
+
+    // Omit required settings controls so init exits through its guard branch.
+    document.body.innerHTML = '<div id="snackbar" class="snackbar"></div>';
+
+    await expect(initSettingsPage(document)).resolves.toBeUndefined();
+  });
 });
