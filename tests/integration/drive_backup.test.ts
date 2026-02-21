@@ -37,7 +37,8 @@ function mountSettingsDom(): void {
         <option value="15">15</option>
         <option value="20">20</option>
       </select>
-      <button id="loadMoreDriveBackups" type="button">Load more backups</button>
+      <button id="previousDriveBackupsPage" type="button">Previous</button>
+      <button id="nextDriveBackupsPage" type="button">Next</button>
     </dialog>
     <div id="snackbar" class="snackbar"></div>
   `;
@@ -559,7 +560,7 @@ describe('drive backup integration', () => {
     expect(restoreDialog.open).toBe(false);
   });
 
-  it('loads restore backups lazily with explicit load-more action', async () => {
+  it('loads restore backups lazily with explicit next/previous page actions', async () => {
     const mock = createMockChrome({
       initialStorage: {
         [STORAGE_KEYS.settings]: {
@@ -620,11 +621,12 @@ describe('drive backup integration', () => {
     await initSettingsPage(document);
 
     const openRestore = document.querySelector<HTMLButtonElement>('#openDriveRestore');
-    const loadMore = document.querySelector<HTMLButtonElement>('#loadMoreDriveBackups');
+    const previousPage = document.querySelector<HTMLButtonElement>('#previousDriveBackupsPage');
+    const nextPage = document.querySelector<HTMLButtonElement>('#nextDriveBackupsPage');
     const restorePageSize = document.querySelector<HTMLSelectElement>('#driveRestorePageSize');
     const backupTable = document.querySelector<HTMLTableSectionElement>('#driveBackupList');
     const driveStatus = document.querySelector<HTMLDivElement>('#snackbar');
-    if (!openRestore || !loadMore || !restorePageSize || !backupTable || !driveStatus) {
+    if (!openRestore || !previousPage || !nextPage || !restorePageSize || !backupTable || !driveStatus) {
       throw new Error('Missing restore controls');
     }
 
@@ -633,8 +635,8 @@ describe('drive backup integration', () => {
     await waitForCondition(
       () => backupTable.querySelectorAll('button[data-action="restore-backup"]').length === 2,
     );
-    expect(loadMore.hidden).toBe(false);
-    expect(loadMore.disabled).toBe(false);
+    expect(previousPage.disabled).toBe(true);
+    expect(nextPage.disabled).toBe(false);
     const initialListCalls = fetchMock.mock.calls.filter((call) => {
       const url = String(call[0]);
       return url.includes('/drive/v3/files?') && !url.includes('mimeType');
@@ -642,10 +644,17 @@ describe('drive backup integration', () => {
     expect(initialListCalls).toHaveLength(1);
     expect(String(initialListCalls[0]?.[0])).toContain('pageSize=5');
 
-    loadMore.click();
-    await waitForCondition(() => (driveStatus.textContent ?? '').includes('Loaded all 3 backups.'));
-    expect(backupTable.querySelectorAll('button[data-action="restore-backup"]').length).toBe(3);
-    expect(loadMore.hidden).toBe(true);
+    nextPage.click();
+    await waitForCondition(() => (driveStatus.textContent ?? '').includes('Showing 1 backup on this page.'));
+    expect(backupTable.querySelectorAll('button[data-action="restore-backup"]').length).toBe(1);
+    expect(previousPage.disabled).toBe(false);
+    expect(nextPage.disabled).toBe(true);
+
+    previousPage.click();
+    await waitForCondition(() => (driveStatus.textContent ?? '').includes('Showing 2 backups on this page.'));
+    expect(backupTable.querySelectorAll('button[data-action="restore-backup"]').length).toBe(2);
+    expect(previousPage.disabled).toBe(true);
+    expect(nextPage.disabled).toBe(false);
 
     const downloadCalls = fetchMock.mock.calls.filter((call) => String(call[0]).includes('alt=media'));
     expect(downloadCalls).toHaveLength(0);
@@ -653,9 +662,10 @@ describe('drive backup integration', () => {
       const url = String(call[0]);
       return url.includes('/drive/v3/files?') && !url.includes('mimeType');
     });
-    expect(listCalls).toHaveLength(2);
+    expect(listCalls).toHaveLength(3);
     expect(String(listCalls[0]?.[0])).toContain('pageSize=5');
     expect(String(listCalls[1]?.[0])).toContain('pageSize=5');
+    expect(String(listCalls[2]?.[0])).toContain('pageSize=5');
   });
 
   it('deletes a backup from restore modal without downloading backup payload', async () => {
@@ -886,11 +896,11 @@ describe('drive backup integration', () => {
 
     // Dispatch manually so we can exercise the handler path even while the disabled state is shown.
     openRestore.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-    await waitForCondition(() => (driveStatus.textContent ?? '').includes('Choose a backup to restore.'));
+    await waitForCondition(() => (driveStatus.textContent ?? '').includes('Showing 1 backup on this page.'));
     expect(backupTable.querySelectorAll('button[data-action="restore-backup"]').length).toBe(1);
   });
 
-  it('keeps load-more visible when additional backup pages remain', async () => {
+  it('keeps next enabled when additional backup pages remain', async () => {
     const mock = createMockChrome({
       initialStorage: {
         [STORAGE_KEYS.settings]: {
@@ -951,21 +961,22 @@ describe('drive backup integration', () => {
     await initSettingsPage(document);
 
     const openRestore = document.querySelector<HTMLButtonElement>('#openDriveRestore');
-    const loadMore = document.querySelector<HTMLButtonElement>('#loadMoreDriveBackups');
+    const previousPage = document.querySelector<HTMLButtonElement>('#previousDriveBackupsPage');
+    const nextPage = document.querySelector<HTMLButtonElement>('#nextDriveBackupsPage');
     const driveStatus = document.querySelector<HTMLDivElement>('#snackbar');
-    if (!openRestore || !loadMore || !driveStatus) {
+    if (!openRestore || !previousPage || !nextPage || !driveStatus) {
       throw new Error('Missing restore controls');
     }
 
     openRestore.click();
-    await waitForCondition(() => loadMore.hidden === false && loadMore.disabled === false);
-    loadMore.click();
-    await waitForCondition(() => (driveStatus.textContent ?? '').includes('Loaded 2 backups.'));
-    expect(loadMore.hidden).toBe(false);
-    expect(loadMore.disabled).toBe(false);
+    await waitForCondition(() => nextPage.disabled === false && previousPage.disabled === true);
+    nextPage.click();
+    await waitForCondition(() => (driveStatus.textContent ?? '').includes('Showing 1 backup on this page.'));
+    expect(previousPage.disabled).toBe(false);
+    expect(nextPage.disabled).toBe(false);
   });
 
-  it('shows load-more failure status when a backup page request fails', async () => {
+  it('shows next-page failure status when a backup page request fails', async () => {
     const mock = createMockChrome({
       initialStorage: {
         [STORAGE_KEYS.settings]: {
@@ -1017,15 +1028,15 @@ describe('drive backup integration', () => {
     await initSettingsPage(document);
 
     const openRestore = document.querySelector<HTMLButtonElement>('#openDriveRestore');
-    const loadMore = document.querySelector<HTMLButtonElement>('#loadMoreDriveBackups');
+    const nextPage = document.querySelector<HTMLButtonElement>('#nextDriveBackupsPage');
     const driveStatus = document.querySelector<HTMLDivElement>('#snackbar');
-    if (!openRestore || !loadMore || !driveStatus) {
+    if (!openRestore || !nextPage || !driveStatus) {
       throw new Error('Missing restore controls');
     }
 
     openRestore.click();
-    await waitForCondition(() => loadMore.hidden === false && loadMore.disabled === false);
-    loadMore.click();
+    await waitForCondition(() => nextPage.disabled === false);
+    nextPage.click();
     await waitForCondition(() => (driveStatus.textContent ?? '').includes('Drive list files failed (500): boom'));
   });
 
