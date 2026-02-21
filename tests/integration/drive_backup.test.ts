@@ -635,6 +635,12 @@ describe('drive backup integration', () => {
     );
     expect(loadMore.hidden).toBe(false);
     expect(loadMore.disabled).toBe(false);
+    const initialListCalls = fetchMock.mock.calls.filter((call) => {
+      const url = String(call[0]);
+      return url.includes('/drive/v3/files?') && !url.includes('mimeType');
+    });
+    expect(initialListCalls).toHaveLength(1);
+    expect(String(initialListCalls[0]?.[0])).toContain('pageSize=5');
 
     loadMore.click();
     await waitForCondition(() => (driveStatus.textContent ?? '').includes('Loaded all 3 backups.'));
