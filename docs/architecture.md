@@ -27,7 +27,7 @@ junior developers and useful for future maintenance.
 - Manages settings like Exclude pinned tabs, Tabs per restore window, and
   Save memory when restoring tabs.
 - Hosts optional manual Google Drive backup controls (backup now, retention, restore).
-- Uses the shared inline notifier adapter for all status text regions.
+- Uses the shared toast/snackbar notifier adapter for all user-facing status messages.
 
 4) **Drive backup modules** (`entrypoints/drive/`, `entrypoints/drive-auth/`)
 - `entrypoints/drive/` contains auth wrappers, Drive REST client helpers, and backup orchestration.

@@ -21,7 +21,7 @@ describe('options settings page', () => {
       <input id="themeOs" type="radio" name="theme" value="os" />
       <input id="themeLight" type="radio" name="theme" value="light" />
       <input id="themeDark" type="radio" name="theme" value="dark" />
-      <div id="status"></div>
+      <div id="snackbar" class="snackbar"></div>
     `;
 
     await initSettingsPage(document);
@@ -88,7 +88,7 @@ describe('options settings page', () => {
       <input id="themeOs" type="radio" name="theme" value="os" />
       <input id="themeLight" type="radio" name="theme" value="light" />
       <input id="themeDark" type="radio" name="theme" value="dark" />
-      <div id="status"></div>
+      <div id="snackbar" class="snackbar"></div>
     `;
 
     await initSettingsPage(document);
@@ -124,7 +124,7 @@ describe('options settings page', () => {
       <input id="themeOs" type="radio" name="theme" value="os" />
       <input id="themeLight" type="radio" name="theme" value="light" />
       <input id="themeDark" type="radio" name="theme" value="dark" />
-      <div id="status"></div>
+      <div id="snackbar" class="snackbar"></div>
     `;
 
     await initSettingsPage(document);
@@ -138,7 +138,7 @@ describe('options settings page', () => {
 
     await new Promise((resolve) => setTimeout(resolve, 0));
 
-    const status = document.querySelector<HTMLDivElement>('#status');
+    const status = document.querySelector<HTMLDivElement>('#snackbar');
     expect(status?.textContent).toContain('Failed');
   });
 });

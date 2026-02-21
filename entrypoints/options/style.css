@@ -127,14 +127,6 @@ h1 {
   color: var(--md-sys-color-on-surface);
 }
 
-.status {
-  margin-top: 24px;
-  min-height: 20px;
-  color: var(--md-sys-color-on-surface-variant);
-  font-size: 14px;
-  text-align: center;
-}
-
 .drive-backup {
   margin-top: 8px;
   padding: 20px;
@@ -284,8 +276,29 @@ h1 {
   cursor: not-allowed;
 }
 
-.drive-status {
-  margin-top: 14px;
+/* Toast/snackbar surface for options page notifications. */
+.snackbar {
+  position: fixed;
+  left: 50%;
+  bottom: 24px;
+  transform: translateX(-50%) translateY(20px);
+  background: var(--md-sys-color-on-surface);
+  color: var(--md-sys-color-surface);
+  padding: 14px 24px;
+  border-radius: 28px;
+  font-size: 14px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+  box-shadow: var(--md-sys-elevation-2);
+  z-index: 100;
+  min-width: 200px;
+  text-align: center;
+}
+
+.snackbar.show {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
 }
 
 @media (max-width: 600px) {

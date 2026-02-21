@@ -67,7 +67,6 @@
         <span>Retention (backups kept)</span>
         <input id="driveRetentionCount" type="number" min="1" max="500" step="1" placeholder="10" />
       </label>
-      <div id="driveStatus" class="status drive-status" role="status" aria-live="polite"></div>
     </section>
     <dialog id="driveRestoreDialog" class="drive-restore-dialog" aria-labelledby="driveRestoreTitle">
       <div class="drive-restore-header">
@@ -96,7 +95,7 @@
         <button id="loadMoreDriveBackups" type="button">Load more backups</button>
       </div>
     </dialog>
-    <div id="status" class="status" role="status" aria-live="polite"></div>
+    <div id="snackbar" class="snackbar" role="status" aria-live="polite"></div>
   </main>
   <script type="module" src="./index.ts"></script>
 </body>

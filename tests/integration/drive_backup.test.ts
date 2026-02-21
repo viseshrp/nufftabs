@@ -31,8 +31,7 @@ function mountSettingsDom(): void {
       <table><tbody id="driveBackupList"></tbody></table>
       <button id="loadMoreDriveBackups" type="button">Load more backups</button>
     </dialog>
-    <div id="driveStatus"></div>
-    <div id="status"></div>
+    <div id="snackbar" class="snackbar"></div>
   `;
 }
 
@@ -148,7 +147,7 @@ describe('drive backup integration', () => {
     };
     expect(backupIndex.backups[0]?.fileId).toBe('new-file');
 
-    const driveStatus = document.querySelector<HTMLDivElement>('#driveStatus');
+    const driveStatus = document.querySelector<HTMLDivElement>('#snackbar');
     await waitForCondition(() => {
       const message = driveStatus?.textContent ?? '';
       return message.includes('Backup completed') || message.includes('Connected.');
@@ -180,7 +179,7 @@ describe('drive backup integration', () => {
     await initSettingsPage(document);
 
     const backupNow = document.querySelector<HTMLButtonElement>('#backupNow');
-    const driveStatus = document.querySelector<HTMLDivElement>('#driveStatus');
+    const driveStatus = document.querySelector<HTMLDivElement>('#snackbar');
     if (!backupNow || !driveStatus) {
       throw new Error('Missing backup controls');
     }
@@ -252,7 +251,7 @@ describe('drive backup integration', () => {
     const openAuth = document.querySelector<HTMLButtonElement>('#openDriveAuth');
     const backupNow = document.querySelector<HTMLButtonElement>('#backupNow');
     const openRestore = document.querySelector<HTMLButtonElement>('#openDriveRestore');
-    const driveStatus = document.querySelector<HTMLDivElement>('#driveStatus');
+    const driveStatus = document.querySelector<HTMLDivElement>('#snackbar');
     if (!openAuth || !backupNow || !openRestore || !driveStatus) {
       throw new Error('Missing Drive controls');
     }
@@ -348,7 +347,7 @@ describe('drive backup integration', () => {
     const openRestore = document.querySelector<HTMLButtonElement>('#openDriveRestore');
     const backupTable = document.querySelector<HTMLTableSectionElement>('#driveBackupList');
     const restoreDialog = document.querySelector<HTMLDialogElement>('#driveRestoreDialog');
-    const driveStatus = document.querySelector<HTMLDivElement>('#driveStatus');
+    const driveStatus = document.querySelector<HTMLDivElement>('#snackbar');
     if (!backupTable || !backupNow || !openAuth || !openRestore || !restoreDialog || !driveStatus) {
       throw new Error('Missing Drive controls');
     }
@@ -399,7 +398,7 @@ describe('drive backup integration', () => {
     const openAuth = document.querySelector<HTMLButtonElement>('#openDriveAuth');
     const backupNow = document.querySelector<HTMLButtonElement>('#backupNow');
     const openRestore = document.querySelector<HTMLButtonElement>('#openDriveRestore');
-    const driveStatus = document.querySelector<HTMLDivElement>('#driveStatus');
+    const driveStatus = document.querySelector<HTMLDivElement>('#snackbar');
     if (!openAuth || !backupNow || !openRestore || !driveStatus) {
       throw new Error('Missing Drive controls');
     }
@@ -460,7 +459,7 @@ describe('drive backup integration', () => {
 
     const openAuth = document.querySelector<HTMLButtonElement>('#openDriveAuth');
     const retentionInput = document.querySelector<HTMLInputElement>('#driveRetentionCount');
-    const driveStatus = document.querySelector<HTMLDivElement>('#driveStatus');
+    const driveStatus = document.querySelector<HTMLDivElement>('#snackbar');
     if (!openAuth || !retentionInput || !driveStatus) {
       throw new Error('Missing Drive controls');
     }
@@ -521,7 +520,7 @@ describe('drive backup integration', () => {
     const openRestore = document.querySelector<HTMLButtonElement>('#openDriveRestore');
     const closeRestore = document.querySelector<HTMLButtonElement>('#closeDriveRestore');
     const restoreDialog = document.querySelector<HTMLDialogElement>('#driveRestoreDialog');
-    const driveStatus = document.querySelector<HTMLDivElement>('#driveStatus');
+    const driveStatus = document.querySelector<HTMLDivElement>('#snackbar');
     if (!openRestore || !closeRestore || !restoreDialog || !driveStatus) {
       throw new Error('Missing restore controls');
     }
@@ -607,7 +606,7 @@ describe('drive backup integration', () => {
     const openRestore = document.querySelector<HTMLButtonElement>('#openDriveRestore');
     const loadMore = document.querySelector<HTMLButtonElement>('#loadMoreDriveBackups');
     const backupTable = document.querySelector<HTMLTableSectionElement>('#driveBackupList');
-    const driveStatus = document.querySelector<HTMLDivElement>('#driveStatus');
+    const driveStatus = document.querySelector<HTMLDivElement>('#snackbar');
     if (!openRestore || !loadMore || !backupTable || !driveStatus) {
       throw new Error('Missing restore controls');
     }
@@ -681,7 +680,7 @@ describe('drive backup integration', () => {
 
     const openRestore = document.querySelector<HTMLButtonElement>('#openDriveRestore');
     const backupTable = document.querySelector<HTMLTableSectionElement>('#driveBackupList');
-    const driveStatus = document.querySelector<HTMLDivElement>('#driveStatus');
+    const driveStatus = document.querySelector<HTMLDivElement>('#snackbar');
     if (!openRestore || !backupTable || !driveStatus) {
       throw new Error('Missing restore controls');
     }
@@ -753,7 +752,7 @@ describe('drive backup integration', () => {
 
     const openRestore = document.querySelector<HTMLButtonElement>('#openDriveRestore');
     const loadMore = document.querySelector<HTMLButtonElement>('#loadMoreDriveBackups');
-    const driveStatus = document.querySelector<HTMLDivElement>('#driveStatus');
+    const driveStatus = document.querySelector<HTMLDivElement>('#snackbar');
     if (!openRestore || !loadMore || !driveStatus) {
       throw new Error('Missing restore controls');
     }
@@ -818,7 +817,7 @@ describe('drive backup integration', () => {
 
     const openRestore = document.querySelector<HTMLButtonElement>('#openDriveRestore');
     const loadMore = document.querySelector<HTMLButtonElement>('#loadMoreDriveBackups');
-    const driveStatus = document.querySelector<HTMLDivElement>('#driveStatus');
+    const driveStatus = document.querySelector<HTMLDivElement>('#snackbar');
     if (!openRestore || !loadMore || !driveStatus) {
       throw new Error('Missing restore controls');
     }
@@ -858,7 +857,7 @@ describe('drive backup integration', () => {
     await initSettingsPage(document);
 
     const openRestore = document.querySelector<HTMLButtonElement>('#openDriveRestore');
-    const driveStatus = document.querySelector<HTMLDivElement>('#driveStatus');
+    const driveStatus = document.querySelector<HTMLDivElement>('#snackbar');
     if (!openRestore || !driveStatus) {
       throw new Error('Missing restore controls');
     }
@@ -960,7 +959,7 @@ describe('drive backup integration', () => {
     const openRestore = document.querySelector<HTMLButtonElement>('#openDriveRestore');
     const backupTable = document.querySelector<HTMLTableSectionElement>('#driveBackupList');
     const restoreDialog = document.querySelector<HTMLDialogElement>('#driveRestoreDialog');
-    const driveStatus = document.querySelector<HTMLDivElement>('#driveStatus');
+    const driveStatus = document.querySelector<HTMLDivElement>('#snackbar');
     if (!backupNow || !openRestore || !backupTable || !restoreDialog || !driveStatus) {
       throw new Error('Missing Drive controls');
     }

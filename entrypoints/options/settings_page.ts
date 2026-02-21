@@ -12,7 +12,7 @@ import {
   type SettingsInput,
 } from '../shared/storage';
 import { logExtensionError } from '../shared/utils';
-import { createInlineNotifier } from '../ui/notifications';
+import { createSnackbarNotifier, type UiNotifier } from '../ui/notifications';
 import {
   formatDriveAuthError,
   getAuthToken,
@@ -31,23 +31,32 @@ import { normalizeRetentionCount, type DriveBackupEntry } from '../drive/types';
 
 /** Updates the status element's text content (used for save/error feedback). */
 export function setStatus(statusEl: HTMLDivElement | null, message: string): void {
-  if (!statusEl) return;
-  /**
-   * Cache one notifier per element so all writes for that region are routed
-   * through the centralized notification system without re-allocating adapters.
-   */
-  const cached =
-    inlineNotifierByElement.get(statusEl) ??
-    (() => {
-      const nextNotifier = createInlineNotifier(statusEl);
-      inlineNotifierByElement.set(statusEl, nextNotifier);
-      return nextNotifier;
-    })();
-  cached.notify(message);
+  const ownerDocument = statusEl?.ownerDocument ?? document;
+  const notifier = resolveDocumentToastNotifier(ownerDocument);
+  notifier.notify(message);
 }
 
-/** Per-element cache for inline notifiers used by options page status regions. */
-const inlineNotifierByElement = new WeakMap<HTMLDivElement, ReturnType<typeof createInlineNotifier>>();
+/**
+ * Per-document toast notifier cache.
+ * A document-scoped cache keeps status writes centralized and avoids rebuilding
+ * the same notifier adapter for every message.
+ */
+type DocumentToastNotifierCache = {
+  snackbarEl: HTMLDivElement | null;
+  notifier: UiNotifier;
+};
+
+const toastNotifierByDocument = new WeakMap<Document, DocumentToastNotifierCache>();
+
+/** Resolves the options-page toast notifier for a given document. */
+function resolveDocumentToastNotifier(documentRef: Document): UiNotifier {
+  const snackbarEl = documentRef.querySelector<HTMLDivElement>('#snackbar');
+  const cached = toastNotifierByDocument.get(documentRef);
+  if (cached && cached.snackbarEl === snackbarEl) return cached.notifier;
+  const notifier = createSnackbarNotifier(snackbarEl);
+  toastNotifierByDocument.set(documentRef, { snackbarEl, notifier });
+  return notifier;
+}
 
 /** Parses and validates the batch-size input, returning null if empty or invalid. */
 export function getBatchSizeInput(input: HTMLInputElement): number | null {
