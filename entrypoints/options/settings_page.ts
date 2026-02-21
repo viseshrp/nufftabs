@@ -123,6 +123,8 @@ function renderDriveBackups(listEl: HTMLTableSectionElement | null, backups: Dri
  * This section is intentionally isolated so missing elements never break base settings.
  */
 async function initDriveBackupSection(documentRef: Document): Promise<void> {
+  /** Restore modal requests backup metadata in fixed user-demand pages for predictable UI updates. */
+  const RESTORE_LIST_PAGE_SIZE = 10;
   const driveSectionEl = documentRef.querySelector<HTMLElement>('.drive-backup');
   const openAuthEl = documentRef.querySelector<HTMLButtonElement>('#openDriveAuth');
   const backupNowEl = documentRef.querySelector<HTMLButtonElement>('#backupNow');
@@ -362,7 +364,7 @@ async function initDriveBackupSection(documentRef: Document): Promise<void> {
       setStatus(driveStatusEl, 'Loading backups...');
       try {
         const token = await resolveConnectedToken();
-        const page = await listDriveBackupsPage(token);
+        const page = await listDriveBackupsPage(token, undefined, RESTORE_LIST_PAGE_SIZE);
         restoreBackups = page.backups;
         nextRestorePageToken = page.nextPageToken;
         renderDriveBackups(backupListEl, restoreBackups);
@@ -395,7 +397,7 @@ async function initDriveBackupSection(documentRef: Document): Promise<void> {
       setStatus(driveStatusEl, 'Loading more backups...');
       try {
         const token = await resolveConnectedToken();
-        const page = await listDriveBackupsPage(token, nextRestorePageToken);
+        const page = await listDriveBackupsPage(token, nextRestorePageToken, RESTORE_LIST_PAGE_SIZE);
         const seenIds = new Set(restoreBackups.map((entry) => entry.fileId));
         const uniqueNext = page.backups.filter((entry) => !seenIds.has(entry.fileId));
         restoreBackups = [...restoreBackups, ...uniqueNext];
