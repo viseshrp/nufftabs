@@ -124,7 +124,7 @@ function renderDriveBackups(listEl: HTMLTableSectionElement | null, backups: Dri
  */
 async function initDriveBackupSection(documentRef: Document): Promise<void> {
   /** Default restore page size used when dropdown input is unavailable/invalid. */
-  const DEFAULT_RESTORE_LIST_PAGE_SIZE = 10;
+  const DEFAULT_RESTORE_LIST_PAGE_SIZE = 5;
   const driveSectionEl = documentRef.querySelector<HTMLElement>('.drive-backup');
   const openAuthEl = documentRef.querySelector<HTMLButtonElement>('#openDriveAuth');
   const backupNowEl = documentRef.querySelector<HTMLButtonElement>('#backupNow');
