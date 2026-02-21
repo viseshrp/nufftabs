@@ -43,7 +43,13 @@ describe('drive backup utilities', () => {
       {
         g1: [{ id: '1', url: 'https://example.com', title: 'Example', savedAt: 1700000000000 }],
       },
-      { excludePinned: true, restoreBatchSize: 100, discardRestoredTabs: false, theme: 'os' },
+      {
+        excludePinned: true,
+        restoreBatchSize: 100,
+        discardRestoredTabs: false,
+        duplicateTabsPolicy: 'allow',
+        theme: 'os',
+      },
       'install-1',
       1700000000000,
     );
@@ -226,6 +232,7 @@ describe('drive backup utilities', () => {
           excludePinned: false,
           restoreBatchSize: 50,
           discardRestoredTabs: true,
+          duplicateTabsPolicy: 'allow',
           theme: 'dark',
         },
         [STORAGE_KEYS.savedTabsIndex]: ['g1'],
@@ -276,6 +283,7 @@ describe('drive backup utilities', () => {
           excludePinned: true,
           restoreBatchSize: 100,
           discardRestoredTabs: false,
+          duplicateTabsPolicy: 'allow',
           theme: 'os',
         },
         [STORAGE_KEYS.savedTabsIndex]: ['g1'],
@@ -318,6 +326,7 @@ describe('drive backup utilities', () => {
           excludePinned: false,
           restoreBatchSize: 77,
           discardRestoredTabs: true,
+          duplicateTabsPolicy: 'allow',
           theme: 'light',
         },
       }),
@@ -346,7 +355,13 @@ describe('drive backup utilities', () => {
       restoreFromBackup('file-1', 'token-1', {
         downloadJsonFile: async () => ({
           savedTabs: { restored: [{ url: 'https://restored.com' }] },
-          settings: { excludePinned: true, restoreBatchSize: 100, discardRestoredTabs: false, theme: 'os' },
+          settings: {
+            excludePinned: true,
+            restoreBatchSize: 100,
+            discardRestoredTabs: false,
+            duplicateTabsPolicy: 'allow',
+            theme: 'os',
+          },
         }),
       }),
     ).rejects.toThrow('Failed to write restored tab groups');
@@ -368,7 +383,13 @@ describe('drive backup utilities', () => {
       restoreFromBackup('file-1', 'token-1', {
         downloadJsonFile: async () => ({
           savedTabs: { restored: [{ url: 'https://restored.com' }] },
-          settings: { excludePinned: true, restoreBatchSize: 100, discardRestoredTabs: false, theme: 'os' },
+          settings: {
+            excludePinned: true,
+            restoreBatchSize: 100,
+            discardRestoredTabs: false,
+            duplicateTabsPolicy: 'allow',
+            theme: 'os',
+          },
         }),
       }),
     ).rejects.toThrow('Failed to write restored settings');

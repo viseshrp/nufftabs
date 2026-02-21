@@ -31,9 +31,11 @@ describe('storage utilities', () => {
       excludePinned: false,
       restoreBatchSize: -1,
       discardRestoredTabs: 'nope',
+      duplicateTabsPolicy: 'invalid',
     });
     expect(normalized.restoreBatchSize).toBeGreaterThan(0);
     expect(normalized.discardRestoredTabs).toBe(false);
+    expect(normalized.duplicateTabsPolicy).toBe('allow');
     expect(isSavedGroupStorageKey('savedTabs:123')).toBe(true);
     expect(isSavedGroupStorageKey('settings')).toBe(false);
   });

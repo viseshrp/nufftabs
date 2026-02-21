@@ -88,4 +88,21 @@ describe('list', () => {
     const mergedSkip = mergeGroups({ one: sampleTabs }, { empty: [] });
     expect(mergedSkip.empty).toBeUndefined();
   });
+
+  it('rejects duplicates by URL when merge policy is reject', () => {
+    const existing = {
+      one: [{ id: '1', url: 'https://dup.com', title: 'Original', savedAt: 1 }],
+    };
+    const incoming = {
+      two: [
+        { id: '2', url: 'https://dup.com', title: 'Duplicate', savedAt: 2 },
+        { id: '3', url: 'https://new.com', title: 'New', savedAt: 3 },
+      ],
+      one: [{ id: '4', url: 'https://also-new.com', title: 'Also New', savedAt: 4 }],
+    };
+    const merged = mergeGroups(existing, incoming, 'reject');
+    expect(merged.one).toHaveLength(2);
+    expect(merged.two).toHaveLength(1);
+    expect(merged.two?.[0]?.url).toBe('https://new.com');
+  });
 });

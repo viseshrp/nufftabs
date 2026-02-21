@@ -2,8 +2,9 @@
  * Orchestrates the condense workflow: query tabs, save eligible ones,
  * close them, and focus/create the list page tab.
  */
-import { LIST_PAGE_PATH, appendSavedGroup, readSettings } from '../shared/storage';
+import { LIST_PAGE_PATH, appendSavedGroup, readSavedGroups, readSettings } from '../shared/storage';
 import { createCondenseGroupKey, filterEligibleTabs, resolveWindowId, saveTabsToList } from '../shared/condense';
+import { collectSavedTabUrls } from '../shared/duplicates';
 import { logExtensionError } from '../shared/utils';
 import { focusExistingListTabOrCreate } from './list_tab';
 
@@ -43,7 +44,13 @@ export async function condenseCurrentWindow(targetWindowId?: number): Promise<vo
   const now = Date.now();
   // Timestamp is captured once to keep group keys and savedAt values consistent.
   const groupKey = createCondenseGroupKey(resolvedWindowId, now);
-  const updatedGroup = saveTabsToList(eligibleTabs, [], now);
+  const existingUrls =
+    settings.duplicateTabsPolicy === 'reject' ? collectSavedTabUrls(await readSavedGroups()) : undefined;
+  const updatedGroup = saveTabsToList(eligibleTabs, [], now, existingUrls);
+  if (updatedGroup.length === 0) {
+    await focusExistingListTabOrCreate(listTabs, listUrl, resolvedWindowId);
+    return;
+  }
   const saved = await appendSavedGroup(groupKey, updatedGroup);
   if (!saved) {
     await focusExistingListTabOrCreate(listTabs, listUrl, resolvedWindowId);

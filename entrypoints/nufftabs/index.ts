@@ -29,6 +29,7 @@ import {
   type SavedTab,
   type SavedTabGroups,
 } from '../shared/storage';
+import { appendTabsByDuplicatePolicy, collectSavedTabUrls } from '../shared/duplicates';
 import { logExtensionError, type ExtensionErrorOperation } from '../shared/utils';
 import { createSnackbarNotifier } from '../ui/notifications';
 
@@ -1326,6 +1327,7 @@ async function exportJson(): Promise<void> {
 /** Parses JSON text and imports tabs in append or replace mode. */
 async function importJsonText(text: string, mode: 'append' | 'replace'): Promise<void> {
   try {
+    const settings = await readSettings();
     const parsed = JSON.parse(text);
     const windowId = await getCurrentWindowId();
     const fallbackKey = createCondenseGroupKey(windowId);
@@ -1334,10 +1336,12 @@ async function importJsonText(text: string, mode: 'append' | 'replace'): Promise
       setStatus('Import failed: JSON structure not recognized.');
       return;
     }
-    const importedCount = countTotalTabs(normalized);
     const existing = mode === 'replace' ? {} : await readSavedGroups();
     const nextGroups =
-      mode === 'replace' ? normalized : mergeGroups(existing, normalized);
+      mode === 'replace'
+        ? mergeGroups({}, normalized, settings.duplicateTabsPolicy)
+        : mergeGroups(existing, normalized, settings.duplicateTabsPolicy);
+    const importedCount = countTotalTabs(nextGroups) - countTotalTabs(existing);
     const saved = await writeSavedGroups(nextGroups);
     if (!saved) {
       setStatus('Import failed: Could not save tabs to storage.');
@@ -1394,6 +1398,7 @@ async function getCurrentWindowId(): Promise<number | undefined> {
 /** Parses OneTab export text from the IO textarea and appends the resulting tabs. */
 async function importOneTab(): Promise<void> {
   if (!jsonAreaEl) return;
+  const settings = await readSettings();
   const text = jsonAreaEl.value;
   const { tabs: imported, totalLines } = parseOneTabExport(text);
   const skipped = Math.max(0, totalLines - imported.length);
@@ -1404,7 +1409,18 @@ async function importOneTab(): Promise<void> {
   const windowId = await getCurrentWindowId();
   const groupKey = createCondenseGroupKey(windowId);
   const existing = state.indexedGroupKeySet.has(groupKey) ? await ensureGroupLoaded(groupKey) : [];
-  const updatedGroup = [...existing, ...imported];
+  const knownUrls =
+    settings.duplicateTabsPolicy === 'reject' ? collectSavedTabUrls(await readSavedGroups()) : new Set<string>();
+  const { tabs: updatedGroup, addedCount } = appendTabsByDuplicatePolicy(
+    existing,
+    imported,
+    settings.duplicateTabsPolicy,
+    knownUrls,
+  );
+  if (addedCount === 0) {
+    setStatus('No new OneTab links found to import.');
+    return;
+  }
   const saved = await writeSavedGroup(groupKey, updatedGroup);
   if (!saved) {
     setStatus('Import failed: Could not save tabs to storage.');
@@ -1414,9 +1430,9 @@ async function importOneTab(): Promise<void> {
   upsertIndexedGroupKey(groupKey);
   state.currentGroups[groupKey] = updatedGroup;
   scheduleRenderGroups();
-  adjustTabCount(imported.length);
+  adjustTabCount(addedCount);
   const skippedMsg = skipped > 0 ? ` (skipped ${skipped} invalid lines)` : '';
-  setStatus(`Successfully imported ${imported.length} tab${imported.length === 1 ? '' : 's'}${skippedMsg}.`);
+  setStatus(`Successfully imported ${addedCount} tab${addedCount === 1 ? '' : 's'}${skippedMsg}.`);
 }
 
 /** Initializes the list page: loads data, binds all event listeners, and starts lazy loading. */

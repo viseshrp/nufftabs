@@ -62,4 +62,18 @@ describe('condense', () => {
     expect(saved[0]?.savedAt).toBe(now);
     expect(saved[2]?.id).toBe('old');
   });
+
+  it('silently skips duplicate URLs when an existing URL index is provided', () => {
+    const now = 1700000000000;
+    const tabs = [
+      { url: 'https://dup.com', title: 'Dup' },
+      { url: 'https://new.com', title: 'New' },
+    ] as chrome.tabs.Tab[];
+    const existingUrls = new Set<string>(['https://dup.com']);
+
+    const saved = saveTabsToList(tabs, [], now, existingUrls);
+    expect(saved).toHaveLength(1);
+    expect(saved[0]?.url).toBe('https://new.com');
+    expect(existingUrls.has('https://new.com')).toBe(true);
+  });
 });

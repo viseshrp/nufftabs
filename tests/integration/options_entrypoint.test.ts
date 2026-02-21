@@ -12,6 +12,11 @@ describe('options entrypoint', () => {
       <input id="restoreBatchSize" type="number" />
       <input id="discardRestoredTabsDisabled" type="radio" name="discardRestoredTabs" value="false" />
       <input id="discardRestoredTabsEnabled" type="radio" name="discardRestoredTabs" value="true" />
+      <input id="duplicateTabsAllow" type="radio" name="duplicateTabsPolicy" value="allow" />
+      <input id="duplicateTabsReject" type="radio" name="duplicateTabsPolicy" value="reject" />
+      <input id="themeOs" type="radio" name="theme" value="os" />
+      <input id="themeLight" type="radio" name="theme" value="light" />
+      <input id="themeDark" type="radio" name="theme" value="dark" />
       <div id="status"></div>
     `;
 
@@ -19,5 +24,4 @@ describe('options entrypoint', () => {
     expect(document.querySelector('#excludePinned')).not.toBeNull();
   });
 });
-
 

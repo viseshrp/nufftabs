@@ -40,6 +40,17 @@
             <span>Enabled</span>
           </label>
         </div>
+        <div class="setting-group" role="group" aria-labelledby="duplicateTabsPolicyLabel">
+          <div id="duplicateTabsPolicyLabel" class="setting-label">Duplicates</div>
+          <label class="setting-radio">
+            <input id="duplicateTabsAllow" type="radio" name="duplicateTabsPolicy" value="allow" checked />
+            <span>Allow duplicates</span>
+          </label>
+          <label class="setting-radio">
+            <input id="duplicateTabsReject" type="radio" name="duplicateTabsPolicy" value="reject" />
+            <span>Silently reject duplicates</span>
+          </label>
+        </div>
       </section>
       <div id="status" class="status" role="status" aria-live="polite"></div>
     </main>

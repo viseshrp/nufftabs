@@ -199,7 +199,7 @@ describe('restore logic', () => {
   it('skips discards when setting is toggled off mid-restore', async () => {
     const mock = createMockChrome({
       initialStorage: {
-        settings: { excludePinned: true, restoreBatchSize: 2, discardRestoredTabs: true },
+        settings: { excludePinned: true, restoreBatchSize: 2, discardRestoredTabs: true, duplicateTabsPolicy: 'allow' },
       },
     });
     setMockChrome(mock.chrome);

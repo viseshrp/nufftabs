@@ -103,6 +103,45 @@ describe('list page actions', () => {
     expect(status?.textContent).toContain('skipped');
   });
 
+  it('silently rejects duplicates during JSON and OneTab imports when configured', async () => {
+    const { mock } = await setupListPage({
+      '1': [{ id: 'a', url: 'https://existing.com', title: 'Existing', savedAt: 1 }],
+    });
+    mock.storageData[STORAGE_KEYS.settings] = { excludePinned: true, duplicateTabsPolicy: 'reject' };
+
+    const toggleIo = document.querySelector<HTMLButtonElement>('#toggleIo');
+    toggleIo?.click();
+
+    const jsonArea = document.querySelector<HTMLTextAreaElement>('#jsonArea');
+    if (jsonArea) {
+      jsonArea.value = JSON.stringify([{ url: 'https://existing.com' }, { url: 'https://new-json.com' }]);
+    }
+    const importJson = document.querySelector<HTMLButtonElement>('button#importJson');
+    importJson?.click();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    if (jsonArea) {
+      jsonArea.value = 'https://existing.com | Existing Duplicate\nhttps://new-onetab.com | New OneTab';
+    }
+    const importOneTab = document.querySelector<HTMLButtonElement>('button#importOneTab');
+    importOneTab?.click();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const savedIndex = mock.storageData[STORAGE_KEYS.savedTabsIndex];
+    if (!Array.isArray(savedIndex)) {
+      throw new Error('Missing saved tabs index');
+    }
+    const urls = savedIndex.flatMap((groupKey) => {
+      const group = mock.storageData[`savedTabs:${groupKey}`];
+      if (!Array.isArray(group)) return [];
+      return group.map((tab) => (tab && typeof tab === 'object' ? (tab as { url?: unknown }).url : undefined));
+    });
+    const existingUrls = urls.filter((url): url is string => typeof url === 'string' && url === 'https://existing.com');
+    expect(existingUrls).toHaveLength(1);
+    expect(urls).toContain('https://new-json.com');
+    expect(urls).toContain('https://new-onetab.com');
+  });
+
   it('shows error on invalid JSON import', async () => {
     await setupListPage({});
 
@@ -219,4 +258,3 @@ describe('list page actions', () => {
     expect(status?.textContent).toContain('Import failed: Could not read the selected file.');
   });
 });
-

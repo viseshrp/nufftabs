@@ -19,6 +19,8 @@ function mountSettingsDom(): void {
     <input id="restoreBatchSize" type="number" />
     <input id="discardRestoredTabsDisabled" type="radio" name="discardRestoredTabs" value="false" />
     <input id="discardRestoredTabsEnabled" type="radio" name="discardRestoredTabs" value="true" />
+    <input id="duplicateTabsAllow" type="radio" name="duplicateTabsPolicy" value="allow" />
+    <input id="duplicateTabsReject" type="radio" name="duplicateTabsPolicy" value="reject" />
     <input id="themeOs" type="radio" name="theme" value="os" />
     <input id="themeLight" type="radio" name="theme" value="light" />
     <input id="themeDark" type="radio" name="theme" value="dark" />
@@ -47,6 +49,7 @@ describe('drive backup integration', () => {
           excludePinned: true,
           restoreBatchSize: 100,
           discardRestoredTabs: false,
+          duplicateTabsPolicy: 'allow',
           theme: 'os',
         },
         [STORAGE_KEYS.savedTabsIndex]: ['g1'],
@@ -161,6 +164,7 @@ describe('drive backup integration', () => {
           excludePinned: true,
           restoreBatchSize: 100,
           discardRestoredTabs: false,
+          duplicateTabsPolicy: 'allow',
           theme: 'os',
         },
       },
@@ -198,6 +202,7 @@ describe('drive backup integration', () => {
           excludePinned: true,
           restoreBatchSize: 100,
           discardRestoredTabs: false,
+          duplicateTabsPolicy: 'allow',
           theme: 'os',
         },
       },
@@ -287,6 +292,7 @@ describe('drive backup integration', () => {
           excludePinned: true,
           restoreBatchSize: 100,
           discardRestoredTabs: false,
+          duplicateTabsPolicy: 'allow',
           theme: 'os',
         },
       },
@@ -375,6 +381,7 @@ describe('drive backup integration', () => {
           excludePinned: true,
           restoreBatchSize: 100,
           discardRestoredTabs: false,
+          duplicateTabsPolicy: 'allow',
           theme: 'os',
         },
       },
@@ -419,6 +426,7 @@ describe('drive backup integration', () => {
           excludePinned: true,
           restoreBatchSize: 100,
           discardRestoredTabs: false,
+          duplicateTabsPolicy: 'allow',
           theme: 'os',
         },
       },
@@ -482,6 +490,7 @@ describe('drive backup integration', () => {
           excludePinned: true,
           restoreBatchSize: 100,
           discardRestoredTabs: false,
+          duplicateTabsPolicy: 'allow',
           theme: 'os',
         },
       },
@@ -551,6 +560,7 @@ describe('drive backup integration', () => {
           excludePinned: true,
           restoreBatchSize: 100,
           discardRestoredTabs: false,
+          duplicateTabsPolicy: 'allow',
           theme: 'os',
         },
       },
@@ -634,6 +644,7 @@ describe('drive backup integration', () => {
           excludePinned: true,
           restoreBatchSize: 100,
           discardRestoredTabs: false,
+          duplicateTabsPolicy: 'allow',
           theme: 'os',
         },
       },
@@ -698,6 +709,7 @@ describe('drive backup integration', () => {
           excludePinned: true,
           restoreBatchSize: 100,
           discardRestoredTabs: false,
+          duplicateTabsPolicy: 'allow',
           theme: 'os',
         },
       },
@@ -772,6 +784,7 @@ describe('drive backup integration', () => {
           excludePinned: true,
           restoreBatchSize: 100,
           discardRestoredTabs: false,
+          duplicateTabsPolicy: 'allow',
           theme: 'os',
         },
       },
@@ -835,6 +848,7 @@ describe('drive backup integration', () => {
           excludePinned: true,
           restoreBatchSize: 100,
           discardRestoredTabs: false,
+          duplicateTabsPolicy: 'allow',
           theme: 'os',
         },
       },
@@ -874,6 +888,7 @@ describe('drive backup integration', () => {
           excludePinned: true,
           restoreBatchSize: 100,
           discardRestoredTabs: false,
+          duplicateTabsPolicy: 'allow',
           theme: 'os',
         },
         [DRIVE_STORAGE_KEYS.driveBackupIndex]: {
@@ -939,6 +954,7 @@ describe('drive backup integration', () => {
               excludePinned: false,
               restoreBatchSize: 25,
               discardRestoredTabs: true,
+              duplicateTabsPolicy: 'allow',
               theme: 'dark',
             },
           }),

@@ -493,12 +493,23 @@ export async function initSettingsPage(documentRef: Document = document): Promis
   const discardRadios = Array.from(
     documentRef.querySelectorAll<HTMLInputElement>('input[name="discardRestoredTabs"]'),
   );
+  const duplicateTabsPolicyRadios = Array.from(
+    documentRef.querySelectorAll<HTMLInputElement>('input[name="duplicateTabsPolicy"]'),
+  );
   const themeRadios = Array.from(
     documentRef.querySelectorAll<HTMLInputElement>('input[name="theme"]'),
   );
   const statusEl = documentRef.querySelector<HTMLDivElement>('#status');
 
-  if (!excludePinnedEl || !restoreBatchSizeEl || discardRadios.length === 0 || themeRadios.length === 0) return;
+  if (
+    !excludePinnedEl ||
+    !restoreBatchSizeEl ||
+    discardRadios.length === 0 ||
+    duplicateTabsPolicyRadios.length === 0 ||
+    themeRadios.length === 0
+  ) {
+    return;
+  }
 
   const setDiscardRadios = (enabled: boolean) => {
     for (const radio of discardRadios) {
@@ -522,6 +533,15 @@ export async function initSettingsPage(documentRef: Document = document): Promis
     const val = selected?.value;
     if (val === 'light' || val === 'dark') return val;
     return 'os';
+  };
+  const setDuplicateTabsPolicyRadios = (policy: Settings['duplicateTabsPolicy']) => {
+    for (const radio of duplicateTabsPolicyRadios) {
+      radio.checked = radio.value === policy;
+    }
+  };
+  const getDuplicateTabsPolicySelection = (): Settings['duplicateTabsPolicy'] => {
+    const selected = duplicateTabsPolicyRadios.find((radio) => radio.checked);
+    return selected?.value === 'reject' ? 'reject' : 'allow';
   };
 
   const applyTheme = (theme: Settings['theme']) => {
@@ -548,6 +568,7 @@ export async function initSettingsPage(documentRef: Document = document): Promis
   excludePinnedEl.checked = settings.excludePinned;
   restoreBatchSizeEl.value = hasCustomBatchSize ? String(settings.restoreBatchSize) : '';
   setDiscardRadios(settings.discardRestoredTabs);
+  setDuplicateTabsPolicyRadios(settings.duplicateTabsPolicy);
   setThemeRadios(settings.theme);
   applyTheme(settings.theme);
 
@@ -559,6 +580,7 @@ export async function initSettingsPage(documentRef: Document = document): Promis
       excludePinnedEl.checked = settings.excludePinned;
       restoreBatchSizeEl.value = customBatchSize ? String(settings.restoreBatchSize) : '';
       setDiscardRadios(settings.discardRestoredTabs);
+      setDuplicateTabsPolicyRadios(settings.duplicateTabsPolicy);
       setThemeRadios(settings.theme);
       applyTheme(settings.theme);
       setStatus(statusEl, 'Failed to save settings.');
@@ -574,6 +596,10 @@ export async function initSettingsPage(documentRef: Document = document): Promis
         typeof nextSettings.discardRestoredTabs === 'boolean'
           ? nextSettings.discardRestoredTabs
           : DEFAULT_SETTINGS.discardRestoredTabs,
+      duplicateTabsPolicy:
+        nextSettings.duplicateTabsPolicy === 'allow' || nextSettings.duplicateTabsPolicy === 'reject'
+          ? nextSettings.duplicateTabsPolicy
+          : DEFAULT_SETTINGS.duplicateTabsPolicy,
       theme: nextSettings.theme ?? settings.theme,
     };
     customBatchSize =
@@ -587,6 +613,7 @@ export async function initSettingsPage(documentRef: Document = document): Promis
       excludePinned: excludePinnedEl.checked,
       restoreBatchSize: getRestoreBatchSizeSetting(),
       discardRestoredTabs: getDiscardSelection(),
+      duplicateTabsPolicy: getDuplicateTabsPolicySelection(),
       theme: getThemeSelection(),
     };
     await saveSettings(nextSettings);
@@ -621,6 +648,11 @@ export async function initSettingsPage(documentRef: Document = document): Promis
   }
 
   for (const radio of themeRadios) {
+    radio.addEventListener('change', () => {
+      runUpdate();
+    });
+  }
+  for (const radio of duplicateTabsPolicyRadios) {
     radio.addEventListener('change', () => {
       runUpdate();
     });

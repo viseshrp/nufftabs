@@ -8,7 +8,12 @@ describe('options settings page', () => {
   it('loads and saves settings', async () => {
     const mock = createMockChrome({
       initialStorage: {
-        [STORAGE_KEYS.settings]: { excludePinned: true, restoreBatchSize: 25, discardRestoredTabs: true },
+        [STORAGE_KEYS.settings]: {
+          excludePinned: true,
+          restoreBatchSize: 25,
+          discardRestoredTabs: true,
+          duplicateTabsPolicy: 'reject',
+        },
       },
     });
     setMockChrome(mock.chrome);
@@ -18,6 +23,8 @@ describe('options settings page', () => {
       <input id="restoreBatchSize" type="number" />
       <input id="discardRestoredTabsDisabled" type="radio" name="discardRestoredTabs" value="false" />
       <input id="discardRestoredTabsEnabled" type="radio" name="discardRestoredTabs" value="true" />
+      <input id="duplicateTabsAllow" type="radio" name="duplicateTabsPolicy" value="allow" />
+      <input id="duplicateTabsReject" type="radio" name="duplicateTabsPolicy" value="reject" />
       <input id="themeOs" type="radio" name="theme" value="os" />
       <input id="themeLight" type="radio" name="theme" value="light" />
       <input id="themeDark" type="radio" name="theme" value="dark" />
@@ -30,16 +37,29 @@ describe('options settings page', () => {
     const restoreBatchSizeEl = document.querySelector<HTMLInputElement>('#restoreBatchSize');
     const discardDisabledEl = document.querySelector<HTMLInputElement>('#discardRestoredTabsDisabled');
     const discardEnabledEl = document.querySelector<HTMLInputElement>('#discardRestoredTabsEnabled');
+    const duplicateTabsAllowEl = document.querySelector<HTMLInputElement>('#duplicateTabsAllow');
+    const duplicateTabsRejectEl = document.querySelector<HTMLInputElement>('#duplicateTabsReject');
     const themeOsEl = document.querySelector<HTMLInputElement>('#themeOs');
     const themeLightEl = document.querySelector<HTMLInputElement>('#themeLight');
     const themeDarkEl = document.querySelector<HTMLInputElement>('#themeDark');
-    if (!excludePinnedEl || !restoreBatchSizeEl || !discardDisabledEl || !discardEnabledEl || !themeOsEl || !themeLightEl || !themeDarkEl) {
+    if (
+      !excludePinnedEl ||
+      !restoreBatchSizeEl ||
+      !discardDisabledEl ||
+      !discardEnabledEl ||
+      !duplicateTabsAllowEl ||
+      !duplicateTabsRejectEl ||
+      !themeOsEl ||
+      !themeLightEl ||
+      !themeDarkEl
+    ) {
       throw new Error('Missing settings inputs');
     }
 
     expect(excludePinnedEl.checked).toBe(true);
     expect(restoreBatchSizeEl.value).toBe('25');
     expect(discardEnabledEl.checked).toBe(true);
+    expect(duplicateTabsRejectEl.checked).toBe(true);
     expect(themeOsEl.checked).toBe(true); // Default fallback
 
     excludePinnedEl.checked = false;
@@ -50,6 +70,9 @@ describe('options settings page', () => {
 
     discardDisabledEl.checked = true;
     discardDisabledEl.dispatchEvent(new Event('change'));
+    duplicateTabsAllowEl.checked = false;
+    duplicateTabsRejectEl.checked = true;
+    duplicateTabsRejectEl.dispatchEvent(new Event('change'));
 
     // Simulate radio button behavior manually for jsdom
     themeOsEl.checked = false;
@@ -63,11 +86,13 @@ describe('options settings page', () => {
       excludePinned?: boolean;
       restoreBatchSize?: number;
       discardRestoredTabs?: boolean;
+      duplicateTabsPolicy?: string;
       theme?: string;
     };
     expect(saved.excludePinned).toBe(false);
     expect(saved.restoreBatchSize).toBe(50);
     expect(saved.discardRestoredTabs).toBe(false);
+    expect(saved.duplicateTabsPolicy).toBe('reject');
     expect(saved.theme).toBe('dark');
     expect(document.documentElement.getAttribute('data-theme')).toBe('dark');
   });
@@ -85,6 +110,8 @@ describe('options settings page', () => {
       <input id="restoreBatchSize" type="number" />
       <input id="discardRestoredTabsDisabled" type="radio" name="discardRestoredTabs" value="false" />
       <input id="discardRestoredTabsEnabled" type="radio" name="discardRestoredTabs" value="true" />
+      <input id="duplicateTabsAllow" type="radio" name="duplicateTabsPolicy" value="allow" />
+      <input id="duplicateTabsReject" type="radio" name="duplicateTabsPolicy" value="reject" />
       <input id="themeOs" type="radio" name="theme" value="os" />
       <input id="themeLight" type="radio" name="theme" value="light" />
       <input id="themeDark" type="radio" name="theme" value="dark" />
@@ -121,6 +148,8 @@ describe('options settings page', () => {
       <input id="restoreBatchSize" type="number" />
       <input id="discardRestoredTabsDisabled" type="radio" name="discardRestoredTabs" value="false" />
       <input id="discardRestoredTabsEnabled" type="radio" name="discardRestoredTabs" value="true" />
+      <input id="duplicateTabsAllow" type="radio" name="duplicateTabsPolicy" value="allow" />
+      <input id="duplicateTabsReject" type="radio" name="duplicateTabsPolicy" value="reject" />
       <input id="themeOs" type="radio" name="theme" value="os" />
       <input id="themeLight" type="radio" name="theme" value="light" />
       <input id="themeDark" type="radio" name="theme" value="dark" />

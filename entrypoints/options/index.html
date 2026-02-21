@@ -52,6 +52,20 @@
           <span>Enabled</span>
         </label>
       </div>
+      <div class="setting-group" role="group" aria-labelledby="duplicateTabsPolicyLabel">
+        <div id="duplicateTabsPolicyLabel" class="setting-label">Duplicates</div>
+        <p class="setting-help">
+          Choose whether tabs with URLs already saved in nufftabs should be added again.
+        </p>
+        <label class="setting-radio">
+          <input id="duplicateTabsAllow" type="radio" name="duplicateTabsPolicy" value="allow" checked />
+          <span>Allow duplicates</span>
+        </label>
+        <label class="setting-radio">
+          <input id="duplicateTabsReject" type="radio" name="duplicateTabsPolicy" value="reject" />
+          <span>Silently reject duplicates</span>
+        </label>
+      </div>
     </section>
     <section class="settings drive-backup" aria-labelledby="driveBackupTitle">
       <h2 id="driveBackupTitle">Google Drive backup</h2>
