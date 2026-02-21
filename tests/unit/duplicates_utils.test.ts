@@ -39,6 +39,19 @@ describe('duplicates utilities', () => {
     expect(knownUrls.has('https://b.com')).toBe(true);
   });
 
+  it('returns existing tabs unchanged when reject policy finds only duplicates', () => {
+    const existing = [{ id: '1', url: 'https://a.com', title: 'A', savedAt: 1 }];
+    const knownUrls = new Set<string>(['https://a.com', 'https://b.com']);
+    const result = appendTabsByDuplicatePolicy(
+      existing,
+      [{ id: '2', url: 'https://b.com', title: 'Dup B', savedAt: 2 }],
+      'reject',
+      knownUrls,
+    );
+    expect(result.addedCount).toBe(0);
+    expect(result.tabs).toEqual(existing);
+  });
+
   it('throws when reject mode is used without known URL index', () => {
     expect(() =>
       appendTabsByDuplicatePolicy(

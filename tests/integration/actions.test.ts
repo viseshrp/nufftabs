@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { LIST_PAGE_PATH, STORAGE_KEYS } from '../../entrypoints/shared/storage';
@@ -35,6 +35,85 @@ async function setupListPage(groups: Record<string, unknown[]>) {
 }
 
 describe('list page actions', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+
+  it('renders the merge duplicates navbar button and reports no duplicates when already unique', async () => {
+    await setupListPage({
+      '1-1700000000000-a': [{ id: 'a', url: 'https://a.com', title: 'A', savedAt: 1 }],
+      '1-1700000001000-b': [{ id: 'b', url: 'https://b.com', title: 'B', savedAt: 2 }],
+    });
+
+    const mergeDuplicates = document.querySelector<HTMLButtonElement>('#mergeDuplicates');
+    expect(mergeDuplicates).not.toBeNull();
+    mergeDuplicates?.click();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const status = document.querySelector<HTMLDivElement>('#snackbar');
+    expect(status?.textContent).toContain('No duplicates found.');
+  });
+
+  it('merges global duplicates and keeps newest entries after confirmation', async () => {
+    const { mock } = await setupListPage({
+      '1-1700000000000-old': [{ id: 'old', url: 'https://dup.com', title: 'Old Duplicate', savedAt: 1 }],
+      '1-1800000000000-new': [
+        { id: 'new', url: 'https://dup.com', title: 'New Duplicate', savedAt: 2 },
+        { id: 'new-2', url: 'https://unique.com', title: 'Unique', savedAt: 2 },
+      ],
+    });
+    vi.stubGlobal('confirm', vi.fn(() => true));
+
+    const mergeDuplicates = document.querySelector<HTMLButtonElement>('#mergeDuplicates');
+    mergeDuplicates?.click();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const savedIndex = mock.storageData[STORAGE_KEYS.savedTabsIndex];
+    expect(savedIndex).toEqual(['1-1800000000000-new']);
+    const remainingGroup = mock.storageData['savedTabs:1-1800000000000-new'] as Array<{ title: string; url: string }>;
+    expect(remainingGroup).toHaveLength(2);
+    expect(remainingGroup.find((tab) => tab.url === 'https://dup.com')?.title).toBe('New Duplicate');
+
+    const status = document.querySelector<HTMLDivElement>('#snackbar');
+    expect(status?.textContent).toContain('Removed 1 duplicate tab.');
+  });
+
+  it('cancels merge duplicates when confirmation is declined', async () => {
+    const { mock } = await setupListPage({
+      '1-1700000000000-old': [{ id: 'old', url: 'https://dup.com', title: 'Old Duplicate', savedAt: 1 }],
+      '1-1800000000000-new': [{ id: 'new', url: 'https://dup.com', title: 'New Duplicate', savedAt: 2 }],
+    });
+    const originalSnapshot = JSON.parse(JSON.stringify(mock.storageData));
+    vi.stubGlobal('confirm', vi.fn(() => false));
+
+    const mergeDuplicates = document.querySelector<HTMLButtonElement>('#mergeDuplicates');
+    mergeDuplicates?.click();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(mock.storageData).toEqual(originalSnapshot);
+    const status = document.querySelector<HTMLDivElement>('#snackbar');
+    expect(status?.textContent).toContain('Merge duplicates canceled.');
+  });
+
+  it('handles merge duplicate write failures safely', async () => {
+    const { mock } = await setupListPage({
+      '1-1700000000000-old': [{ id: 'old', url: 'https://dup.com', title: 'Old Duplicate', savedAt: 1 }],
+      '1-1800000000000-new': [{ id: 'new', url: 'https://dup.com', title: 'New Duplicate', savedAt: 2 }],
+    });
+    vi.stubGlobal('confirm', vi.fn(() => true));
+    mock.chrome.storage.local.set = async () => {
+      throw new Error('boom');
+    };
+
+    const mergeDuplicates = document.querySelector<HTMLButtonElement>('#mergeDuplicates');
+    mergeDuplicates?.click();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const status = document.querySelector<HTMLDivElement>('#snackbar');
+    expect(status?.textContent).toContain('Failed to merge duplicates.');
+  });
+
   it('supports collapse, load more, delete single, delete group', async () => {
     const bigGroup = Array.from({ length: 210 }, (_, index) => ({
       id: `tab-${index}`,

@@ -159,6 +159,11 @@ The packaged extension zip is generated under `.output/`.
 1. Click **Delete all** on a group card.
 2. The selected group is removed.
 
+### Merge duplicates (one-time)
+1. Click **Merge duplicates** in the sticky top bar.
+2. Confirm the prompt to remove duplicates globally across all groups.
+3. nufftabs keeps the newest saved instance of each URL and removes older duplicates.
+
 ### Export / Import JSON
 1. Click the Export/Import control to open the panel.
 2. **Export** populates the JSON textarea, copies to clipboard (if allowed), and downloads a backup file.

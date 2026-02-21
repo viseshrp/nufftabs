@@ -45,6 +45,8 @@ const searchTabsEl = document.querySelector<HTMLInputElement>('#searchTabs');
 const toggleIoEl = document.querySelector<HTMLButtonElement>('#toggleIo');
 /** Button that collapses or expands every group card at once. */
 const toggleCollapseAllEl = document.querySelector<HTMLButtonElement>('#toggleCollapseAll');
+/** Button that performs a one-time global duplicate cleanup across all saved groups. */
+const mergeDuplicatesEl = document.querySelector<HTMLButtonElement>('#mergeDuplicates');
 const exportJsonEl = document.querySelector<HTMLButtonElement>('#exportJson');
 const importJsonEl = document.querySelector<HTMLButtonElement>('#importJson');
 const importJsonReplaceEl = document.querySelector<HTMLButtonElement>('#importJsonReplace');
@@ -1236,6 +1238,58 @@ async function deleteGroup(groupKey: string): Promise<void> {
   setStatus('Deleted tabs.');
 }
 
+/** One-time cleanup action that removes duplicate URLs globally, keeping the newest saved instance. */
+async function mergeDuplicatesOnce(): Promise<void> {
+  const savedGroups = await readSavedGroups();
+  const sortedGroupKeys = Object.keys(savedGroups).sort(
+    (a, b) => (parseGroupCreationTime(b) ?? 0) - (parseGroupCreationTime(a) ?? 0),
+  );
+  const seenUrls = new Set<string>();
+  const dedupedGroups: SavedTabGroups = {};
+  let removedCount = 0;
+
+  // Traverse newest-first by group creation time so first-seen URLs are the winners.
+  for (const groupKey of sortedGroupKeys) {
+    const tabs = savedGroups[groupKey] ?? [];
+    const keptTabs: SavedTab[] = [];
+    // Preserve original in-group order while removing global URL duplicates.
+    for (const tab of tabs) {
+      if (seenUrls.has(tab.url)) {
+        removedCount += 1;
+        continue;
+      }
+      seenUrls.add(tab.url);
+      keptTabs.push(tab);
+    }
+    if (keptTabs.length > 0) {
+      dedupedGroups[groupKey] = keptTabs;
+    }
+  }
+
+  if (removedCount === 0) {
+    setStatus('No duplicates found.');
+    return;
+  }
+
+  const confirmed = window.confirm(
+    `Merge duplicates? This will remove ${removedCount} duplicate tab${removedCount === 1 ? '' : 's'}.`,
+  );
+  if (!confirmed) {
+    setStatus('Merge duplicates canceled.');
+    return;
+  }
+
+  const saved = await writeSavedGroups(dedupedGroups);
+  if (!saved) {
+    setStatus('Failed to merge duplicates.');
+    await refreshList();
+    return;
+  }
+  applyFullGroups(dedupedGroups);
+  setTabCount(countTotalTabs(dedupedGroups));
+  setStatus(`Removed ${removedCount} duplicate tab${removedCount === 1 ? '' : 's'}.`);
+}
+
 
 /** Moves a dragged tab from its source group into the target group (drag-and-drop handler). */
 async function handleDrop(targetGroupKey: string): Promise<void> {
@@ -1456,6 +1510,9 @@ async function init(): Promise<void> {
   // Wire the collapse/expand-all toggle button.
   toggleCollapseAllEl?.addEventListener('click', () => {
     toggleAllGroups();
+  });
+  mergeDuplicatesEl?.addEventListener('click', () => {
+    runAsyncTask(mergeDuplicatesOnce(), 'Failed to merge duplicates');
   });
 
   groupsEl?.addEventListener('click', handleGroupAction);
