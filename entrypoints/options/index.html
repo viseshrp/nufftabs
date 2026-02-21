@@ -56,7 +56,7 @@
     <section class="settings drive-backup" aria-labelledby="driveBackupTitle">
       <h2 id="driveBackupTitle">Google Drive backup</h2>
       <p class="setting-help">
-        Manual backup only. Nothing is uploaded unless you click Backup now.
+        Create backups and restore them from your Google Drive.
       </p>
       <div class="drive-controls">
         <button id="openDriveAuth" type="button">Connect to Google Drive</button>
@@ -65,7 +65,7 @@
       </div>
       <label class="setting">
         <span>Retention (backups kept)</span>
-        <input id="driveRetentionCount" type="number" min="1" max="500" step="1" placeholder="30" />
+        <input id="driveRetentionCount" type="number" min="1" max="500" step="1" placeholder="10" />
       </label>
       <div id="driveStatus" class="status drive-status" role="status" aria-live="polite"></div>
     </section>
@@ -73,7 +73,7 @@
       <div class="drive-restore-header">
         <h3 id="driveRestoreTitle">Restore from Google Drive</h3>
         <button id="closeDriveRestore" type="button" class="drive-restore-close" aria-label="Close restore dialog">
-          Close
+          &times;
         </button>
       </div>
       <p class="setting-help">

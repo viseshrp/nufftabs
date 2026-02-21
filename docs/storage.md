@@ -71,7 +71,7 @@ savedTabs:456-1700000001000-uuid-b: [
 ]
 settings: { "excludePinned": true, "restoreBatchSize": 100, "discardRestoredTabs": false, "theme": "os" }
 driveInstallId: "0f8fad5b-d9cb-469f-a165-70867728950e"
-driveRetentionCount: 30
+driveRetentionCount: 10
 driveBackupIndex: {
   "installId": "0f8fad5b-d9cb-469f-a165-70867728950e",
   "backups": [

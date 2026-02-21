@@ -216,12 +216,16 @@ h1 {
 
 .drive-restore-close {
   border: 0;
-  border-radius: var(--md-sys-shape-corner-small);
-  padding: 8px 12px;
-  font-size: 13px;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  padding: 0;
+  line-height: 1;
+  font-size: 22px;
+  font-weight: 400;
   cursor: pointer;
-  background: var(--md-sys-color-secondary-container);
-  color: var(--md-sys-color-on-secondary-container);
+  background: var(--md-sys-color-surface-variant);
+  color: var(--md-sys-color-on-surface-variant);
 }
 
 .drive-list-table {
@@ -255,8 +259,8 @@ h1 {
   padding: 6px 10px;
   font-size: 13px;
   cursor: pointer;
-  background: var(--md-sys-color-secondary-container);
-  color: var(--md-sys-color-on-secondary-container);
+  background: var(--md-sys-color-primary);
+  color: var(--md-sys-color-on-primary);
 }
 
 .drive-status {

@@ -242,7 +242,7 @@ async function initDriveBackupSection(documentRef: Document): Promise<void> {
           setStatus(driveStatusEl, 'Opening Google authentication...');
           currentToken = await getAuthToken(true);
           isConnected = true;
-          setStatus(driveStatusEl, 'Connected to Google Drive. Backup is now enabled.');
+          setStatus(driveStatusEl, 'Connected to Google Drive. You can back up or restore now.');
           return;
         }
 
@@ -253,7 +253,7 @@ async function initDriveBackupSection(documentRef: Document): Promise<void> {
         }
         currentToken = null;
         isConnected = false;
-        setStatus(driveStatusEl, 'Disconnected from Google Drive. Backup is now disabled.');
+        setStatus(driveStatusEl, 'Disconnected from Google Drive. Connect again to back up or restore.');
       } catch (error) {
         const fallback = isConnected
           ? 'Failed to disconnect from Google Drive.'
@@ -309,7 +309,7 @@ async function initDriveBackupSection(documentRef: Document): Promise<void> {
   openRestoreEl.addEventListener('click', () => {
     void (async () => {
       setBusyReason('loading_restore_list');
-      setStatus(driveStatusEl, 'Loading backups from Google Drive...');
+      setStatus(driveStatusEl, 'Loading backups...');
       try {
         const token = await resolveConnectedToken();
         const backups = await getBackupsWithFallback(token);
@@ -319,7 +319,7 @@ async function initDriveBackupSection(documentRef: Document): Promise<void> {
         setStatus(
           driveStatusEl,
           backups.length > 0
-            ? 'Select a backup to restore.'
+            ? 'Choose a backup to restore.'
             : 'No backups found. Create a backup first, then restore it here.',
         );
       } catch (error) {
@@ -389,9 +389,9 @@ async function initDriveBackupSection(documentRef: Document): Promise<void> {
   await refreshAuthState();
   setBusyReason(null);
   if (!isConnected) {
-    setStatus(driveStatusEl, 'Not connected. Connect Google Drive to enable backup and restore.');
+    setStatus(driveStatusEl, 'Not connected. Connect Google Drive to back up or restore.');
   } else {
-    setStatus(driveStatusEl, 'Connected to Google Drive. Backup is ready.');
+    setStatus(driveStatusEl, 'Connected to Google Drive. Ready to back up or restore.');
   }
 }
 

@@ -11,7 +11,7 @@ export const DRIVE_FOLDER_NAME = 'nufftabs_backups';
 export const BACKUP_VERSION = 1;
 
 /** Default max number of remote backup files kept per install ID folder. */
-export const DEFAULT_RETENTION_COUNT = 30;
+export const DEFAULT_RETENTION_COUNT = 10;
 
 /** Lowest retention value accepted from user input/storage. */
 export const MIN_RETENTION_COUNT = 1;
@@ -61,7 +61,7 @@ export type DriveFileRecord = {
 
 /**
  * Normalizes unknown retention input into a bounded positive integer.
- * Falls back to the provided default (30 by default) on invalid input.
+ * Falls back to the provided default (10 by default) on invalid input.
  */
 export function normalizeRetentionCount(
   value: unknown,

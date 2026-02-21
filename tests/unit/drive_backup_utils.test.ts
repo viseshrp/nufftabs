@@ -117,7 +117,7 @@ describe('drive backup utilities', () => {
     const mock = createMockChrome();
     setMockChrome(mock.chrome);
 
-    expect(await readRetentionCount()).toBe(30);
+    expect(await readRetentionCount()).toBe(10);
     const saved = await writeRetentionCount(2);
     expect(saved).toBe(2);
 

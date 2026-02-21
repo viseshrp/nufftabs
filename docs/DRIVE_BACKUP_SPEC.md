@@ -6,7 +6,7 @@ nufftabs supports optional manual backup and restore to Google Drive. This featu
 ## User-visible behavior
 - Users connect/disconnect Google Drive directly from the options-page Drive section.
 - Users click **Backup now** to upload a full snapshot.
-- Users can configure retention (default: 30 backups).
+- Users can configure retention (default: 10 backups).
 - Users can restore any listed backup, which overwrites local saved tabs + settings.
 
 ## Permissions and OAuth
