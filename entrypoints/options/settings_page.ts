@@ -19,7 +19,7 @@ import {
   revokeToken,
 } from '../drive/auth';
 import {
-  getBackupsWithFallback,
+  listDriveBackupsPage,
   performBackup,
   readRetentionCount,
   restoreFromBackup,
@@ -103,6 +103,7 @@ async function initDriveBackupSection(documentRef: Document): Promise<void> {
   const openRestoreEl = documentRef.querySelector<HTMLButtonElement>('#openDriveRestore');
   const retentionEl = documentRef.querySelector<HTMLInputElement>('#driveRetentionCount');
   const backupListEl = documentRef.querySelector<HTMLTableSectionElement>('#driveBackupList');
+  const loadMoreBackupsEl = documentRef.querySelector<HTMLButtonElement>('#loadMoreDriveBackups');
   const driveStatusEl = documentRef.querySelector<HTMLDivElement>('#driveStatus');
   const driveRestoreDialogEl = documentRef.querySelector<HTMLDialogElement>('#driveRestoreDialog');
   const closeDriveRestoreEl = documentRef.querySelector<HTMLButtonElement>('#closeDriveRestore');
@@ -113,6 +114,7 @@ async function initDriveBackupSection(documentRef: Document): Promise<void> {
     !openRestoreEl ||
     !retentionEl ||
     !backupListEl ||
+    !loadMoreBackupsEl ||
     !driveRestoreDialogEl ||
     !closeDriveRestoreEl
   ) {
@@ -129,11 +131,14 @@ async function initDriveBackupSection(documentRef: Document): Promise<void> {
     | 'disconnecting'
     | 'backup'
     | 'loading_restore_list'
+    | 'loading_more_restore_list'
     | 'restore'
     | null;
   let busyReason: DriveBusyReason = null;
   let isConnected = false;
   let currentToken: string | null = null;
+  let restoreBackups: DriveBackupEntry[] = [];
+  let nextRestorePageToken: string | null = null;
 
   /** Enables/disables all restore buttons rendered in the current backup table body. */
   const setRestoreButtonsDisabled = (disabled: boolean) => {
@@ -163,6 +168,12 @@ async function initDriveBackupSection(documentRef: Document): Promise<void> {
     if (busyReason === 'loading_restore_list') return 'Loading backups...';
     if (busyReason === 'restore') return 'Restoring...';
     return 'Restore from backup';
+  };
+
+  /** Computes label for modal pagination action so users can tell when additional pages are loading. */
+  const getLoadMoreButtonLabel = () => {
+    if (busyReason === 'loading_more_restore_list') return 'Loading more backups...';
+    return 'Load more backups';
   };
 
   /** Opens restore dialog safely in both real browser runtime and test/runtime contexts without `showModal`. */
@@ -212,6 +223,9 @@ async function initDriveBackupSection(documentRef: Document): Promise<void> {
     openRestoreEl.textContent = getRestoreButtonLabel();
     retentionEl.disabled = busy;
     setRestoreButtonsDisabled(busy || !isConnected);
+    loadMoreBackupsEl.disabled = busy || !isConnected || !nextRestorePageToken;
+    loadMoreBackupsEl.hidden = nextRestorePageToken === null;
+    loadMoreBackupsEl.textContent = getLoadMoreButtonLabel();
 
     if (!driveSectionEl) return;
     driveSectionEl.setAttribute('aria-busy', busy ? 'true' : 'false');
@@ -312,13 +326,15 @@ async function initDriveBackupSection(documentRef: Document): Promise<void> {
       setStatus(driveStatusEl, 'Loading backups...');
       try {
         const token = await resolveConnectedToken();
-        const backups = await getBackupsWithFallback(token);
-        renderDriveBackups(backupListEl, backups);
+        const page = await listDriveBackupsPage(token);
+        restoreBackups = page.backups;
+        nextRestorePageToken = page.nextPageToken;
+        renderDriveBackups(backupListEl, restoreBackups);
         applyDriveUiState();
         openRestoreDialog();
         setStatus(
           driveStatusEl,
-          backups.length > 0
+          restoreBackups.length > 0
             ? 'Choose a backup to restore.'
             : 'No backups found. Create a backup first, then restore it here.',
         );
@@ -327,6 +343,40 @@ async function initDriveBackupSection(documentRef: Document): Promise<void> {
         setStatus(driveStatusEl, message);
       } finally {
         setBusyReason(null);
+        await refreshAuthState();
+      }
+    })();
+  });
+
+  /**
+   * Fetches the next restore-list page only when users request more rows.
+   * This keeps list rendering responsive even for accounts with many backups.
+   */
+  loadMoreBackupsEl.addEventListener('click', () => {
+    void (async () => {
+      if (!nextRestorePageToken) return;
+      setBusyReason('loading_more_restore_list');
+      setStatus(driveStatusEl, 'Loading more backups...');
+      try {
+        const token = await resolveConnectedToken();
+        const page = await listDriveBackupsPage(token, nextRestorePageToken);
+        const seenIds = new Set(restoreBackups.map((entry) => entry.fileId));
+        const uniqueNext = page.backups.filter((entry) => !seenIds.has(entry.fileId));
+        restoreBackups = [...restoreBackups, ...uniqueNext];
+        nextRestorePageToken = page.nextPageToken;
+        renderDriveBackups(backupListEl, restoreBackups);
+        setStatus(
+          driveStatusEl,
+          nextRestorePageToken
+            ? `Loaded ${restoreBackups.length} backup${restoreBackups.length === 1 ? '' : 's'}.`
+            : `Loaded all ${restoreBackups.length} backup${restoreBackups.length === 1 ? '' : 's'}.`,
+        );
+      } catch (error) {
+        const message = formatDriveAuthError(error, 'Failed to load more backups.');
+        setStatus(driveStatusEl, message);
+      } finally {
+        setBusyReason(null);
+        applyDriveUiState();
         await refreshAuthState();
       }
     })();
@@ -385,6 +435,8 @@ async function initDriveBackupSection(documentRef: Document): Promise<void> {
 
   setBusyReason('loading');
   setStatus(driveStatusEl, 'Checking Google Drive connection...');
+  restoreBackups = [];
+  nextRestorePageToken = null;
   renderDriveBackups(backupListEl, []);
   await refreshAuthState();
   setBusyReason(null);

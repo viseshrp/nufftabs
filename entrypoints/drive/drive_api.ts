@@ -9,6 +9,12 @@ const DRIVE_API_BASE = 'https://www.googleapis.com/drive/v3';
 const DRIVE_UPLOAD_BASE = 'https://www.googleapis.com/upload/drive/v3';
 const DRIVE_FOLDER_MIME = 'application/vnd.google-apps.folder';
 
+/** One paginated Drive file-list response slice. */
+export type DriveListFilesPage = {
+  files: DriveFileRecord[];
+  nextPageToken: string | null;
+};
+
 /** Escapes single quotes and backslashes in Drive query string literals. */
 function escapeDriveQueryLiteral(value: string): string {
   return value.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
@@ -46,32 +52,51 @@ async function parseJsonResponse<T>(response: Response, context: string): Promis
  */
 export async function listFiles(folderId: string, token: string): Promise<DriveFileRecord[]> {
   const allFiles: DriveFileRecord[] = [];
-  let nextPageToken: string | undefined;
-  const query = [`'${escapeDriveQueryLiteral(folderId)}' in parents`, "trashed = false"].join(' and ');
+  let nextPageToken: string | null = null;
   do {
-    const params = new URLSearchParams({
-      q: query,
-      orderBy: 'name desc',
-      pageSize: '200',
-      fields: 'nextPageToken,files(id,name,createdTime,modifiedTime,size)',
-      supportsAllDrives: 'false',
-    });
-    if (nextPageToken) params.set('pageToken', nextPageToken);
-
-    const response = await fetch(`${DRIVE_API_BASE}/files?${params.toString()}`, {
-      method: 'GET',
-      headers: buildAuthHeaders(token),
-    });
-
-    const data = await parseJsonResponse<{ files?: DriveFileRecord[]; nextPageToken?: string }>(
-      response,
-      'Drive list files',
-    );
-    if (Array.isArray(data.files)) allFiles.push(...data.files);
-    nextPageToken = data.nextPageToken;
+    const page = await listFilesPage(folderId, token, nextPageToken ?? undefined);
+    allFiles.push(...page.files);
+    nextPageToken = page.nextPageToken;
   } while (nextPageToken);
 
   return allFiles;
+}
+
+/**
+ * Lists one page of files in a Drive folder.
+ * Callers can pass `pageToken` from the previous result for demand-based pagination.
+ */
+export async function listFilesPage(
+  folderId: string,
+  token: string,
+  pageToken?: string,
+  pageSize = 200,
+): Promise<DriveListFilesPage> {
+  const query = [`'${escapeDriveQueryLiteral(folderId)}' in parents`, "trashed = false"].join(' and ');
+  const params = new URLSearchParams({
+    q: query,
+    orderBy: 'name desc',
+    pageSize: String(pageSize),
+    fields: 'nextPageToken,files(id,name,createdTime,modifiedTime,size)',
+    supportsAllDrives: 'false',
+  });
+  if (typeof pageToken === 'string' && pageToken.length > 0) {
+    params.set('pageToken', pageToken);
+  }
+
+  const response = await fetch(`${DRIVE_API_BASE}/files?${params.toString()}`, {
+    method: 'GET',
+    headers: buildAuthHeaders(token),
+  });
+
+  const data = await parseJsonResponse<{ files?: DriveFileRecord[]; nextPageToken?: string }>(
+    response,
+    'Drive list files',
+  );
+  return {
+    files: Array.isArray(data.files) ? data.files : [],
+    nextPageToken: typeof data.nextPageToken === 'string' && data.nextPageToken.length > 0 ? data.nextPageToken : null,
+  };
 }
 
 /**

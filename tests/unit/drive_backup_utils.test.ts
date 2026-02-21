@@ -4,6 +4,7 @@ import {
   getBackupsWithFallback,
   getOrCreateInstallId,
   listDriveBackups,
+  listDriveBackupsPage,
   performBackup,
   readLocalIndex,
   readRetentionCount,
@@ -167,6 +168,55 @@ describe('drive backup utilities', () => {
       backups: Array<{ fileId: string }>;
     };
     expect(stored.backups[0]?.fileId).toBe('f1');
+  });
+
+  it('lists a single backup page using Drive page API when available', async () => {
+    const mock = createMockChrome();
+    setMockChrome(mock.chrome);
+
+    const page = await listDriveBackupsPage('token-1', undefined, 25, {
+      getOrCreateFolder: async (name: string) => `${name}-id`,
+      listFilesPage: async () => ({
+        files: [{ id: 'f1', name: 'backup-z-g5.json', createdTime: '2024-01-01T00:00:00.000Z', size: '42' }],
+        nextPageToken: 'next-1',
+      }),
+      listFiles: async () => {
+        throw new Error('not used');
+      },
+    });
+
+    expect(page.backups).toHaveLength(1);
+    expect(page.backups[0]?.fileId).toBe('f1');
+    expect(page.nextPageToken).toBe('next-1');
+  });
+
+  it('falls back to full list for first page when paged Drive API dep is absent', async () => {
+    const mock = createMockChrome();
+    setMockChrome(mock.chrome);
+
+    const page = await listDriveBackupsPage('token-1', undefined, 25, {
+      getOrCreateFolder: async (name: string) => `${name}-id`,
+      listFiles: async () => [{ id: 'f1', name: 'backup-z-g5.json', createdTime: '2024-01-01T00:00:00.000Z', size: '42' }],
+    });
+
+    expect(page.backups).toHaveLength(1);
+    expect(page.backups[0]?.fileId).toBe('f1');
+    expect(page.nextPageToken).toBeNull();
+  });
+
+  it('returns an empty page token response when paged dependency is absent on subsequent pages', async () => {
+    const mock = createMockChrome();
+    setMockChrome(mock.chrome);
+
+    const page = await listDriveBackupsPage('token-1', 'token-2', 25, {
+      getOrCreateFolder: async (name: string) => `${name}-id`,
+      listFiles: async () => {
+        throw new Error('not used');
+      },
+    });
+
+    expect(page.backups).toEqual([]);
+    expect(page.nextPageToken).toBeNull();
   });
 
   it('performs backup, writes local index, and enforces retention', async () => {

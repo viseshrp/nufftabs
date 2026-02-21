@@ -1,5 +1,12 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { deleteFile, downloadJsonFile, getOrCreateFolder, listFiles, uploadJsonFile } from '../../entrypoints/drive/drive_api';
+import {
+  deleteFile,
+  downloadJsonFile,
+  getOrCreateFolder,
+  listFiles,
+  listFilesPage,
+  uploadJsonFile,
+} from '../../entrypoints/drive/drive_api';
 
 describe('drive_api', () => {
   afterEach(() => {
@@ -24,6 +31,42 @@ describe('drive_api', () => {
     expect(url).toContain('orderBy=name+desc');
     expect(init.method).toBe('GET');
     expect((init.headers as Headers).get('Authorization')).toBe('Bearer token-1');
+  });
+
+  it('lists one file page with explicit page token and size', async () => {
+    const fetchMock = vi.fn(async () => {
+      return new Response(
+        JSON.stringify({ files: [{ id: 'f1', name: 'backup-a.json' }], nextPageToken: 'next-2' }),
+        {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        },
+      );
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const page = await listFilesPage('folder-1', 'token-1', 'page-1', 25);
+
+    expect(page.files).toEqual([{ id: 'f1', name: 'backup-a.json' }]);
+    expect(page.nextPageToken).toBe('next-2');
+    const [url] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toContain('pageToken=page-1');
+    expect(url).toContain('pageSize=25');
+  });
+
+  it('normalizes list-file page response when files/next token are missing or invalid', async () => {
+    const fetchMock = vi.fn(async () => {
+      return new Response(JSON.stringify({ files: { id: 'not-an-array' }, nextPageToken: '' }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const page = await listFilesPage('folder-1', 'token-1');
+
+    expect(page.files).toEqual([]);
+    expect(page.nextPageToken).toBeNull();
   });
 
   it('paginates through all file pages', async () => {
@@ -222,5 +265,12 @@ describe('drive_api', () => {
     vi.stubGlobal('fetch', fetchMock);
 
     await expect(deleteFile('f1', 'token')).rejects.toThrow('Drive delete file failed (500)');
+  });
+
+  it('includes response text in delete-file failure errors when available', async () => {
+    const fetchMock = vi.fn(async () => new Response('cannot-delete', { status: 500 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(deleteFile('f1', 'token')).rejects.toThrow('cannot-delete');
   });
 });

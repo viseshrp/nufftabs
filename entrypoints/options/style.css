@@ -263,6 +263,27 @@ h1 {
   color: var(--md-sys-color-on-primary);
 }
 
+.drive-restore-actions {
+  display: flex;
+  justify-content: center;
+  margin-top: 12px;
+}
+
+.drive-restore-actions button {
+  border: 0;
+  border-radius: var(--md-sys-shape-corner-medium);
+  padding: 8px 14px;
+  font-size: 13px;
+  cursor: pointer;
+  background: var(--md-sys-color-secondary-container);
+  color: var(--md-sys-color-on-secondary-container);
+}
+
+.drive-restore-actions button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 .drive-status {
   margin-top: 14px;
 }

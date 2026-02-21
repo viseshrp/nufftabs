@@ -13,7 +13,15 @@ import {
   type Settings,
 } from '../shared/storage';
 import { logExtensionError } from '../shared/utils';
-import { deleteFile, downloadJsonFile, getOrCreateFolder, listFiles, uploadJsonFile } from './drive_api';
+import {
+  deleteFile,
+  downloadJsonFile,
+  getOrCreateFolder,
+  listFiles,
+  listFilesPage,
+  uploadJsonFile,
+  type DriveListFilesPage,
+} from './drive_api';
 import {
   BACKUP_VERSION,
   createBackupFileName,
@@ -33,6 +41,7 @@ import {
 type DriveApiDeps = {
   getOrCreateFolder: typeof getOrCreateFolder;
   listFiles: typeof listFiles;
+  listFilesPage?: typeof listFilesPage;
   uploadJsonFile: typeof uploadJsonFile;
   downloadJsonFile: typeof downloadJsonFile;
   deleteFile: typeof deleteFile;
@@ -42,6 +51,7 @@ type DriveApiDeps = {
 const defaultDeps: DriveApiDeps = {
   getOrCreateFolder,
   listFiles,
+  listFilesPage,
   uploadJsonFile,
   downloadJsonFile,
   deleteFile,
@@ -228,6 +238,36 @@ export async function listDriveBackups(token: string, deps: DriveApiDeps = defau
   const backups = toBackupEntries(files);
   await updateLocalIndex(installId, backups);
   return backups;
+}
+
+/** One paginated options-restore listing response. */
+export type DriveBackupListPage = {
+  backups: DriveBackupEntry[];
+  nextPageToken: string | null;
+};
+
+/**
+ * Lists one page of backup metadata for on-demand restore dialogs.
+ * This returns only Drive file metadata-derived entries, not backup payload content.
+ */
+export async function listDriveBackupsPage(
+  token: string,
+  pageToken?: string,
+  pageSize = 25,
+  deps: Pick<DriveApiDeps, 'getOrCreateFolder' | 'listFilesPage' | 'listFiles'> = defaultDeps,
+): Promise<DriveBackupListPage> {
+  const installId = await getOrCreateInstallId();
+  const installFolderId = await getInstallFolderId(installId, token, deps);
+  const page: DriveListFilesPage =
+    typeof deps.listFilesPage === 'function'
+      ? await deps.listFilesPage(installFolderId, token, pageToken, pageSize)
+      : pageToken
+        ? { files: [], nextPageToken: null }
+        : { files: await deps.listFiles(installFolderId, token), nextPageToken: null };
+  return {
+    backups: toBackupEntries(page.files),
+    nextPageToken: page.nextPageToken,
+  };
 }
 
 /**

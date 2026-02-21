@@ -29,6 +29,7 @@ function mountSettingsDom(): void {
     <dialog id="driveRestoreDialog">
       <button id="closeDriveRestore" type="button">Close</button>
       <table><tbody id="driveBackupList"></tbody></table>
+      <button id="loadMoreDriveBackups" type="button">Load more backups</button>
     </dialog>
     <div id="driveStatus"></div>
     <div id="status"></div>
@@ -507,6 +508,290 @@ describe('drive backup integration', () => {
     expect(restoreDialog.open).toBe(false);
   });
 
+  it('loads restore backups lazily with explicit load-more action', async () => {
+    const mock = createMockChrome({
+      initialStorage: {
+        [STORAGE_KEYS.settings]: {
+          excludePinned: true,
+          restoreBatchSize: 100,
+          discardRestoredTabs: false,
+          theme: 'os',
+        },
+      },
+    });
+    setMockChrome(mock.chrome);
+
+    mock.chrome.identity.getAuthToken = (_details, callback) => {
+      delete mock.chrome.runtime.lastError;
+      callback('token-1');
+    };
+
+    const fetchMock = vi.fn(async (input: string | URL) => {
+      const url = String(input);
+      if (url.includes('/drive/v3/files?') && url.includes('mimeType')) {
+        return new Response(JSON.stringify({ files: [{ id: 'folder-1' }] }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      if (url.includes('/drive/v3/files?') && url.includes('pageToken=token-2')) {
+        return new Response(
+          JSON.stringify({
+            files: [{ id: 'f3', name: 'backup-third-g2.json', createdTime: '2024-01-03T00:00:00.000Z', size: '30' }],
+          }),
+          {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          },
+        );
+      }
+      if (url.includes('/drive/v3/files?')) {
+        return new Response(
+          JSON.stringify({
+            files: [
+              { id: 'f1', name: 'backup-first-g1.json', createdTime: '2024-01-01T00:00:00.000Z', size: '10' },
+              { id: 'f2', name: 'backup-second-g1.json', createdTime: '2024-01-02T00:00:00.000Z', size: '20' },
+            ],
+            nextPageToken: 'token-2',
+          }),
+          {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          },
+        );
+      }
+      return new Response('', { status: 200 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    mountSettingsDom();
+    await initSettingsPage(document);
+
+    const openRestore = document.querySelector<HTMLButtonElement>('#openDriveRestore');
+    const loadMore = document.querySelector<HTMLButtonElement>('#loadMoreDriveBackups');
+    const backupTable = document.querySelector<HTMLTableSectionElement>('#driveBackupList');
+    const driveStatus = document.querySelector<HTMLDivElement>('#driveStatus');
+    if (!openRestore || !loadMore || !backupTable || !driveStatus) {
+      throw new Error('Missing restore controls');
+    }
+
+    openRestore.click();
+    await waitForCondition(
+      () => backupTable.querySelectorAll('button[data-action="restore-backup"]').length === 2,
+    );
+    expect(loadMore.hidden).toBe(false);
+    expect(loadMore.disabled).toBe(false);
+
+    loadMore.click();
+    await waitForCondition(() => (driveStatus.textContent ?? '').includes('Loaded all 3 backups.'));
+    expect(backupTable.querySelectorAll('button[data-action="restore-backup"]').length).toBe(3);
+    expect(loadMore.hidden).toBe(true);
+
+    const downloadCalls = fetchMock.mock.calls.filter((call) => String(call[0]).includes('alt=media'));
+    expect(downloadCalls).toHaveLength(0);
+  });
+
+  it('loads restore list interactively even when no cached token exists yet', async () => {
+    const mock = createMockChrome({
+      initialStorage: {
+        [STORAGE_KEYS.settings]: {
+          excludePinned: true,
+          restoreBatchSize: 100,
+          discardRestoredTabs: false,
+          theme: 'os',
+        },
+      },
+    });
+    setMockChrome(mock.chrome);
+
+    mock.chrome.identity.getAuthToken = (details, callback) => {
+      if (!details.interactive) {
+        delete mock.chrome.runtime.lastError;
+        callback(undefined);
+        return;
+      }
+      delete mock.chrome.runtime.lastError;
+      callback('token-interactive');
+    };
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: string | URL) => {
+        const url = String(input);
+        if (url.includes('/drive/v3/files?') && url.includes('mimeType')) {
+          return new Response(JSON.stringify({ files: [{ id: 'folder-1' }] }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          });
+        }
+        if (url.includes('/drive/v3/files?')) {
+          return new Response(
+            JSON.stringify({
+              files: [{ id: 'f1', name: 'backup-first-g1.json', createdTime: '2024-01-01T00:00:00.000Z', size: '10' }],
+            }),
+            {
+              status: 200,
+              headers: { 'Content-Type': 'application/json' },
+            },
+          );
+        }
+        return new Response('', { status: 200 });
+      }),
+    );
+
+    mountSettingsDom();
+    await initSettingsPage(document);
+
+    const openRestore = document.querySelector<HTMLButtonElement>('#openDriveRestore');
+    const backupTable = document.querySelector<HTMLTableSectionElement>('#driveBackupList');
+    const driveStatus = document.querySelector<HTMLDivElement>('#driveStatus');
+    if (!openRestore || !backupTable || !driveStatus) {
+      throw new Error('Missing restore controls');
+    }
+
+    // Dispatch manually so we can exercise the handler path even while the disabled state is shown.
+    openRestore.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    await waitForCondition(() => (driveStatus.textContent ?? '').includes('Choose a backup to restore.'));
+    expect(backupTable.querySelectorAll('button[data-action="restore-backup"]').length).toBe(1);
+  });
+
+  it('keeps load-more visible when additional backup pages remain', async () => {
+    const mock = createMockChrome({
+      initialStorage: {
+        [STORAGE_KEYS.settings]: {
+          excludePinned: true,
+          restoreBatchSize: 100,
+          discardRestoredTabs: false,
+          theme: 'os',
+        },
+      },
+    });
+    setMockChrome(mock.chrome);
+
+    mock.chrome.identity.getAuthToken = (_details, callback) => {
+      delete mock.chrome.runtime.lastError;
+      callback('token-1');
+    };
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: string | URL) => {
+        const url = String(input);
+        if (url.includes('/drive/v3/files?') && url.includes('mimeType')) {
+          return new Response(JSON.stringify({ files: [{ id: 'folder-1' }] }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          });
+        }
+        if (url.includes('/drive/v3/files?') && url.includes('pageToken=token-2')) {
+          return new Response(
+            JSON.stringify({
+              files: [{ id: 'f2', name: 'backup-second-g1.json', createdTime: '2024-01-02T00:00:00.000Z', size: '20' }],
+              nextPageToken: 'token-3',
+            }),
+            {
+              status: 200,
+              headers: { 'Content-Type': 'application/json' },
+            },
+          );
+        }
+        if (url.includes('/drive/v3/files?')) {
+          return new Response(
+            JSON.stringify({
+              files: [{ id: 'f1', name: 'backup-first-g1.json', createdTime: '2024-01-01T00:00:00.000Z', size: '10' }],
+              nextPageToken: 'token-2',
+            }),
+            {
+              status: 200,
+              headers: { 'Content-Type': 'application/json' },
+            },
+          );
+        }
+        return new Response('', { status: 200 });
+      }),
+    );
+
+    mountSettingsDom();
+    await initSettingsPage(document);
+
+    const openRestore = document.querySelector<HTMLButtonElement>('#openDriveRestore');
+    const loadMore = document.querySelector<HTMLButtonElement>('#loadMoreDriveBackups');
+    const driveStatus = document.querySelector<HTMLDivElement>('#driveStatus');
+    if (!openRestore || !loadMore || !driveStatus) {
+      throw new Error('Missing restore controls');
+    }
+
+    openRestore.click();
+    await waitForCondition(() => loadMore.hidden === false && loadMore.disabled === false);
+    loadMore.click();
+    await waitForCondition(() => (driveStatus.textContent ?? '').includes('Loaded 2 backups.'));
+    expect(loadMore.hidden).toBe(false);
+    expect(loadMore.disabled).toBe(false);
+  });
+
+  it('shows load-more failure status when a backup page request fails', async () => {
+    const mock = createMockChrome({
+      initialStorage: {
+        [STORAGE_KEYS.settings]: {
+          excludePinned: true,
+          restoreBatchSize: 100,
+          discardRestoredTabs: false,
+          theme: 'os',
+        },
+      },
+    });
+    setMockChrome(mock.chrome);
+
+    mock.chrome.identity.getAuthToken = (_details, callback) => {
+      delete mock.chrome.runtime.lastError;
+      callback('token-1');
+    };
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: string | URL) => {
+        const url = String(input);
+        if (url.includes('/drive/v3/files?') && url.includes('mimeType')) {
+          return new Response(JSON.stringify({ files: [{ id: 'folder-1' }] }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          });
+        }
+        if (url.includes('/drive/v3/files?') && url.includes('pageToken=token-2')) {
+          return new Response('boom', { status: 500 });
+        }
+        if (url.includes('/drive/v3/files?')) {
+          return new Response(
+            JSON.stringify({
+              files: [{ id: 'f1', name: 'backup-first-g1.json', createdTime: '2024-01-01T00:00:00.000Z', size: '10' }],
+              nextPageToken: 'token-2',
+            }),
+            {
+              status: 200,
+              headers: { 'Content-Type': 'application/json' },
+            },
+          );
+        }
+        return new Response('', { status: 200 });
+      }),
+    );
+
+    mountSettingsDom();
+    await initSettingsPage(document);
+
+    const openRestore = document.querySelector<HTMLButtonElement>('#openDriveRestore');
+    const loadMore = document.querySelector<HTMLButtonElement>('#loadMoreDriveBackups');
+    const driveStatus = document.querySelector<HTMLDivElement>('#driveStatus');
+    if (!openRestore || !loadMore || !driveStatus) {
+      throw new Error('Missing restore controls');
+    }
+
+    openRestore.click();
+    await waitForCondition(() => loadMore.hidden === false && loadMore.disabled === false);
+    loadMore.click();
+    await waitForCondition(() => (driveStatus.textContent ?? '').includes('Drive list files failed (500): boom'));
+  });
+
   it('handles restore-list auth errors when restore is triggered without connection state', async () => {
     const mock = createMockChrome({
       initialStorage: {
@@ -584,6 +869,30 @@ describe('drive backup integration', () => {
 
     const fetchMock = vi.fn(async (input: string | URL) => {
       const url = String(input);
+      if (url.includes('/drive/v3/files?') && url.includes('mimeType')) {
+        return new Response(JSON.stringify({ files: [{ id: 'folder-1' }] }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      if (url.includes('/drive/v3/files?')) {
+        return new Response(
+          JSON.stringify({
+            files: [
+              {
+                id: 'seed-file',
+                name: 'backup-seed-g1.json',
+                createdTime: '2024-01-02T00:00:00.000Z',
+                size: '12',
+              },
+            ],
+          }),
+          {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          },
+        );
+      }
       if (url.includes('alt=media')) {
         return new Response(
           JSON.stringify({
