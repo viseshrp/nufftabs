@@ -61,11 +61,24 @@
       <div class="drive-controls">
         <button id="openDriveAuth" type="button">Connect to Google Drive</button>
         <button id="backupNow" type="button">Backup now</button>
+        <button id="openDriveRestore" type="button">Restore from backup</button>
       </div>
       <label class="setting">
         <span>Retention (backups kept)</span>
         <input id="driveRetentionCount" type="number" min="1" max="500" step="1" placeholder="30" />
       </label>
+      <div id="driveStatus" class="status drive-status" role="status" aria-live="polite"></div>
+    </section>
+    <dialog id="driveRestoreDialog" class="drive-restore-dialog" aria-labelledby="driveRestoreTitle">
+      <div class="drive-restore-header">
+        <h3 id="driveRestoreTitle">Restore from Google Drive</h3>
+        <button id="closeDriveRestore" type="button" class="drive-restore-close" aria-label="Close restore dialog">
+          Close
+        </button>
+      </div>
+      <p class="setting-help">
+        Pick a backup snapshot to restore. This replaces local saved tabs and settings.
+      </p>
       <div class="drive-list-wrap">
         <table class="drive-list-table">
           <thead>
@@ -79,8 +92,7 @@
           <tbody id="driveBackupList"></tbody>
         </table>
       </div>
-      <div id="driveStatus" class="status drive-status" role="status" aria-live="polite"></div>
-    </section>
+    </dialog>
     <div id="status" class="status" role="status" aria-live="polite"></div>
   </main>
   <script type="module" src="./index.ts"></script>

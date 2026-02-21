@@ -186,6 +186,44 @@ h1 {
   overflow-x: auto;
 }
 
+.drive-restore-dialog {
+  width: min(760px, calc(100vw - 32px));
+  max-height: min(80vh, 680px);
+  border: 1px solid rgba(var(--md-sys-color-outline-rgb), 0.35);
+  border-radius: var(--md-sys-shape-corner-large);
+  padding: 16px;
+  background: var(--md-sys-color-surface);
+  color: var(--md-sys-color-on-surface);
+}
+
+.drive-restore-dialog::backdrop {
+  background: rgba(0, 0, 0, 0.35);
+}
+
+.drive-restore-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.drive-restore-header h3 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 500;
+}
+
+.drive-restore-close {
+  border: 0;
+  border-radius: var(--md-sys-shape-corner-small);
+  padding: 8px 12px;
+  font-size: 13px;
+  cursor: pointer;
+  background: var(--md-sys-color-secondary-container);
+  color: var(--md-sys-color-on-secondary-container);
+}
+
 .drive-list-table {
   width: 100%;
   border-collapse: collapse;

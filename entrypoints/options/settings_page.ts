@@ -21,7 +21,6 @@ import {
 import {
   getBackupsWithFallback,
   performBackup,
-  readLocalIndex,
   readRetentionCount,
   restoreFromBackup,
   writeRetentionCount,
@@ -101,17 +100,37 @@ async function initDriveBackupSection(documentRef: Document): Promise<void> {
   const driveSectionEl = documentRef.querySelector<HTMLElement>('.drive-backup');
   const openAuthEl = documentRef.querySelector<HTMLButtonElement>('#openDriveAuth');
   const backupNowEl = documentRef.querySelector<HTMLButtonElement>('#backupNow');
+  const openRestoreEl = documentRef.querySelector<HTMLButtonElement>('#openDriveRestore');
   const retentionEl = documentRef.querySelector<HTMLInputElement>('#driveRetentionCount');
   const backupListEl = documentRef.querySelector<HTMLTableSectionElement>('#driveBackupList');
   const driveStatusEl = documentRef.querySelector<HTMLDivElement>('#driveStatus');
+  const driveRestoreDialogEl = documentRef.querySelector<HTMLDialogElement>('#driveRestoreDialog');
+  const closeDriveRestoreEl = documentRef.querySelector<HTMLButtonElement>('#closeDriveRestore');
 
-  if (!openAuthEl || !backupNowEl || !retentionEl || !backupListEl) return;
+  if (
+    !openAuthEl ||
+    !backupNowEl ||
+    !openRestoreEl ||
+    !retentionEl ||
+    !backupListEl ||
+    !driveRestoreDialogEl ||
+    !closeDriveRestoreEl
+  ) {
+    return;
+  }
 
   /**
    * Small local state model for the Drive subsection.
    * Keeping this centralized avoids split/implicit UI logic and makes updates predictable.
    */
-  type DriveBusyReason = 'loading' | 'connecting' | 'disconnecting' | 'backup' | 'restore' | null;
+  type DriveBusyReason =
+    | 'loading'
+    | 'connecting'
+    | 'disconnecting'
+    | 'backup'
+    | 'loading_restore_list'
+    | 'restore'
+    | null;
   let busyReason: DriveBusyReason = null;
   let isConnected = false;
   let currentToken: string | null = null;
@@ -139,6 +158,43 @@ async function initDriveBackupSection(documentRef: Document): Promise<void> {
     return 'Backup now';
   };
 
+  /** Computes the restore button label so backup-list loading/restoring progress is visible without opening the dialog first. */
+  const getRestoreButtonLabel = () => {
+    if (busyReason === 'loading_restore_list') return 'Loading backups...';
+    if (busyReason === 'restore') return 'Restoring...';
+    return 'Restore from backup';
+  };
+
+  /** Opens restore dialog safely in both real browser runtime and test/runtime contexts without `showModal`. */
+  const openRestoreDialog = () => {
+    if (typeof driveRestoreDialogEl.showModal === 'function') {
+      driveRestoreDialogEl.showModal();
+      return;
+    }
+    driveRestoreDialogEl.setAttribute('open', '');
+  };
+
+  /** Closes restore dialog safely in both real browser runtime and test/runtime contexts without `close`. */
+  const closeRestoreDialog = () => {
+    if (typeof driveRestoreDialogEl.close === 'function') {
+      driveRestoreDialogEl.close();
+      return;
+    }
+    driveRestoreDialogEl.removeAttribute('open');
+  };
+
+  /**
+   * Resolves a valid token for restore listing.
+   * If no cached token is present, request one interactively so users can proceed immediately.
+   */
+  const resolveConnectedToken = async () => {
+    if (currentToken) return currentToken;
+    const token = await getAuthToken(true);
+    currentToken = token;
+    isConnected = true;
+    return token;
+  };
+
   /**
    * Applies UI state in one place so controls stay consistent:
    * - Connect button shows status and active operation directly in its own label.
@@ -152,6 +208,8 @@ async function initDriveBackupSection(documentRef: Document): Promise<void> {
     openAuthEl.dataset.busy = busy ? 'true' : 'false';
     backupNowEl.disabled = busy || !isConnected;
     backupNowEl.textContent = getBackupButtonLabel();
+    openRestoreEl.disabled = busy || !isConnected;
+    openRestoreEl.textContent = getRestoreButtonLabel();
     retentionEl.disabled = busy;
     setRestoreButtonsDisabled(busy || !isConnected);
 
@@ -173,19 +231,6 @@ async function initDriveBackupSection(documentRef: Document): Promise<void> {
     applyDriveUiState();
   };
 
-  const refreshBackupList = async () => {
-    const localIndex = await readLocalIndex();
-    renderDriveBackups(backupListEl, localIndex.backups);
-    applyDriveUiState();
-
-    if (localIndex.backups.length > 0) return;
-    if (!isConnected || !currentToken) return;
-
-    const backups = await getBackupsWithFallback(currentToken);
-    renderDriveBackups(backupListEl, backups);
-    applyDriveUiState();
-  };
-
   const retention = await readRetentionCount();
   retentionEl.value = String(retention);
 
@@ -197,7 +242,6 @@ async function initDriveBackupSection(documentRef: Document): Promise<void> {
           setStatus(driveStatusEl, 'Opening Google authentication...');
           currentToken = await getAuthToken(true);
           isConnected = true;
-          await refreshBackupList();
           setStatus(driveStatusEl, 'Connected to Google Drive. Backup is now enabled.');
           return;
         }
@@ -247,8 +291,6 @@ async function initDriveBackupSection(documentRef: Document): Promise<void> {
         const retentionCount = await writeRetentionCount(normalizeRetentionCount(Number(retentionEl.value)));
         const backups = await performBackup(token, retentionCount);
         retentionEl.value = String(retentionCount);
-        renderDriveBackups(backupListEl, backups);
-        applyDriveUiState();
         setStatus(driveStatusEl, `Backup completed. ${backups.length} backup${backups.length === 1 ? '' : 's'} stored.`);
       } catch (error) {
         const message = formatDriveAuthError(error, 'Backup failed.');
@@ -258,6 +300,40 @@ async function initDriveBackupSection(documentRef: Document): Promise<void> {
         await refreshAuthState();
       }
     })();
+  });
+
+  /**
+   * Restore list is fetched lazily only when users explicitly request restore.
+   * This keeps options lightweight and avoids loading backup metadata until needed.
+   */
+  openRestoreEl.addEventListener('click', () => {
+    void (async () => {
+      setBusyReason('loading_restore_list');
+      setStatus(driveStatusEl, 'Loading backups from Google Drive...');
+      try {
+        const token = await resolveConnectedToken();
+        const backups = await getBackupsWithFallback(token);
+        renderDriveBackups(backupListEl, backups);
+        applyDriveUiState();
+        openRestoreDialog();
+        setStatus(
+          driveStatusEl,
+          backups.length > 0
+            ? 'Select a backup to restore.'
+            : 'No backups found. Create a backup first, then restore it here.',
+        );
+      } catch (error) {
+        const message = formatDriveAuthError(error, 'Failed to load backup list.');
+        setStatus(driveStatusEl, message);
+      } finally {
+        setBusyReason(null);
+        await refreshAuthState();
+      }
+    })();
+  });
+
+  closeDriveRestoreEl.addEventListener('click', () => {
+    closeRestoreDialog();
   });
 
   backupListEl.addEventListener('click', (event) => {
@@ -279,6 +355,7 @@ async function initDriveBackupSection(documentRef: Document): Promise<void> {
         currentToken = token;
         isConnected = true;
         const restored = await restoreFromBackup(fileId, token);
+        closeRestoreDialog();
         setStatus(
           driveStatusEl,
           `Restore completed. ${restored.restoredTabs} tab${restored.restoredTabs === 1 ? '' : 's'} across ${restored.restoredGroups} group${restored.restoredGroups === 1 ? '' : 's'}.`,
@@ -298,11 +375,7 @@ async function initDriveBackupSection(documentRef: Document): Promise<void> {
    * This removes the need for manual page refreshes after auth completes elsewhere.
    */
   const refreshAuthStateOnVisibility = () => {
-    void refreshAuthState().catch((error) => {
-      logExtensionError('Failed to refresh Drive auth state on tab visibility change', error, {
-        operation: 'runtime_context',
-      });
-    });
+    void refreshAuthState();
   };
 
   documentRef.addEventListener('visibilitychange', refreshAuthStateOnVisibility);
@@ -312,8 +385,8 @@ async function initDriveBackupSection(documentRef: Document): Promise<void> {
 
   setBusyReason('loading');
   setStatus(driveStatusEl, 'Checking Google Drive connection...');
+  renderDriveBackups(backupListEl, []);
   await refreshAuthState();
-  await refreshBackupList();
   setBusyReason(null);
   if (!isConnected) {
     setStatus(driveStatusEl, 'Not connected. Connect Google Drive to enable backup and restore.');

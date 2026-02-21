@@ -24,8 +24,12 @@ function mountSettingsDom(): void {
     <input id="themeDark" type="radio" name="theme" value="dark" />
     <button id="openDriveAuth" type="button">Connect to Google Drive</button>
     <button id="backupNow" type="button">Backup now</button>
+    <button id="openDriveRestore" type="button">Restore from backup</button>
     <input id="driveRetentionCount" type="number" />
-    <table><tbody id="driveBackupList"></tbody></table>
+    <dialog id="driveRestoreDialog">
+      <button id="closeDriveRestore" type="button">Close</button>
+      <table><tbody id="driveBackupList"></tbody></table>
+    </dialog>
     <div id="driveStatus"></div>
     <div id="status"></div>
   `;
@@ -150,7 +154,7 @@ describe('drive backup integration', () => {
     });
   });
 
-  it('renders fallback backups and surfaces auth/retention errors', async () => {
+  it('keeps restore disabled when disconnected and surfaces auth/retention errors', async () => {
     const mock = createMockChrome({
       initialStorage: {
         [STORAGE_KEYS.settings]: {
@@ -207,16 +211,15 @@ describe('drive backup integration', () => {
     mountSettingsDom();
     await initSettingsPage(document);
 
-    const backupTable = document.querySelector<HTMLTableSectionElement>('#driveBackupList');
-    expect(backupTable?.textContent).toContain('No backups found yet.');
-
     const openAuth = document.querySelector<HTMLButtonElement>('#openDriveAuth');
     const backupNow = document.querySelector<HTMLButtonElement>('#backupNow');
+    const openRestore = document.querySelector<HTMLButtonElement>('#openDriveRestore');
     const driveStatus = document.querySelector<HTMLDivElement>('#driveStatus');
-    if (!openAuth || !backupNow || !driveStatus) {
+    if (!openAuth || !backupNow || !openRestore || !driveStatus) {
       throw new Error('Missing Drive controls');
     }
     expect(backupNow.disabled).toBe(true);
+    expect(openRestore.disabled).toBe(true);
     expect(openAuth.textContent).toContain('Connect to Google Drive');
 
     openAuth.click();
@@ -302,22 +305,29 @@ describe('drive backup integration', () => {
     mountSettingsDom();
     await initSettingsPage(document);
 
-    const backupTable = document.querySelector<HTMLTableSectionElement>('#driveBackupList');
     const backupNow = document.querySelector<HTMLButtonElement>('#backupNow');
     const openAuth = document.querySelector<HTMLButtonElement>('#openDriveAuth');
+    const openRestore = document.querySelector<HTMLButtonElement>('#openDriveRestore');
+    const backupTable = document.querySelector<HTMLTableSectionElement>('#driveBackupList');
+    const restoreDialog = document.querySelector<HTMLDialogElement>('#driveRestoreDialog');
     const driveStatus = document.querySelector<HTMLDivElement>('#driveStatus');
-    if (!backupTable || !backupNow || !openAuth || !driveStatus) {
+    if (!backupTable || !backupNow || !openAuth || !openRestore || !restoreDialog || !driveStatus) {
       throw new Error('Missing Drive controls');
     }
 
-    expect(backupTable.textContent).toContain('2 KB');
     expect(backupNow.disabled).toBe(false);
+    expect(openRestore.disabled).toBe(false);
     expect(openAuth.textContent).toContain('Connected to Google Drive');
+
+    openRestore.click();
+    await waitForCondition(() => backupTable.textContent?.includes('2 KB') ?? false);
+    expect(restoreDialog.open).toBe(true);
 
     openAuth.click();
     await waitForCondition(() => (driveStatus.textContent ?? '').includes('Disconnected from Google Drive.'));
     expect(removeCachedAuthToken).toHaveBeenCalledOnce();
     expect(backupNow.disabled).toBe(true);
+    expect(openRestore.disabled).toBe(true);
     expect(openAuth.textContent).toContain('Connect to Google Drive');
   });
 
@@ -350,16 +360,19 @@ describe('drive backup integration', () => {
 
     const openAuth = document.querySelector<HTMLButtonElement>('#openDriveAuth');
     const backupNow = document.querySelector<HTMLButtonElement>('#backupNow');
+    const openRestore = document.querySelector<HTMLButtonElement>('#openDriveRestore');
     const driveStatus = document.querySelector<HTMLDivElement>('#driveStatus');
-    if (!openAuth || !backupNow || !driveStatus) {
+    if (!openAuth || !backupNow || !openRestore || !driveStatus) {
       throw new Error('Missing Drive controls');
     }
 
     expect(backupNow.disabled).toBe(true);
+    expect(openRestore.disabled).toBe(true);
     openAuth.click();
     await waitForCondition(() => (driveStatus.textContent ?? '').includes('Connected to Google Drive.'));
     expect(openAuth.textContent).toContain('Connected to Google Drive');
     expect(backupNow.disabled).toBe(false);
+    expect(openRestore.disabled).toBe(false);
   });
 
   it('shows disconnect error messaging and handles visibility refresh events', async () => {
@@ -425,7 +438,115 @@ describe('drive backup integration', () => {
     await waitForCondition(() => (driveStatus.textContent ?? '').includes('disconnect-failed'));
   });
 
-  it('shows backup auth errors and supports restore actions', async () => {
+  it('loads empty restore list into modal and supports explicit modal close', async () => {
+    const mock = createMockChrome({
+      initialStorage: {
+        [STORAGE_KEYS.settings]: {
+          excludePinned: true,
+          restoreBatchSize: 100,
+          discardRestoredTabs: false,
+          theme: 'os',
+        },
+      },
+    });
+    setMockChrome(mock.chrome);
+
+    mock.chrome.identity.getAuthToken = (_details, callback) => {
+      delete mock.chrome.runtime.lastError;
+      callback('token-1');
+    };
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: string | URL, init?: RequestInit) => {
+        const url = String(input);
+        const method = init?.method ?? 'GET';
+        if (method === 'GET' && url.includes('/drive/v3/files?') && url.includes('mimeType')) {
+          return new Response(JSON.stringify({ files: [{ id: 'folder-1' }] }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          });
+        }
+        if (method === 'GET' && url.includes('/drive/v3/files?')) {
+          return new Response(JSON.stringify({ files: [] }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          });
+        }
+        return new Response('', { status: 200 });
+      }),
+    );
+
+    mountSettingsDom();
+    await initSettingsPage(document);
+
+    const openRestore = document.querySelector<HTMLButtonElement>('#openDriveRestore');
+    const closeRestore = document.querySelector<HTMLButtonElement>('#closeDriveRestore');
+    const restoreDialog = document.querySelector<HTMLDialogElement>('#driveRestoreDialog');
+    const driveStatus = document.querySelector<HTMLDivElement>('#driveStatus');
+    if (!openRestore || !closeRestore || !restoreDialog || !driveStatus) {
+      throw new Error('Missing restore controls');
+    }
+
+    const showModalMock = vi.fn(() => {
+      restoreDialog.setAttribute('open', '');
+    });
+    const closeModalMock = vi.fn(() => {
+      restoreDialog.removeAttribute('open');
+    });
+    restoreDialog.showModal = showModalMock as unknown as HTMLDialogElement['showModal'];
+    restoreDialog.close = closeModalMock as unknown as HTMLDialogElement['close'];
+
+    openRestore.click();
+    await waitForCondition(() => (driveStatus.textContent ?? '').includes('No backups found.'));
+    expect(showModalMock).toHaveBeenCalledOnce();
+    expect(restoreDialog.open).toBe(true);
+
+    closeRestore.click();
+    expect(closeModalMock).toHaveBeenCalledOnce();
+    expect(restoreDialog.open).toBe(false);
+  });
+
+  it('handles restore-list auth errors when restore is triggered without connection state', async () => {
+    const mock = createMockChrome({
+      initialStorage: {
+        [STORAGE_KEYS.settings]: {
+          excludePinned: true,
+          restoreBatchSize: 100,
+          discardRestoredTabs: false,
+          theme: 'os',
+        },
+      },
+    });
+    setMockChrome(mock.chrome);
+
+    mock.chrome.identity.getAuthToken = (details, callback) => {
+      if (details.interactive) {
+        mock.chrome.runtime.lastError = { message: 'auth denied' };
+        callback(undefined);
+        return;
+      }
+      delete mock.chrome.runtime.lastError;
+      callback(undefined);
+    };
+
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ files: [] }), { status: 200 })));
+
+    mountSettingsDom();
+    await initSettingsPage(document);
+
+    const openRestore = document.querySelector<HTMLButtonElement>('#openDriveRestore');
+    const driveStatus = document.querySelector<HTMLDivElement>('#driveStatus');
+    if (!openRestore || !driveStatus) {
+      throw new Error('Missing restore controls');
+    }
+
+    // Dispatch directly to exercise the handler's auth-error branch even while the disabled state is set.
+    openRestore.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    await waitForCondition(() => (driveStatus.textContent ?? '').includes('auth denied'));
+  });
+
+  it('shows backup auth errors and restores from the on-demand restore modal', async () => {
     const mock = createMockChrome({
       initialStorage: {
         [STORAGE_KEYS.settings]: {
@@ -490,14 +611,23 @@ describe('drive backup integration', () => {
     await initSettingsPage(document);
 
     const backupNow = document.querySelector<HTMLButtonElement>('#backupNow');
-    const restoreButton = document.querySelector<HTMLButtonElement>('button[data-action="restore-backup"]');
+    const openRestore = document.querySelector<HTMLButtonElement>('#openDriveRestore');
+    const backupTable = document.querySelector<HTMLTableSectionElement>('#driveBackupList');
+    const restoreDialog = document.querySelector<HTMLDialogElement>('#driveRestoreDialog');
     const driveStatus = document.querySelector<HTMLDivElement>('#driveStatus');
-    if (!backupNow || !restoreButton || !driveStatus) {
+    if (!backupNow || !openRestore || !backupTable || !restoreDialog || !driveStatus) {
       throw new Error('Missing Drive controls');
     }
 
     backupNow.click();
     await waitForCondition(() => (driveStatus.textContent ?? '').includes('auth denied'));
+
+    openRestore.click();
+    await waitForCondition(() => (restoreDialog.open && (backupTable.textContent ?? '').includes('Restore')) || false);
+    const restoreButton = backupTable.querySelector<HTMLButtonElement>('button[data-action="restore-backup"]');
+    if (!restoreButton) {
+      throw new Error('Missing restore row button');
+    }
 
     restoreButton.click();
     await waitForCondition(() => (driveStatus.textContent ?? '').includes('auth denied'));
@@ -506,7 +636,7 @@ describe('drive backup integration', () => {
     restoreButton.click();
     await waitForCondition(() => {
       const text = driveStatus.textContent ?? '';
-      return text.includes('Restore completed') || text.includes('Connected.');
+      return text.includes('Restore completed') || text.includes('Connected');
     });
   });
 });

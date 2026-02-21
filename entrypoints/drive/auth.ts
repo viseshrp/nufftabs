@@ -54,9 +54,10 @@ export function formatDriveAuthError(error: unknown, fallbackMessage: string): s
 
   const extensionId = typeof chrome !== 'undefined' && chrome.runtime?.id ? chrome.runtime.id : 'unknown';
   return [
-    'Google Drive OAuth is misconfigured for this build.',
-    `Set GOOGLE_OAUTH_CLIENT_ID to a Chrome Extension OAuth client for extension ID ${extensionId}.`,
-    'Set CHROME_EXTENSION_KEY (or EXTENSION_MANIFEST_KEY), then restart dev/build and reload the extension.',
+    'Google Drive OAuth client configuration does not match this extension build.',
+    `Current extension ID: ${extensionId}.`,
+    'Set GOOGLE_OAUTH_CLIENT_ID to a Chrome Extension OAuth client created for this exact extension ID.',
+    'Update your OAuth client configuration to use this extension ID, then rebuild and reload the extension.',
   ].join(' ');
 }
 
