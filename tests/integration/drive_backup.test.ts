@@ -31,6 +31,12 @@ function mountSettingsDom(): void {
     <dialog id="driveRestoreDialog">
       <button id="closeDriveRestore" type="button">Close</button>
       <table><tbody id="driveBackupList"></tbody></table>
+      <select id="driveRestorePageSize">
+        <option value="5">5</option>
+        <option value="10" selected>10</option>
+        <option value="15">15</option>
+        <option value="20">20</option>
+      </select>
       <button id="loadMoreDriveBackups" type="button">Load more backups</button>
     </dialog>
     <div id="snackbar" class="snackbar"></div>
@@ -615,12 +621,14 @@ describe('drive backup integration', () => {
 
     const openRestore = document.querySelector<HTMLButtonElement>('#openDriveRestore');
     const loadMore = document.querySelector<HTMLButtonElement>('#loadMoreDriveBackups');
+    const restorePageSize = document.querySelector<HTMLSelectElement>('#driveRestorePageSize');
     const backupTable = document.querySelector<HTMLTableSectionElement>('#driveBackupList');
     const driveStatus = document.querySelector<HTMLDivElement>('#snackbar');
-    if (!openRestore || !loadMore || !backupTable || !driveStatus) {
+    if (!openRestore || !loadMore || !restorePageSize || !backupTable || !driveStatus) {
       throw new Error('Missing restore controls');
     }
 
+    restorePageSize.value = '5';
     openRestore.click();
     await waitForCondition(
       () => backupTable.querySelectorAll('button[data-action="restore-backup"]').length === 2,
@@ -635,6 +643,13 @@ describe('drive backup integration', () => {
 
     const downloadCalls = fetchMock.mock.calls.filter((call) => String(call[0]).includes('alt=media'));
     expect(downloadCalls).toHaveLength(0);
+    const listCalls = fetchMock.mock.calls.filter((call) => {
+      const url = String(call[0]);
+      return url.includes('/drive/v3/files?') && !url.includes('mimeType');
+    });
+    expect(listCalls).toHaveLength(2);
+    expect(String(listCalls[0]?.[0])).toContain('pageSize=5');
+    expect(String(listCalls[1]?.[0])).toContain('pageSize=5');
   });
 
   it('loads restore list interactively even when no cached token exists yet', async () => {

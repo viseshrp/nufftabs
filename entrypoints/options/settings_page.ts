@@ -123,14 +123,15 @@ function renderDriveBackups(listEl: HTMLTableSectionElement | null, backups: Dri
  * This section is intentionally isolated so missing elements never break base settings.
  */
 async function initDriveBackupSection(documentRef: Document): Promise<void> {
-  /** Restore modal requests backup metadata in fixed user-demand pages for predictable UI updates. */
-  const RESTORE_LIST_PAGE_SIZE = 10;
+  /** Default restore page size used when dropdown input is unavailable/invalid. */
+  const DEFAULT_RESTORE_LIST_PAGE_SIZE = 10;
   const driveSectionEl = documentRef.querySelector<HTMLElement>('.drive-backup');
   const openAuthEl = documentRef.querySelector<HTMLButtonElement>('#openDriveAuth');
   const backupNowEl = documentRef.querySelector<HTMLButtonElement>('#backupNow');
   const openRestoreEl = documentRef.querySelector<HTMLButtonElement>('#openDriveRestore');
   const retentionEl = documentRef.querySelector<HTMLInputElement>('#driveRetentionCount');
   const backupListEl = documentRef.querySelector<HTMLTableSectionElement>('#driveBackupList');
+  const restorePageSizeEl = documentRef.querySelector<HTMLSelectElement>('#driveRestorePageSize');
   const loadMoreBackupsEl = documentRef.querySelector<HTMLButtonElement>('#loadMoreDriveBackups');
   const driveStatusEl = documentRef.querySelector<HTMLDivElement>('#driveStatus');
   const driveRestoreDialogEl = documentRef.querySelector<HTMLDialogElement>('#driveRestoreDialog');
@@ -142,6 +143,7 @@ async function initDriveBackupSection(documentRef: Document): Promise<void> {
     !openRestoreEl ||
     !retentionEl ||
     !backupListEl ||
+    !restorePageSizeEl ||
     !loadMoreBackupsEl ||
     !driveRestoreDialogEl ||
     !closeDriveRestoreEl
@@ -167,6 +169,17 @@ async function initDriveBackupSection(documentRef: Document): Promise<void> {
   let currentToken: string | null = null;
   let restoreBackups: DriveBackupEntry[] = [];
   let nextRestorePageToken: string | null = null;
+
+  /**
+   * Reads selected restore page size from modal UI.
+   * Falls back to a safe default when DOM value is malformed.
+   */
+  const getRestoreListPageSize = (): number => {
+    const parsed = Number(restorePageSizeEl.value);
+    if (!Number.isFinite(parsed)) return DEFAULT_RESTORE_LIST_PAGE_SIZE;
+    const normalized = Math.floor(parsed);
+    return normalized > 0 ? normalized : DEFAULT_RESTORE_LIST_PAGE_SIZE;
+  };
 
   /** Enables/disables all restore buttons rendered in the current backup table body. */
   const setRestoreButtonsDisabled = (disabled: boolean) => {
@@ -250,6 +263,7 @@ async function initDriveBackupSection(documentRef: Document): Promise<void> {
     openRestoreEl.disabled = busy || !isConnected;
     openRestoreEl.textContent = getRestoreButtonLabel();
     retentionEl.disabled = busy;
+    restorePageSizeEl.disabled = busy;
     setRestoreButtonsDisabled(busy || !isConnected);
     loadMoreBackupsEl.disabled = busy || !isConnected || !nextRestorePageToken;
     loadMoreBackupsEl.hidden = nextRestorePageToken === null;
@@ -364,7 +378,7 @@ async function initDriveBackupSection(documentRef: Document): Promise<void> {
       setStatus(driveStatusEl, 'Loading backups...');
       try {
         const token = await resolveConnectedToken();
-        const page = await listDriveBackupsPage(token, undefined, RESTORE_LIST_PAGE_SIZE);
+        const page = await listDriveBackupsPage(token, undefined, getRestoreListPageSize());
         restoreBackups = page.backups;
         nextRestorePageToken = page.nextPageToken;
         renderDriveBackups(backupListEl, restoreBackups);
@@ -397,7 +411,7 @@ async function initDriveBackupSection(documentRef: Document): Promise<void> {
       setStatus(driveStatusEl, 'Loading more backups...');
       try {
         const token = await resolveConnectedToken();
-        const page = await listDriveBackupsPage(token, nextRestorePageToken, RESTORE_LIST_PAGE_SIZE);
+        const page = await listDriveBackupsPage(token, nextRestorePageToken, getRestoreListPageSize());
         const seenIds = new Set(restoreBackups.map((entry) => entry.fileId));
         const uniqueNext = page.backups.filter((entry) => !seenIds.has(entry.fileId));
         restoreBackups = [...restoreBackups, ...uniqueNext];
