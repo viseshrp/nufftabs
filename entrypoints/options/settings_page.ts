@@ -568,11 +568,7 @@ async function initDriveBackupSection(documentRef: Document): Promise<void> {
            */
           if (currentPageBackups.length === 0 && currentPageToken !== null) {
             setStatus(driveStatusEl, 'Loading previous page...');
-            const hasHistoryToken = previousPageTokens.length > 0;
-            const previousPageToken = hasHistoryToken ? previousPageTokens[previousPageTokens.length - 1] ?? '' : '';
-            if (hasHistoryToken) {
-              previousPageTokens = previousPageTokens.slice(0, -1);
-            }
+            const previousPageToken = previousPageTokens.pop() ?? '';
             const resolvedPreviousPageToken = previousPageToken.length > 0 ? previousPageToken : undefined;
             const page = await listDriveBackupsPage(token, resolvedPreviousPageToken, getRestoreListPageSize());
             applyRestorePage(page.backups, resolvedPreviousPageToken ?? null, page.nextPageToken);
