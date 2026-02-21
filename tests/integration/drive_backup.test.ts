@@ -1122,6 +1122,153 @@ describe('drive backup integration', () => {
     await waitForCondition(() => (driveStatus.textContent ?? '').includes('Drive list files failed (500): boom'));
   });
 
+  it('shows previous-page failure status when back navigation request fails', async () => {
+    const mock = createMockChrome({
+      initialStorage: {
+        [STORAGE_KEYS.settings]: {
+          excludePinned: true,
+          restoreBatchSize: 100,
+          discardRestoredTabs: false,
+          duplicateTabsPolicy: 'allow',
+          theme: 'os',
+        },
+      },
+    });
+    setMockChrome(mock.chrome);
+
+    mock.chrome.identity.getAuthToken = (_details, callback) => {
+      delete mock.chrome.runtime.lastError;
+      callback('token-1');
+    };
+
+    let firstPageRequests = 0;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: string | URL) => {
+        const url = String(input);
+        if (url.includes('/drive/v3/files?') && url.includes('mimeType')) {
+          return new Response(JSON.stringify({ files: [{ id: 'folder-1' }] }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          });
+        }
+        if (url.includes('/drive/v3/files?') && url.includes('pageToken=token-2')) {
+          return new Response(
+            JSON.stringify({
+              files: [{ id: 'f2', name: 'backup-second-g1.json', createdTime: '2024-01-02T00:00:00.000Z', size: '20' }],
+            }),
+            {
+              status: 200,
+              headers: { 'Content-Type': 'application/json' },
+            },
+          );
+        }
+        if (url.includes('/drive/v3/files?')) {
+          firstPageRequests += 1;
+          if (firstPageRequests >= 2) {
+            return new Response('prev-boom', { status: 500 });
+          }
+          return new Response(
+            JSON.stringify({
+              files: [{ id: 'f1', name: 'backup-first-g1.json', createdTime: '2024-01-01T00:00:00.000Z', size: '10' }],
+              nextPageToken: 'token-2',
+            }),
+            {
+              status: 200,
+              headers: { 'Content-Type': 'application/json' },
+            },
+          );
+        }
+        return new Response('', { status: 200 });
+      }),
+    );
+
+    mountSettingsDom();
+    await initSettingsPage(document);
+
+    const openRestore = document.querySelector<HTMLButtonElement>('#openDriveRestore');
+    const previousPage = document.querySelector<HTMLButtonElement>('#previousDriveBackupsPage');
+    const nextPage = document.querySelector<HTMLButtonElement>('#nextDriveBackupsPage');
+    const driveStatus = document.querySelector<HTMLDivElement>('#snackbar');
+    if (!openRestore || !previousPage || !nextPage || !driveStatus) {
+      throw new Error('Missing restore controls');
+    }
+
+    openRestore.click();
+    await waitForCondition(() => nextPage.disabled === false && previousPage.disabled === true);
+    nextPage.click();
+    await waitForCondition(() => previousPage.disabled === false);
+    previousPage.click();
+    await waitForCondition(() => (driveStatus.textContent ?? '').includes('Drive list files failed (500): prev-boom'));
+  });
+
+  it('shows page-size update failure status when resize request fails', async () => {
+    const mock = createMockChrome({
+      initialStorage: {
+        [STORAGE_KEYS.settings]: {
+          excludePinned: true,
+          restoreBatchSize: 100,
+          discardRestoredTabs: false,
+          duplicateTabsPolicy: 'allow',
+          theme: 'os',
+        },
+      },
+    });
+    setMockChrome(mock.chrome);
+
+    mock.chrome.identity.getAuthToken = (_details, callback) => {
+      delete mock.chrome.runtime.lastError;
+      callback('token-1');
+    };
+
+    let listRequestCount = 0;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: string | URL) => {
+        const url = String(input);
+        if (url.includes('/drive/v3/files?') && url.includes('mimeType')) {
+          return new Response(JSON.stringify({ files: [{ id: 'folder-1' }] }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          });
+        }
+        if (url.includes('/drive/v3/files?')) {
+          listRequestCount += 1;
+          if (listRequestCount >= 2) {
+            return new Response('resize-boom', { status: 500 });
+          }
+          return new Response(
+            JSON.stringify({
+              files: [{ id: 'f1', name: 'backup-first-g1.json', createdTime: '2024-01-01T00:00:00.000Z', size: '10' }],
+            }),
+            {
+              status: 200,
+              headers: { 'Content-Type': 'application/json' },
+            },
+          );
+        }
+        return new Response('', { status: 200 });
+      }),
+    );
+
+    mountSettingsDom();
+    await initSettingsPage(document);
+
+    const openRestore = document.querySelector<HTMLButtonElement>('#openDriveRestore');
+    const restorePageSize = document.querySelector<HTMLSelectElement>('#driveRestorePageSize');
+    const driveStatus = document.querySelector<HTMLDivElement>('#snackbar');
+    if (!openRestore || !restorePageSize || !driveStatus) {
+      throw new Error('Missing restore controls');
+    }
+
+    openRestore.click();
+    await waitForCondition(() => (driveStatus.textContent ?? '').includes('Showing 1 backup on this page.'));
+
+    restorePageSize.value = '10';
+    restorePageSize.dispatchEvent(new Event('change'));
+    await waitForCondition(() => (driveStatus.textContent ?? '').includes('Drive list files failed (500): resize-boom'));
+  });
+
   it('handles restore-list auth errors when restore is triggered without connection state', async () => {
     const mock = createMockChrome({
       initialStorage: {
