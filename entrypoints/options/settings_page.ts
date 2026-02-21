@@ -20,6 +20,7 @@ import {
   removeCachedAuthToken,
   revokeToken,
 } from '../drive/auth';
+import { deleteFile } from '../drive/drive_api';
 import {
   listDriveBackupsPage,
   performBackup,
@@ -93,29 +94,54 @@ function renderDriveBackups(listEl: HTMLTableSectionElement | null, backups: Dri
   if (!listEl) return;
 
   if (backups.length === 0) {
-    listEl.innerHTML = '<tr><td class="row-empty" colspan="4">No backups found yet.</td></tr>';
+    const emptyRow = document.createElement('tr');
+    const emptyCell = document.createElement('td');
+    emptyCell.className = 'row-empty';
+    emptyCell.colSpan = 4;
+    emptyCell.textContent = 'No backups found yet.';
+    emptyRow.appendChild(emptyCell);
+    listEl.replaceChildren(emptyRow);
     return;
   }
 
-  const rows = backups
-    .map((entry) => {
-      const when = formatBackupTimestamp(entry.timestamp);
-      const groups = entry.tabGroupCount;
-      const size = formatBytes(entry.size);
-      return [
-        '<tr>',
-        `<td>${when}</td>`,
-        `<td>${groups}</td>`,
-        `<td>${size}</td>`,
-        '<td>',
-        `<button type="button" data-action="restore-backup" data-file-id="${entry.fileId}">Restore</button>`,
-        '</td>',
-        '</tr>',
-      ].join('');
-    })
-    .join('');
+  const rowNodes: HTMLTableRowElement[] = backups.map((entry) => {
+    const row = document.createElement('tr');
 
-  listEl.innerHTML = rows;
+    const whenCell = document.createElement('td');
+    whenCell.textContent = formatBackupTimestamp(entry.timestamp);
+    row.appendChild(whenCell);
+
+    const groupsCell = document.createElement('td');
+    groupsCell.textContent = String(entry.tabGroupCount);
+    row.appendChild(groupsCell);
+
+    const sizeCell = document.createElement('td');
+    sizeCell.textContent = formatBytes(entry.size);
+    row.appendChild(sizeCell);
+
+    const actionsCell = document.createElement('td');
+    actionsCell.className = 'row-actions';
+
+    const restoreButton = document.createElement('button');
+    restoreButton.type = 'button';
+    restoreButton.dataset.action = 'restore-backup';
+    restoreButton.dataset.fileId = entry.fileId;
+    restoreButton.textContent = 'Restore';
+    actionsCell.appendChild(restoreButton);
+
+    const deleteButton = document.createElement('button');
+    deleteButton.type = 'button';
+    deleteButton.className = 'danger';
+    deleteButton.dataset.action = 'delete-backup';
+    deleteButton.dataset.fileId = entry.fileId;
+    deleteButton.textContent = 'Delete';
+    actionsCell.appendChild(deleteButton);
+
+    row.appendChild(actionsCell);
+    return row;
+  });
+
+  listEl.replaceChildren(...rowNodes);
 }
 
 /**
@@ -123,13 +149,17 @@ function renderDriveBackups(listEl: HTMLTableSectionElement | null, backups: Dri
  * This section is intentionally isolated so missing elements never break base settings.
  */
 async function initDriveBackupSection(documentRef: Document): Promise<void> {
+  /** Default restore page size used when dropdown input is unavailable/invalid. */
+  const DEFAULT_RESTORE_LIST_PAGE_SIZE = 5;
   const driveSectionEl = documentRef.querySelector<HTMLElement>('.drive-backup');
   const openAuthEl = documentRef.querySelector<HTMLButtonElement>('#openDriveAuth');
   const backupNowEl = documentRef.querySelector<HTMLButtonElement>('#backupNow');
   const openRestoreEl = documentRef.querySelector<HTMLButtonElement>('#openDriveRestore');
   const retentionEl = documentRef.querySelector<HTMLInputElement>('#driveRetentionCount');
   const backupListEl = documentRef.querySelector<HTMLTableSectionElement>('#driveBackupList');
-  const loadMoreBackupsEl = documentRef.querySelector<HTMLButtonElement>('#loadMoreDriveBackups');
+  const restorePageSizeEl = documentRef.querySelector<HTMLSelectElement>('#driveRestorePageSize');
+  const previousBackupsPageEl = documentRef.querySelector<HTMLButtonElement>('#previousDriveBackupsPage');
+  const nextBackupsPageEl = documentRef.querySelector<HTMLButtonElement>('#nextDriveBackupsPage');
   const driveStatusEl = documentRef.querySelector<HTMLDivElement>('#driveStatus');
   const driveRestoreDialogEl = documentRef.querySelector<HTMLDialogElement>('#driveRestoreDialog');
   const closeDriveRestoreEl = documentRef.querySelector<HTMLButtonElement>('#closeDriveRestore');
@@ -140,7 +170,9 @@ async function initDriveBackupSection(documentRef: Document): Promise<void> {
     !openRestoreEl ||
     !retentionEl ||
     !backupListEl ||
-    !loadMoreBackupsEl ||
+    !restorePageSizeEl ||
+    !previousBackupsPageEl ||
+    !nextBackupsPageEl ||
     !driveRestoreDialogEl ||
     !closeDriveRestoreEl
   ) {
@@ -158,19 +190,37 @@ async function initDriveBackupSection(documentRef: Document): Promise<void> {
     | 'backup'
     | 'loading_restore_list'
     | 'loading_more_restore_list'
+    | 'deleting_backup'
     | 'restore'
     | null;
   let busyReason: DriveBusyReason = null;
   let isConnected = false;
   let currentToken: string | null = null;
-  let restoreBackups: DriveBackupEntry[] = [];
-  let nextRestorePageToken: string | null = null;
+  let currentPageBackups: DriveBackupEntry[] = [];
+  let currentPageToken: string | null = null;
+  let nextPageToken: string | null = null;
+  /**
+   * Token stack for backward navigation.
+   * The root/first page is represented with an empty-string sentinel.
+   */
+  let previousPageTokens: string[] = [];
 
-  /** Enables/disables all restore buttons rendered in the current backup table body. */
+  /**
+   * Reads selected restore page size from modal UI.
+   * Falls back to a safe default when DOM value is malformed.
+   */
+  const getRestoreListPageSize = (): number => {
+    const parsed = Number(restorePageSizeEl.value);
+    if (!Number.isFinite(parsed)) return DEFAULT_RESTORE_LIST_PAGE_SIZE;
+    const normalized = Math.floor(parsed);
+    return normalized > 0 ? normalized : DEFAULT_RESTORE_LIST_PAGE_SIZE;
+  };
+
+  /** Enables/disables all row action buttons rendered in the current backup table body. */
   const setRestoreButtonsDisabled = (disabled: boolean) => {
-    const restoreButtons = backupListEl.querySelectorAll<HTMLButtonElement>('button[data-action="restore-backup"]');
-    for (const restoreButton of restoreButtons) {
-      restoreButton.disabled = disabled;
+    const actionButtons = backupListEl.querySelectorAll<HTMLButtonElement>('button[data-action]');
+    for (const actionButton of actionButtons) {
+      actionButton.disabled = disabled;
     }
   };
 
@@ -194,12 +244,6 @@ async function initDriveBackupSection(documentRef: Document): Promise<void> {
     if (busyReason === 'loading_restore_list') return 'Loading backups...';
     if (busyReason === 'restore') return 'Restoring...';
     return 'Restore from backup';
-  };
-
-  /** Computes label for modal pagination action so users can tell when additional pages are loading. */
-  const getLoadMoreButtonLabel = () => {
-    if (busyReason === 'loading_more_restore_list') return 'Loading more backups...';
-    return 'Load more backups';
   };
 
   /** Opens restore dialog safely in both real browser runtime and test/runtime contexts without `showModal`. */
@@ -248,10 +292,12 @@ async function initDriveBackupSection(documentRef: Document): Promise<void> {
     openRestoreEl.disabled = busy || !isConnected;
     openRestoreEl.textContent = getRestoreButtonLabel();
     retentionEl.disabled = busy;
+    restorePageSizeEl.disabled = busy;
     setRestoreButtonsDisabled(busy || !isConnected);
-    loadMoreBackupsEl.disabled = busy || !isConnected || !nextRestorePageToken;
-    loadMoreBackupsEl.hidden = nextRestorePageToken === null;
-    loadMoreBackupsEl.textContent = getLoadMoreButtonLabel();
+    previousBackupsPageEl.disabled = busy || !isConnected || previousPageTokens.length === 0;
+    nextBackupsPageEl.disabled = busy || !isConnected || nextPageToken === null;
+    previousBackupsPageEl.textContent = 'Previous';
+    nextBackupsPageEl.textContent = 'Next';
 
     if (!driveSectionEl) return;
     driveSectionEl.setAttribute('aria-busy', busy ? 'true' : 'false');
@@ -269,6 +315,43 @@ async function initDriveBackupSection(documentRef: Document): Promise<void> {
     currentToken = token;
     isConnected = Boolean(token);
     applyDriveUiState();
+  };
+
+  /** Replaces modal rows with a single page and stores pagination cursors for subsequent navigation. */
+  const applyRestorePage = (
+    pageBackups: DriveBackupEntry[],
+    pageToken: string | null,
+    nextToken: string | null,
+  ) => {
+    currentPageBackups = pageBackups;
+    currentPageToken = pageToken;
+    nextPageToken = nextToken;
+    renderDriveBackups(backupListEl, currentPageBackups);
+  };
+
+  /** Status helper for page-based restore list updates (always scoped to the currently visible page only). */
+  const setCurrentPageStatus = () => {
+    if (currentPageBackups.length === 0) {
+      setStatus(driveStatusEl, 'No backups found. Create a backup first, then restore it here.');
+      return;
+    }
+    setStatus(
+      driveStatusEl,
+      `Showing ${currentPageBackups.length} backup${currentPageBackups.length === 1 ? '' : 's'} on this page.`,
+    );
+  };
+
+  /**
+   * Re-fetches the currently selected restore page using the latest dropdown page-size value.
+   * This keeps visible rows synchronized with user-selected page size (both up/down changes).
+   */
+  const reloadCurrentRestorePageForSelectedSize = async () => {
+    const token = await resolveConnectedToken();
+    const targetPageToken = currentPageToken ?? undefined;
+    const page = await listDriveBackupsPage(token, targetPageToken, getRestoreListPageSize());
+    previousPageTokens = [];
+    applyRestorePage(page.backups, currentPageToken, page.nextPageToken);
+    setCurrentPageStatus();
   };
 
   const retention = await readRetentionCount();
@@ -362,18 +445,12 @@ async function initDriveBackupSection(documentRef: Document): Promise<void> {
       setStatus(driveStatusEl, 'Loading backups...');
       try {
         const token = await resolveConnectedToken();
-        const page = await listDriveBackupsPage(token);
-        restoreBackups = page.backups;
-        nextRestorePageToken = page.nextPageToken;
-        renderDriveBackups(backupListEl, restoreBackups);
+        const page = await listDriveBackupsPage(token, undefined, getRestoreListPageSize());
+        previousPageTokens = [];
+        applyRestorePage(page.backups, null, page.nextPageToken);
         applyDriveUiState();
         openRestoreDialog();
-        setStatus(
-          driveStatusEl,
-          restoreBackups.length > 0
-            ? 'Choose a backup to restore.'
-            : 'No backups found. Create a backup first, then restore it here.',
-        );
+        setCurrentPageStatus();
       } catch (error) {
         const message = formatDriveAuthError(error, 'Failed to load backup list.');
         setStatus(driveStatusEl, message);
@@ -384,31 +461,67 @@ async function initDriveBackupSection(documentRef: Document): Promise<void> {
     })();
   });
 
-  /**
-   * Fetches the next restore-list page only when users request more rows.
-   * This keeps list rendering responsive even for accounts with many backups.
-   */
-  loadMoreBackupsEl.addEventListener('click', () => {
+  /** Fetches and shows the next restore page only when explicitly requested by users. */
+  nextBackupsPageEl.addEventListener('click', () => {
     void (async () => {
-      if (!nextRestorePageToken) return;
+      if (!nextPageToken) return;
       setBusyReason('loading_more_restore_list');
-      setStatus(driveStatusEl, 'Loading more backups...');
+      setStatus(driveStatusEl, 'Loading next page...');
       try {
         const token = await resolveConnectedToken();
-        const page = await listDriveBackupsPage(token, nextRestorePageToken);
-        const seenIds = new Set(restoreBackups.map((entry) => entry.fileId));
-        const uniqueNext = page.backups.filter((entry) => !seenIds.has(entry.fileId));
-        restoreBackups = [...restoreBackups, ...uniqueNext];
-        nextRestorePageToken = page.nextPageToken;
-        renderDriveBackups(backupListEl, restoreBackups);
-        setStatus(
-          driveStatusEl,
-          nextRestorePageToken
-            ? `Loaded ${restoreBackups.length} backup${restoreBackups.length === 1 ? '' : 's'}.`
-            : `Loaded all ${restoreBackups.length} backup${restoreBackups.length === 1 ? '' : 's'}.`,
-        );
+        previousPageTokens = [...previousPageTokens, currentPageToken ?? ''];
+        const targetPageToken = nextPageToken;
+        const page = await listDriveBackupsPage(token, targetPageToken, getRestoreListPageSize());
+        applyRestorePage(page.backups, targetPageToken, page.nextPageToken);
+        setCurrentPageStatus();
       } catch (error) {
-        const message = formatDriveAuthError(error, 'Failed to load more backups.');
+        const message = formatDriveAuthError(error, 'Failed to load next page.');
+        setStatus(driveStatusEl, message);
+      } finally {
+        setBusyReason(null);
+        applyDriveUiState();
+        await refreshAuthState();
+      }
+    })();
+  });
+
+  /** Fetches and shows the previous restore page only when explicitly requested by users. */
+  previousBackupsPageEl.addEventListener('click', () => {
+    void (async () => {
+      if (previousPageTokens.length === 0) return;
+      setBusyReason('loading_more_restore_list');
+      setStatus(driveStatusEl, 'Loading previous page...');
+      try {
+        const token = await resolveConnectedToken();
+        const previousPageToken = previousPageTokens.pop() ?? '';
+        const resolvedPreviousPageToken = previousPageToken.length > 0 ? previousPageToken : undefined;
+        const page = await listDriveBackupsPage(token, resolvedPreviousPageToken, getRestoreListPageSize());
+        applyRestorePage(page.backups, resolvedPreviousPageToken ?? null, page.nextPageToken);
+        setCurrentPageStatus();
+      } catch (error) {
+        const message = formatDriveAuthError(error, 'Failed to load previous page.');
+        setStatus(driveStatusEl, message);
+      } finally {
+        setBusyReason(null);
+        applyDriveUiState();
+        await refreshAuthState();
+      }
+    })();
+  });
+
+  /**
+   * Applies new page-size selection immediately while restore modal is open.
+   * The visible list is replaced with a freshly fetched page and prior page-history is cleared.
+   */
+  restorePageSizeEl.addEventListener('change', () => {
+    void (async () => {
+      if (!driveRestoreDialogEl.open) return;
+      setBusyReason('loading_restore_list');
+      setStatus(driveStatusEl, 'Updating page size...');
+      try {
+        await reloadCurrentRestorePageForSelectedSize();
+      } catch (error) {
+        const message = formatDriveAuthError(error, 'Failed to update restore page size.');
         setStatus(driveStatusEl, message);
       } finally {
         setBusyReason(null);
@@ -426,34 +539,77 @@ async function initDriveBackupSection(documentRef: Document): Promise<void> {
     const target = event.target;
     if (!(target instanceof HTMLElement)) return;
 
-    const button = target.closest<HTMLButtonElement>('button[data-action="restore-backup"]');
+    const button = target.closest<HTMLButtonElement>('button[data-action]');
     if (!button) return;
 
     const fileId = button.dataset.fileId;
     if (!fileId) return;
 
-    void (async () => {
-      setBusyReason('restore');
-      setStatus(driveStatusEl, 'Restoring backup...');
+    if (button.dataset.action === 'restore-backup') {
+      void (async () => {
+        setBusyReason('restore');
+        setStatus(driveStatusEl, 'Restoring backup...');
 
-      try {
-        const token = await getAuthToken(true);
-        currentToken = token;
-        isConnected = true;
-        const restored = await restoreFromBackup(fileId, token);
-        closeRestoreDialog();
-        setStatus(
-          driveStatusEl,
-          `Restore completed. ${restored.restoredTabs} tab${restored.restoredTabs === 1 ? '' : 's'} across ${restored.restoredGroups} group${restored.restoredGroups === 1 ? '' : 's'}.`,
-        );
-      } catch (error) {
-        const message = formatDriveAuthError(error, 'Restore failed.');
-        setStatus(driveStatusEl, message);
-      } finally {
-        setBusyReason(null);
-        await refreshAuthState();
-      }
-    })();
+        try {
+          const token = await getAuthToken(true);
+          currentToken = token;
+          isConnected = true;
+          const restored = await restoreFromBackup(fileId, token);
+          closeRestoreDialog();
+          setStatus(
+            driveStatusEl,
+            `Restore completed. ${restored.restoredTabs} tab${restored.restoredTabs === 1 ? '' : 's'} across ${restored.restoredGroups} group${restored.restoredGroups === 1 ? '' : 's'}.`,
+          );
+        } catch (error) {
+          const message = formatDriveAuthError(error, 'Restore failed.');
+          setStatus(driveStatusEl, message);
+        } finally {
+          setBusyReason(null);
+          await refreshAuthState();
+        }
+      })();
+      return;
+    }
+
+    if (button.dataset.action === 'delete-backup') {
+      void (async () => {
+        setBusyReason('deleting_backup');
+        setStatus(driveStatusEl, 'Deleting backup...');
+
+        try {
+          /**
+           * Delete removes only the selected Drive backup file by its file ID.
+           * The loaded modal list is then updated in-place to avoid a full refetch.
+           */
+          const token = await resolveConnectedToken();
+          await deleteFile(fileId, token);
+          currentPageBackups = currentPageBackups.filter((entry) => entry.fileId !== fileId);
+          /**
+           * UX rule for page-mode pagination:
+           * If the current page becomes empty after delete and a prior page exists,
+           * navigate back one page immediately so users are never stranded on an empty page.
+           */
+          if (currentPageBackups.length === 0 && currentPageToken !== null) {
+            setStatus(driveStatusEl, 'Loading previous page...');
+            const previousPageToken = previousPageTokens.pop() ?? '';
+            const resolvedPreviousPageToken = previousPageToken.length > 0 ? previousPageToken : undefined;
+            const page = await listDriveBackupsPage(token, resolvedPreviousPageToken, getRestoreListPageSize());
+            applyRestorePage(page.backups, resolvedPreviousPageToken ?? null, page.nextPageToken);
+            setCurrentPageStatus();
+            return;
+          }
+          renderDriveBackups(backupListEl, currentPageBackups);
+          setCurrentPageStatus();
+        } catch (error) {
+          const message = formatDriveAuthError(error, 'Delete failed.');
+          setStatus(driveStatusEl, message);
+        } finally {
+          setBusyReason(null);
+          applyDriveUiState();
+          await refreshAuthState();
+        }
+      })();
+    }
   });
 
   /**
@@ -471,9 +627,8 @@ async function initDriveBackupSection(documentRef: Document): Promise<void> {
 
   setBusyReason('loading');
   setStatus(driveStatusEl, 'Checking Google Drive connection...');
-  restoreBackups = [];
-  nextRestorePageToken = null;
-  renderDriveBackups(backupListEl, []);
+  previousPageTokens = [];
+  applyRestorePage([], null, null);
   await refreshAuthState();
   setBusyReason(null);
   if (!isConnected) {
@@ -493,12 +648,23 @@ export async function initSettingsPage(documentRef: Document = document): Promis
   const discardRadios = Array.from(
     documentRef.querySelectorAll<HTMLInputElement>('input[name="discardRestoredTabs"]'),
   );
+  const duplicateTabsPolicyRadios = Array.from(
+    documentRef.querySelectorAll<HTMLInputElement>('input[name="duplicateTabsPolicy"]'),
+  );
   const themeRadios = Array.from(
     documentRef.querySelectorAll<HTMLInputElement>('input[name="theme"]'),
   );
   const statusEl = documentRef.querySelector<HTMLDivElement>('#status');
 
-  if (!excludePinnedEl || !restoreBatchSizeEl || discardRadios.length === 0 || themeRadios.length === 0) return;
+  if (
+    !excludePinnedEl ||
+    !restoreBatchSizeEl ||
+    discardRadios.length === 0 ||
+    duplicateTabsPolicyRadios.length === 0 ||
+    themeRadios.length === 0
+  ) {
+    return;
+  }
 
   const setDiscardRadios = (enabled: boolean) => {
     for (const radio of discardRadios) {
@@ -522,6 +688,15 @@ export async function initSettingsPage(documentRef: Document = document): Promis
     const val = selected?.value;
     if (val === 'light' || val === 'dark') return val;
     return 'os';
+  };
+  const setDuplicateTabsPolicyRadios = (policy: Settings['duplicateTabsPolicy']) => {
+    for (const radio of duplicateTabsPolicyRadios) {
+      radio.checked = radio.value === policy;
+    }
+  };
+  const getDuplicateTabsPolicySelection = (): Settings['duplicateTabsPolicy'] => {
+    const selected = duplicateTabsPolicyRadios.find((radio) => radio.checked);
+    return selected?.value === 'reject' ? 'reject' : 'allow';
   };
 
   const applyTheme = (theme: Settings['theme']) => {
@@ -548,6 +723,7 @@ export async function initSettingsPage(documentRef: Document = document): Promis
   excludePinnedEl.checked = settings.excludePinned;
   restoreBatchSizeEl.value = hasCustomBatchSize ? String(settings.restoreBatchSize) : '';
   setDiscardRadios(settings.discardRestoredTabs);
+  setDuplicateTabsPolicyRadios(settings.duplicateTabsPolicy);
   setThemeRadios(settings.theme);
   applyTheme(settings.theme);
 
@@ -559,6 +735,7 @@ export async function initSettingsPage(documentRef: Document = document): Promis
       excludePinnedEl.checked = settings.excludePinned;
       restoreBatchSizeEl.value = customBatchSize ? String(settings.restoreBatchSize) : '';
       setDiscardRadios(settings.discardRestoredTabs);
+      setDuplicateTabsPolicyRadios(settings.duplicateTabsPolicy);
       setThemeRadios(settings.theme);
       applyTheme(settings.theme);
       setStatus(statusEl, 'Failed to save settings.');
@@ -574,6 +751,10 @@ export async function initSettingsPage(documentRef: Document = document): Promis
         typeof nextSettings.discardRestoredTabs === 'boolean'
           ? nextSettings.discardRestoredTabs
           : DEFAULT_SETTINGS.discardRestoredTabs,
+      duplicateTabsPolicy:
+        nextSettings.duplicateTabsPolicy === 'allow' || nextSettings.duplicateTabsPolicy === 'reject'
+          ? nextSettings.duplicateTabsPolicy
+          : DEFAULT_SETTINGS.duplicateTabsPolicy,
       theme: nextSettings.theme ?? settings.theme,
     };
     customBatchSize =
@@ -587,6 +768,7 @@ export async function initSettingsPage(documentRef: Document = document): Promis
       excludePinned: excludePinnedEl.checked,
       restoreBatchSize: getRestoreBatchSizeSetting(),
       discardRestoredTabs: getDiscardSelection(),
+      duplicateTabsPolicy: getDuplicateTabsPolicySelection(),
       theme: getThemeSelection(),
     };
     await saveSettings(nextSettings);
@@ -621,6 +803,11 @@ export async function initSettingsPage(documentRef: Document = document): Promis
   }
 
   for (const radio of themeRadios) {
+    radio.addEventListener('change', () => {
+      runUpdate();
+    });
+  }
+  for (const radio of duplicateTabsPolicyRadios) {
     radio.addEventListener('change', () => {
       runUpdate();
     });

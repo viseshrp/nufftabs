@@ -62,4 +62,5 @@ describe('condense', () => {
     expect(saved[0]?.savedAt).toBe(now);
     expect(saved[2]?.id).toBe('old');
   });
+
 });

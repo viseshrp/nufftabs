@@ -52,6 +52,20 @@
           <span>Enabled</span>
         </label>
       </div>
+      <div class="setting-group" role="group" aria-labelledby="duplicateTabsPolicyLabel">
+        <div id="duplicateTabsPolicyLabel" class="setting-label">Duplicates</div>
+        <p class="setting-help">
+          Choose whether tabs with URLs already saved in nufftabs should be added again.
+        </p>
+        <label class="setting-radio">
+          <input id="duplicateTabsAllow" type="radio" name="duplicateTabsPolicy" value="allow" checked />
+          <span>Allow duplicates</span>
+        </label>
+        <label class="setting-radio">
+          <input id="duplicateTabsReject" type="radio" name="duplicateTabsPolicy" value="reject" />
+          <span>Silently reject duplicates</span>
+        </label>
+      </div>
     </section>
     <section class="settings drive-backup" aria-labelledby="driveBackupTitle">
       <h2 id="driveBackupTitle">Google Drive backup</h2>
@@ -92,7 +106,19 @@
         </table>
       </div>
       <div class="drive-restore-actions">
-        <button id="loadMoreDriveBackups" type="button">Load more backups</button>
+        <label class="drive-page-size" for="driveRestorePageSize">
+          <span>Backups per page</span>
+          <select id="driveRestorePageSize">
+            <option value="5" selected>5</option>
+            <option value="10">10</option>
+            <option value="15">15</option>
+            <option value="20">20</option>
+          </select>
+        </label>
+        <div class="drive-page-nav">
+          <button id="previousDriveBackupsPage" type="button">Previous</button>
+          <button id="nextDriveBackupsPage" type="button">Next</button>
+        </div>
       </div>
     </dialog>
     <div id="snackbar" class="snackbar" role="status" aria-live="polite"></div>

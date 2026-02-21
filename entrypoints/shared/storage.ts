@@ -29,7 +29,12 @@ export type Settings = {
   discardRestoredTabs: boolean;
   /** UI color scheme: follow OS, force light, or force dark. */
   theme: 'os' | 'light' | 'dark';
+  /** Duplicate-tab handling mode for condense/import flows. */
+  duplicateTabsPolicy: DuplicateTabsPolicy;
 };
+
+/** Supported duplicate handling modes for newly saved tabs. */
+export type DuplicateTabsPolicy = 'allow' | 'reject';
 
 /** Partial settings input used when writing user preferences; missing fields keep defaults. */
 export type SettingsInput = {
@@ -37,6 +42,7 @@ export type SettingsInput = {
   restoreBatchSize?: number;
   discardRestoredTabs?: boolean;
   theme?: 'os' | 'light' | 'dark';
+  duplicateTabsPolicy?: DuplicateTabsPolicy;
 };
 
 /** Top-level keys used in `chrome.storage.local`. */
@@ -51,6 +57,7 @@ export const DEFAULT_SETTINGS: Settings = {
   restoreBatchSize: 100,
   discardRestoredTabs: false,
   theme: 'os',
+  duplicateTabsPolicy: 'allow',
 };
 
 /** Relative path to the main list page used by `chrome.runtime.getURL`. */
@@ -191,6 +198,7 @@ export function normalizeSettings(value: unknown): Settings {
   const restoreBatchSize = (value as { restoreBatchSize?: unknown }).restoreBatchSize;
   const discardRestoredTabs = (value as { discardRestoredTabs?: unknown }).discardRestoredTabs;
   const theme = (value as { theme?: unknown }).theme;
+  const duplicateTabsPolicy = (value as { duplicateTabsPolicy?: unknown }).duplicateTabsPolicy;
 
   const parsedBatchSize =
     typeof restoreBatchSize === 'number' && Number.isFinite(restoreBatchSize)
@@ -201,6 +209,10 @@ export function normalizeSettings(value: unknown): Settings {
     typeof theme === 'string' && ['os', 'light', 'dark'].includes(theme)
       ? (theme as Settings['theme'])
       : DEFAULT_SETTINGS.theme;
+  const parsedDuplicateTabsPolicy =
+    duplicateTabsPolicy === 'allow' || duplicateTabsPolicy === 'reject'
+      ? duplicateTabsPolicy
+      : DEFAULT_SETTINGS.duplicateTabsPolicy;
 
   return {
     excludePinned: typeof excludePinned === 'boolean' ? excludePinned : DEFAULT_SETTINGS.excludePinned,
@@ -208,6 +220,7 @@ export function normalizeSettings(value: unknown): Settings {
     discardRestoredTabs:
       typeof discardRestoredTabs === 'boolean' ? discardRestoredTabs : DEFAULT_SETTINGS.discardRestoredTabs,
     theme: parsedTheme,
+    duplicateTabsPolicy: parsedDuplicateTabsPolicy,
   };
 }
 
@@ -345,6 +358,9 @@ export async function writeSettings(settings: SettingsInput): Promise<boolean> {
       ['os', 'light', 'dark'].includes(settings.theme)
     ) {
       payload.theme = settings.theme;
+    }
+    if (settings.duplicateTabsPolicy === 'allow' || settings.duplicateTabsPolicy === 'reject') {
+      payload.duplicateTabsPolicy = settings.duplicateTabsPolicy;
     }
     await chrome.storage.local.set({ [STORAGE_KEYS.settings]: payload });
     return true;

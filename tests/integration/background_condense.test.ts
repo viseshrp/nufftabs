@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { condenseCurrentWindow } from '../../entrypoints/background/condense';
-import { LIST_PAGE_PATH, readSavedGroups } from '../../entrypoints/shared/storage';
+import { LIST_PAGE_PATH, STORAGE_KEYS, readSavedGroups } from '../../entrypoints/shared/storage';
 import { createMockChrome, setMockChrome } from '../helpers/mock_chrome';
 
 describe('background condense', () => {
@@ -193,6 +193,34 @@ describe('background condense', () => {
     const windowKeys = Object.keys(savedGroups).filter((key) => key.startsWith(`${windowId}-`));
     expect(windowKeys).toHaveLength(2);
   });
+
+  it('silently skips duplicate URLs when duplicate rejection is enabled', async () => {
+    const mock = createMockChrome({
+      initialStorage: {
+        [STORAGE_KEYS.settings]: {
+          excludePinned: true,
+          duplicateTabsPolicy: 'reject',
+        },
+      },
+    });
+    setMockChrome(mock.chrome);
+
+    const firstWindow = mock.createWindow(['https://dup.com']);
+    const secondWindow = mock.createWindow(['https://dup.com', 'https://unique.com']);
+
+    await condenseCurrentWindow(firstWindow.id as number);
+    await condenseCurrentWindow(secondWindow.id as number);
+
+    const savedGroups = await readSavedGroups();
+    const allUrls = Object.values(savedGroups)
+      .flat()
+      .map((tab) => tab.url);
+    expect(allUrls.filter((url) => url === 'https://dup.com')).toHaveLength(1);
+    expect(allUrls).toContain('https://unique.com');
+
+    // Duplicate tabs that were not saved should remain open in the source window.
+    const secondWindowTabs = await mock.chrome.tabs.query({ windowId: secondWindow.id as number });
+    expect(secondWindowTabs.some((tab) => tab.url === 'https://dup.com')).toBe(true);
+    expect(secondWindowTabs.some((tab) => tab.url === 'https://unique.com')).toBe(false);
+  });
 });
-
-

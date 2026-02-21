@@ -240,6 +240,12 @@ h1 {
   text-align: right;
 }
 
+.drive-list-table td.row-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
 .drive-list-table .row-empty {
   text-align: center;
   color: var(--md-sys-color-on-surface-variant);
@@ -255,10 +261,40 @@ h1 {
   color: var(--md-sys-color-on-primary);
 }
 
+.drive-list-table button.danger {
+  background: var(--md-sys-color-error-container);
+  color: var(--md-sys-color-on-error-container);
+}
+
 .drive-restore-actions {
   display: flex;
-  justify-content: center;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
   margin-top: 12px;
+}
+
+.drive-page-size {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--md-sys-color-on-surface);
+  font-size: 13px;
+}
+
+.drive-page-size select {
+  border-radius: var(--md-sys-shape-corner-small);
+  border: 1px solid var(--md-sys-color-outline);
+  background: transparent;
+  color: var(--md-sys-color-on-surface);
+  padding: 5px 8px;
+  font-size: 13px;
+}
+
+.drive-page-nav {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .drive-restore-actions button {

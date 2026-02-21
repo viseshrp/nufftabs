@@ -13,14 +13,14 @@ nufftabs is a minimal Chrome (MV3) extension to condense all tabs from the curre
 - Export/import JSON (append or replace), import from file, and OneTab import.
 - Restore rules: single restore uses the current window; restore all opens new windows per chunk, reusing the list window only when it is the sole tab.
 - List tab is pinned and reused if it already exists.
-- Settings for “Exclude pinned tabs,” “Tabs per restore window,” and optional memory-saving restore.
+- Settings for “Exclude pinned tabs,” “Tabs per restore window,” duplicate handling, and optional memory-saving restore.
 - Optional manual Google Drive backup/restore from the options page.
 
 ## How it works
 
 ### Condense
 - Triggered by clicking the extension action icon.
-- Reads settings (`excludePinned`, `restoreBatchSize`, `discardRestoredTabs`) from `chrome.storage.local`.
+- Reads settings (`excludePinned`, `restoreBatchSize`, `discardRestoredTabs`, `duplicateTabsPolicy`) from `chrome.storage.local`.
 - Saves eligible tabs (URL + title + timestamp) to a new group under `savedTabs:<groupKey>` and updates `savedTabsIndex`.
 - Closes eligible tabs.
 - Focuses an existing nufftabs list tab if one exists anywhere (most recently active), or creates a new one if none exist. The list tab is pinned.
@@ -75,7 +75,7 @@ tradeoffs. These are documented in code comments, but summarized here for mainta
 - **Storage schema:** saved tabs are stored per group under `savedTabs:<groupKey>` with a
   `savedTabsIndex` array listing active group keys. This avoids full-blob rewrites.
 - **Data shapes:** `SavedTab` requires a UUID `id`, non-empty `url`, `title`, and `savedAt`
-  epoch ms. Settings are `{ excludePinned, restoreBatchSize, discardRestoredTabs }`.
+  epoch ms. Settings are `{ excludePinned, restoreBatchSize, discardRestoredTabs, duplicateTabsPolicy, theme }`.
 - **Restore chunking:** `restoreBatchSize` controls how many tabs open per window during
   "Restore all" (one window per chunk, after any reused list window).
 - **Permissions:** `tabs`, `storage`, and `identity` are used.
@@ -159,6 +159,11 @@ The packaged extension zip is generated under `.output/`.
 1. Click **Delete all** on a group card.
 2. The selected group is removed.
 
+### Merge duplicates (one-time)
+1. Click **Merge duplicates** in the sticky top bar.
+2. Confirm the prompt to remove duplicates globally across all groups.
+3. nufftabs keeps the newest saved instance of each URL and removes older duplicates.
+
 ### Export / Import JSON
 1. Click the Export/Import control to open the panel.
 2. **Export** populates the JSON textarea, copies to clipboard (if allowed), and downloads a backup file.
@@ -188,6 +193,12 @@ The packaged extension zip is generated under `.output/`.
 3. Restored tabs are unloaded after their URLs are set and will load when clicked.
 4. If you turn the setting off, no discard scheduling runs (pending discards are skipped).
 
+### Duplicate handling
+1. Open the options page.
+2. Set **Duplicates** to **Allow duplicates** or **Silently reject duplicates**.
+3. When reject mode is enabled, condense and import flows skip URLs already saved in nufftabs.
+4. During condense in reject mode, skipped duplicate tabs are left open in the source window.
+
 ### Existing list tab reuse
 - If a list tab already exists anywhere, condense focuses the most recently active one.
 - If none exists, a new list tab is created and pinned.
@@ -212,7 +223,7 @@ not match the OAuth client's configured Chrome Extension ID.
 ## Project structure
 - `entrypoints/background/index.ts` — action handler, condense logic, list tab focus/pin.
 - `entrypoints/nufftabs/` — list UI (`index.html`, `index.ts`, `style.css`).
-- `entrypoints/options/` — settings UI for theme, exclude pinned tabs, restore batch size, memory-saving restore, and Drive backup actions.
+- `entrypoints/options/` — settings UI for theme, exclude pinned tabs, restore batch size, duplicate handling, memory-saving restore, and Drive backup actions.
 - `entrypoints/drive/` — Drive auth helpers, REST client, and backup orchestration logic.
 - `entrypoints/drive-auth/` — standalone auth page logic kept for direct-entry/debug flows.
 - `entrypoints/ui/notifications.ts` — shared user-notification adapters used by UI pages (snackbar + inline status text).

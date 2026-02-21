@@ -34,6 +34,7 @@ settings: {
   excludePinned: boolean;
   restoreBatchSize: number;
   discardRestoredTabs: boolean;
+  duplicateTabsPolicy: 'allow' | 'reject';
   theme: 'os' | 'light' | 'dark';
 }
 ```
@@ -69,7 +70,7 @@ savedTabs:123-1700000000000-uuid-a: [
 savedTabs:456-1700000001000-uuid-b: [
   { "id": "uuid-3", "url": "https://openai.com", "title": "OpenAI", "savedAt": 1737860100000 }
 ]
-settings: { "excludePinned": true, "restoreBatchSize": 100, "discardRestoredTabs": false, "theme": "os" }
+settings: { "excludePinned": true, "restoreBatchSize": 100, "discardRestoredTabs": false, "duplicateTabsPolicy": "allow", "theme": "os" }
 driveInstallId: "0f8fad5b-d9cb-469f-a165-70867728950e"
 driveRetentionCount: 10
 driveBackupIndex: {

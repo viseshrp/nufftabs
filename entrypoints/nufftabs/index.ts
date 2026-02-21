@@ -29,6 +29,7 @@ import {
   type SavedTab,
   type SavedTabGroups,
 } from '../shared/storage';
+import { appendTabsByDuplicatePolicy, collectSavedTabUrls } from '../shared/duplicates';
 import { logExtensionError, type ExtensionErrorOperation } from '../shared/utils';
 import { createSnackbarNotifier } from '../ui/notifications';
 
@@ -44,6 +45,8 @@ const searchTabsEl = document.querySelector<HTMLInputElement>('#searchTabs');
 const toggleIoEl = document.querySelector<HTMLButtonElement>('#toggleIo');
 /** Button that collapses or expands every group card at once. */
 const toggleCollapseAllEl = document.querySelector<HTMLButtonElement>('#toggleCollapseAll');
+/** Button that performs a one-time global duplicate cleanup across all saved groups. */
+const mergeDuplicatesEl = document.querySelector<HTMLButtonElement>('#mergeDuplicates');
 const exportJsonEl = document.querySelector<HTMLButtonElement>('#exportJson');
 const importJsonEl = document.querySelector<HTMLButtonElement>('#importJson');
 const importJsonReplaceEl = document.querySelector<HTMLButtonElement>('#importJsonReplace');
@@ -1235,6 +1238,58 @@ async function deleteGroup(groupKey: string): Promise<void> {
   setStatus('Deleted tabs.');
 }
 
+/** One-time cleanup action that removes duplicate URLs globally, keeping the newest saved instance. */
+async function mergeDuplicatesOnce(): Promise<void> {
+  const savedGroups = await readSavedGroups();
+  const sortedGroupKeys = Object.keys(savedGroups).sort(
+    (a, b) => (parseGroupCreationTime(b) ?? 0) - (parseGroupCreationTime(a) ?? 0),
+  );
+  const seenUrls = new Set<string>();
+  const dedupedGroups: SavedTabGroups = {};
+  let removedCount = 0;
+
+  // Traverse newest-first by group creation time so first-seen URLs are the winners.
+  for (const groupKey of sortedGroupKeys) {
+    const tabs = savedGroups[groupKey] ?? [];
+    const keptTabs: SavedTab[] = [];
+    // Preserve original in-group order while removing global URL duplicates.
+    for (const tab of tabs) {
+      if (seenUrls.has(tab.url)) {
+        removedCount += 1;
+        continue;
+      }
+      seenUrls.add(tab.url);
+      keptTabs.push(tab);
+    }
+    if (keptTabs.length > 0) {
+      dedupedGroups[groupKey] = keptTabs;
+    }
+  }
+
+  if (removedCount === 0) {
+    setStatus('No duplicates found.');
+    return;
+  }
+
+  const confirmed = window.confirm(
+    `Merge duplicates? This will remove ${removedCount} duplicate tab${removedCount === 1 ? '' : 's'}.`,
+  );
+  if (!confirmed) {
+    setStatus('Merge duplicates canceled.');
+    return;
+  }
+
+  const saved = await writeSavedGroups(dedupedGroups);
+  if (!saved) {
+    setStatus('Failed to merge duplicates.');
+    await refreshList();
+    return;
+  }
+  applyFullGroups(dedupedGroups);
+  setTabCount(countTotalTabs(dedupedGroups));
+  setStatus(`Removed ${removedCount} duplicate tab${removedCount === 1 ? '' : 's'}.`);
+}
+
 
 /** Moves a dragged tab from its source group into the target group (drag-and-drop handler). */
 async function handleDrop(targetGroupKey: string): Promise<void> {
@@ -1326,6 +1381,7 @@ async function exportJson(): Promise<void> {
 /** Parses JSON text and imports tabs in append or replace mode. */
 async function importJsonText(text: string, mode: 'append' | 'replace'): Promise<void> {
   try {
+    const settings = await readSettings();
     const parsed = JSON.parse(text);
     const windowId = await getCurrentWindowId();
     const fallbackKey = createCondenseGroupKey(windowId);
@@ -1334,10 +1390,12 @@ async function importJsonText(text: string, mode: 'append' | 'replace'): Promise
       setStatus('Import failed: JSON structure not recognized.');
       return;
     }
-    const importedCount = countTotalTabs(normalized);
     const existing = mode === 'replace' ? {} : await readSavedGroups();
     const nextGroups =
-      mode === 'replace' ? normalized : mergeGroups(existing, normalized);
+      mode === 'replace'
+        ? mergeGroups({}, normalized, settings.duplicateTabsPolicy)
+        : mergeGroups(existing, normalized, settings.duplicateTabsPolicy);
+    const importedCount = countTotalTabs(nextGroups) - countTotalTabs(existing);
     const saved = await writeSavedGroups(nextGroups);
     if (!saved) {
       setStatus('Import failed: Could not save tabs to storage.');
@@ -1394,6 +1452,7 @@ async function getCurrentWindowId(): Promise<number | undefined> {
 /** Parses OneTab export text from the IO textarea and appends the resulting tabs. */
 async function importOneTab(): Promise<void> {
   if (!jsonAreaEl) return;
+  const settings = await readSettings();
   const text = jsonAreaEl.value;
   const { tabs: imported, totalLines } = parseOneTabExport(text);
   const skipped = Math.max(0, totalLines - imported.length);
@@ -1404,7 +1463,18 @@ async function importOneTab(): Promise<void> {
   const windowId = await getCurrentWindowId();
   const groupKey = createCondenseGroupKey(windowId);
   const existing = state.indexedGroupKeySet.has(groupKey) ? await ensureGroupLoaded(groupKey) : [];
-  const updatedGroup = [...existing, ...imported];
+  let mergeResult: { tabs: SavedTab[]; addedCount: number };
+  if (settings.duplicateTabsPolicy === 'reject') {
+    const savedGroups = await readSavedGroups();
+    mergeResult = appendTabsByDuplicatePolicy(existing, imported, 'reject', collectSavedTabUrls(savedGroups));
+  } else {
+    mergeResult = appendTabsByDuplicatePolicy(existing, imported, 'allow');
+  }
+  const { tabs: updatedGroup, addedCount } = mergeResult;
+  if (addedCount === 0) {
+    setStatus('No new OneTab links found to import.');
+    return;
+  }
   const saved = await writeSavedGroup(groupKey, updatedGroup);
   if (!saved) {
     setStatus('Import failed: Could not save tabs to storage.');
@@ -1414,9 +1484,9 @@ async function importOneTab(): Promise<void> {
   upsertIndexedGroupKey(groupKey);
   state.currentGroups[groupKey] = updatedGroup;
   scheduleRenderGroups();
-  adjustTabCount(imported.length);
+  adjustTabCount(addedCount);
   const skippedMsg = skipped > 0 ? ` (skipped ${skipped} invalid lines)` : '';
-  setStatus(`Successfully imported ${imported.length} tab${imported.length === 1 ? '' : 's'}${skippedMsg}.`);
+  setStatus(`Successfully imported ${addedCount} tab${addedCount === 1 ? '' : 's'}${skippedMsg}.`);
 }
 
 /** Initializes the list page: loads data, binds all event listeners, and starts lazy loading. */
@@ -1443,6 +1513,9 @@ async function init(): Promise<void> {
   // Wire the collapse/expand-all toggle button.
   toggleCollapseAllEl?.addEventListener('click', () => {
     toggleAllGroups();
+  });
+  mergeDuplicatesEl?.addEventListener('click', () => {
+    runAsyncTask(mergeDuplicatesOnce(), 'Failed to merge duplicates');
   });
 
   groupsEl?.addEventListener('click', handleGroupAction);
