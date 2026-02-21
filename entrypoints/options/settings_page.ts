@@ -20,6 +20,7 @@ import {
   removeCachedAuthToken,
   revokeToken,
 } from '../drive/auth';
+import { deleteFile } from '../drive/drive_api';
 import {
   listDriveBackupsPage,
   performBackup,
@@ -107,8 +108,9 @@ function renderDriveBackups(listEl: HTMLTableSectionElement | null, backups: Dri
         `<td>${when}</td>`,
         `<td>${groups}</td>`,
         `<td>${size}</td>`,
-        '<td>',
+        '<td class="row-actions">',
         `<button type="button" data-action="restore-backup" data-file-id="${entry.fileId}">Restore</button>`,
+        `<button type="button" class="danger" data-action="delete-backup" data-file-id="${entry.fileId}">Delete</button>`,
         '</td>',
         '</tr>',
       ].join('');
@@ -162,6 +164,7 @@ async function initDriveBackupSection(documentRef: Document): Promise<void> {
     | 'backup'
     | 'loading_restore_list'
     | 'loading_more_restore_list'
+    | 'deleting_backup'
     | 'restore'
     | null;
   let busyReason: DriveBusyReason = null;
@@ -181,11 +184,11 @@ async function initDriveBackupSection(documentRef: Document): Promise<void> {
     return normalized > 0 ? normalized : DEFAULT_RESTORE_LIST_PAGE_SIZE;
   };
 
-  /** Enables/disables all restore buttons rendered in the current backup table body. */
+  /** Enables/disables all row action buttons rendered in the current backup table body. */
   const setRestoreButtonsDisabled = (disabled: boolean) => {
-    const restoreButtons = backupListEl.querySelectorAll<HTMLButtonElement>('button[data-action="restore-backup"]');
-    for (const restoreButton of restoreButtons) {
-      restoreButton.disabled = disabled;
+    const actionButtons = backupListEl.querySelectorAll<HTMLButtonElement>('button[data-action]');
+    for (const actionButton of actionButtons) {
+      actionButton.disabled = disabled;
     }
   };
 
@@ -442,34 +445,66 @@ async function initDriveBackupSection(documentRef: Document): Promise<void> {
     const target = event.target;
     if (!(target instanceof HTMLElement)) return;
 
-    const button = target.closest<HTMLButtonElement>('button[data-action="restore-backup"]');
+    const button = target.closest<HTMLButtonElement>('button[data-action]');
     if (!button) return;
 
     const fileId = button.dataset.fileId;
     if (!fileId) return;
 
-    void (async () => {
-      setBusyReason('restore');
-      setStatus(driveStatusEl, 'Restoring backup...');
+    if (button.dataset.action === 'restore-backup') {
+      void (async () => {
+        setBusyReason('restore');
+        setStatus(driveStatusEl, 'Restoring backup...');
 
-      try {
-        const token = await getAuthToken(true);
-        currentToken = token;
-        isConnected = true;
-        const restored = await restoreFromBackup(fileId, token);
-        closeRestoreDialog();
-        setStatus(
-          driveStatusEl,
-          `Restore completed. ${restored.restoredTabs} tab${restored.restoredTabs === 1 ? '' : 's'} across ${restored.restoredGroups} group${restored.restoredGroups === 1 ? '' : 's'}.`,
-        );
-      } catch (error) {
-        const message = formatDriveAuthError(error, 'Restore failed.');
-        setStatus(driveStatusEl, message);
-      } finally {
-        setBusyReason(null);
-        await refreshAuthState();
-      }
-    })();
+        try {
+          const token = await getAuthToken(true);
+          currentToken = token;
+          isConnected = true;
+          const restored = await restoreFromBackup(fileId, token);
+          closeRestoreDialog();
+          setStatus(
+            driveStatusEl,
+            `Restore completed. ${restored.restoredTabs} tab${restored.restoredTabs === 1 ? '' : 's'} across ${restored.restoredGroups} group${restored.restoredGroups === 1 ? '' : 's'}.`,
+          );
+        } catch (error) {
+          const message = formatDriveAuthError(error, 'Restore failed.');
+          setStatus(driveStatusEl, message);
+        } finally {
+          setBusyReason(null);
+          await refreshAuthState();
+        }
+      })();
+      return;
+    }
+
+    if (button.dataset.action === 'delete-backup') {
+      void (async () => {
+        setBusyReason('deleting_backup');
+        setStatus(driveStatusEl, 'Deleting backup...');
+
+        try {
+          /**
+           * Delete removes only the selected Drive backup file by its file ID.
+           * The loaded modal list is then updated in-place to avoid a full refetch.
+           */
+          const token = await resolveConnectedToken();
+          await deleteFile(fileId, token);
+          restoreBackups = restoreBackups.filter((entry) => entry.fileId !== fileId);
+          renderDriveBackups(backupListEl, restoreBackups);
+          setStatus(
+            driveStatusEl,
+            `Backup deleted. ${restoreBackups.length} backup${restoreBackups.length === 1 ? '' : 's'} listed.`,
+          );
+        } catch (error) {
+          const message = formatDriveAuthError(error, 'Delete failed.');
+          setStatus(driveStatusEl, message);
+        } finally {
+          setBusyReason(null);
+          applyDriveUiState();
+          await refreshAuthState();
+        }
+      })();
+    }
   });
 
   /**

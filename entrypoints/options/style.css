@@ -240,6 +240,12 @@ h1 {
   text-align: right;
 }
 
+.drive-list-table td.row-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
 .drive-list-table .row-empty {
   text-align: center;
   color: var(--md-sys-color-on-surface-variant);
@@ -253,6 +259,11 @@ h1 {
   cursor: pointer;
   background: var(--md-sys-color-primary);
   color: var(--md-sys-color-on-primary);
+}
+
+.drive-list-table button.danger {
+  background: var(--md-sys-color-error-container);
+  color: var(--md-sys-color-on-error-container);
 }
 
 .drive-restore-actions {
