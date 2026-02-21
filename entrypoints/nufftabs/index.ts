@@ -23,7 +23,6 @@ import {
   STORAGE_KEYS,
   GROUP_KEY_PREFIX,
   isSavedGroupStorageKey,
-  UNKNOWN_GROUP_KEY,
   writeSavedGroup,
   writeSavedGroups,
   normalizeSettings,
@@ -31,6 +30,7 @@ import {
   type SavedTabGroups,
 } from '../shared/storage';
 import { logExtensionError, type ExtensionErrorOperation } from '../shared/utils';
+import { createSnackbarNotifier } from '../ui/notifications';
 
 // ── DOM element references (queried once at module load) ──
 const groupsEl = document.querySelector<HTMLDivElement>('#groups');
@@ -59,7 +59,6 @@ const SVG_NS = 'http://www.w3.org/2000/svg';
 
 /** Mutable application state for the list page UI. */
 type ListPageState = {
-  snackbarTimer?: number;
   /** Full tab arrays keyed by group key (loaded from storage). */
   currentGroups: SavedTabGroups;
   /** Filtered tab arrays after applying the active search term. */
@@ -86,7 +85,6 @@ type ListPageState = {
 
 /** Singleton mutable state object for the list page. */
 const state: ListPageState = {
-  snackbarTimer: undefined,
   currentGroups: {},
   visibleGroups: {},
   activeSearchTerm: '',
@@ -104,6 +102,12 @@ const state: ListPageState = {
   allGroupsCollapsed: false,
   initialCollapseApplied: false,
 };
+
+/**
+ * Centralized page notifier used for every user-facing status message.
+ * Keeping one notifier here ensures all transient messages use the same timing behavior.
+ */
+const userNotifier = createSnackbarNotifier(snackbarEl);
 
 /** Maximum number of tab rows to render per group before showing a "Load more" control. */
 const RENDER_PAGE_SIZE = 200;
@@ -131,13 +135,7 @@ function createSvgIcon(elements: SvgElementSpec[]): SVGSVGElement {
 
 /** Briefly shows a snackbar notification with the given message. */
 function setStatus(message: string): void {
-  if (!snackbarEl) return;
-  snackbarEl.textContent = message;
-  snackbarEl.classList.add('show');
-  if (state.snackbarTimer) window.clearTimeout(state.snackbarTimer);
-  state.snackbarTimer = window.setTimeout(() => {
-    snackbarEl.classList.remove('show');
-  }, 2200);
+  userNotifier.notify(message);
 }
 
 /** Fires-and-forgets an async task, logging errors with the given context string. */

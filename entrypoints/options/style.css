@@ -127,12 +127,178 @@ h1 {
   color: var(--md-sys-color-on-surface);
 }
 
-.status {
-  margin-top: 24px;
-  min-height: 20px;
-  color: var(--md-sys-color-on-surface-variant);
+.drive-backup {
+  margin-top: 8px;
+  padding: 20px;
+  border-radius: var(--md-sys-shape-corner-medium);
+  border: 1px solid rgba(var(--md-sys-color-outline-rgb), 0.4);
+}
+
+.drive-backup h2 {
+  margin: 0 0 8px;
+  font-size: 20px;
+  font-weight: 500;
+}
+
+.drive-controls {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin: 8px 0 12px;
+}
+
+.drive-controls button {
+  border: 0;
+  border-radius: var(--md-sys-shape-corner-medium);
+  padding: 10px 14px;
   font-size: 14px;
+  cursor: pointer;
+  background: var(--md-sys-color-primary);
+  color: var(--md-sys-color-on-primary);
+}
+
+/* Connected state uses a calm container color so the section no longer looks like a pending action. */
+.drive-controls #openDriveAuth[data-connected="true"] {
+  background: var(--md-sys-color-secondary-container);
+  color: var(--md-sys-color-on-secondary-container);
+}
+
+/* Busy connect/disconnect state gets a lighter surface treatment to signal in-progress work. */
+.drive-controls #openDriveAuth[data-busy="true"] {
+  background: var(--md-sys-color-surface-variant);
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+.drive-controls button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.drive-list-wrap {
+  overflow-x: auto;
+}
+
+.drive-restore-dialog {
+  width: min(760px, calc(100vw - 32px));
+  max-height: min(80vh, 680px);
+  border: 1px solid rgba(var(--md-sys-color-outline-rgb), 0.35);
+  border-radius: var(--md-sys-shape-corner-large);
+  padding: 16px;
+  background: var(--md-sys-color-surface);
+  color: var(--md-sys-color-on-surface);
+}
+
+.drive-restore-dialog::backdrop {
+  background: rgba(0, 0, 0, 0.35);
+}
+
+.drive-restore-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.drive-restore-header h3 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 500;
+}
+
+.drive-restore-close {
+  border: 0;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  padding: 0;
+  line-height: 1;
+  font-size: 22px;
+  font-weight: 400;
+  cursor: pointer;
+  background: var(--md-sys-color-surface-variant);
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+.drive-list-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 8px;
+  font-size: 14px;
+}
+
+.drive-list-table th,
+.drive-list-table td {
+  border-bottom: 1px solid rgba(var(--md-sys-color-outline-rgb), 0.3);
+  padding: 10px 8px;
+  text-align: left;
+  vertical-align: middle;
+}
+
+.drive-list-table th:last-child,
+.drive-list-table td:last-child {
+  text-align: right;
+}
+
+.drive-list-table .row-empty {
   text-align: center;
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+.drive-list-table button {
+  border: 0;
+  border-radius: var(--md-sys-shape-corner-small);
+  padding: 6px 10px;
+  font-size: 13px;
+  cursor: pointer;
+  background: var(--md-sys-color-primary);
+  color: var(--md-sys-color-on-primary);
+}
+
+.drive-restore-actions {
+  display: flex;
+  justify-content: center;
+  margin-top: 12px;
+}
+
+.drive-restore-actions button {
+  border: 0;
+  border-radius: var(--md-sys-shape-corner-medium);
+  padding: 8px 14px;
+  font-size: 13px;
+  cursor: pointer;
+  background: var(--md-sys-color-secondary-container);
+  color: var(--md-sys-color-on-secondary-container);
+}
+
+.drive-restore-actions button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Toast/snackbar surface for options page notifications. */
+.snackbar {
+  position: fixed;
+  left: 50%;
+  bottom: 24px;
+  transform: translateX(-50%) translateY(20px);
+  background: var(--md-sys-color-on-surface);
+  color: var(--md-sys-color-surface);
+  padding: 14px 24px;
+  border-radius: 28px;
+  font-size: 14px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+  box-shadow: var(--md-sys-elevation-2);
+  z-index: 100;
+  min-width: 200px;
+  text-align: center;
+}
+
+.snackbar.show {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
 }
 
 @media (max-width: 600px) {

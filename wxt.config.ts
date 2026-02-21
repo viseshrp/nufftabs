@@ -2,8 +2,12 @@
 import { defineConfig } from 'wxt';
 
 const manifestVersion = process.env.RELEASE_VERSION ?? process.env.npm_package_version ?? '1.0.0';
+const oauthClientId = '316914322209-3tclnhiqvs72o6807749be29llob6sgo.apps.googleusercontent.com';
+const extensionKey =
+  'MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAs8vuyu7fneop/Iiy33HTgpaLewlWEtm0iSEKRxJAVQvy4aeb8aXGzmnJEWDdvoK2GmoVmb6/VLEiNVjPKEVp03HjY19tQIYQvd4FwSMYB6zNWzQJbzr17M5eVMEyZ4CAgjcZ92q6FnxEnxCARN+CYraIf0fN6gQWbdaMPYaPtvs38TB6Qy1dVLV9a+yGVCOTObWr2Iyc5ChAOW7xQNkyYRM8I93C9UNWK1m2DtSyhwWr8ecgrWfYp9gg87oVykKsGuwmV2wL8o1X39/b5UsRV5Z81d26v9MZbGOr2fc+AkHg2aQylf9aaiK3yL20nktHcB20DCJe2vUIlklFYWEtxQIDAQAB';
 
 export default defineConfig({
+  entrypointsDir: 'entrypoints',
   outDirTemplate: '{{browser}}-mv{{manifestVersion}}{{modeSuffix}}',
   vite: () => ({
     build: {
@@ -15,7 +19,13 @@ export default defineConfig({
     name: 'nufftabs',
     description: 'Enough tabs. Condense and restore.',
     homepage_url: 'https://github.com/viseshrp/nufftabs',
-    permissions: ['tabs', 'storage'],
+    permissions: ['tabs', 'storage', 'identity'],
+    host_permissions: ['https://www.googleapis.com/'],
+    oauth2: {
+      client_id: oauthClientId,
+      scopes: ['https://www.googleapis.com/auth/drive.file'],
+    },
+    ...(extensionKey ? { key: extensionKey } : {}),
     action: {
       default_title: 'Condense tabs',
       default_icon: {
@@ -36,10 +46,6 @@ export default defineConfig({
       48: 'icon/48.png',
       96: 'icon/96.png',
       128: 'icon/128.png',
-    },
-    options_ui: {
-      page: 'options.html',
-      open_in_tab: true,
     },
   },
 });

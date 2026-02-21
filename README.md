@@ -14,6 +14,7 @@ nufftabs is a minimal Chrome (MV3) extension to condense all tabs from the curre
 - Restore rules: single restore uses the current window; restore all opens new windows per chunk, reusing the list window only when it is the sole tab.
 - List tab is pinned and reused if it already exists.
 - Settings for “Exclude pinned tabs,” “Tabs per restore window,” and optional memory-saving restore.
+- Optional manual Google Drive backup/restore from the options page.
 
 ## How it works
 
@@ -77,7 +78,8 @@ tradeoffs. These are documented in code comments, but summarized here for mainta
   epoch ms. Settings are `{ excludePinned, restoreBatchSize, discardRestoredTabs }`.
 - **Restore chunking:** `restoreBatchSize` controls how many tabs open per window during
   "Restore all" (one window per chunk, after any reused list window).
-- **Permissions:** only `tabs` + `storage` are required; no host permissions are used.
+- **Permissions:** `tabs`, `storage`, and `identity` are used.
+- **Host permissions:** `https://www.googleapis.com/` is used only for optional manual Drive backup/restore.
 - **WXT output:** dev builds live in `.output/chrome-mv3-dev/` and prod builds in
   `.output/chrome-mv3/`.
 
@@ -190,21 +192,44 @@ The packaged extension zip is generated under `.output/`.
 - If a list tab already exists anywhere, condense focuses the most recently active one.
 - If none exists, a new list tab is created and pinned.
 
+### Google Drive manual backup (optional)
+1. Open the options page.
+2. Click **Connect to Google Drive** and approve OAuth access.
+3. The same button updates in place to show connection progress/state and acts as **Disconnect** when already connected.
+4. Set **Retention** (how many backups to keep).
+5. Click **Backup now** to upload a snapshot of saved tabs + settings.
+6. Use **Restore** on any listed backup row to overwrite local data from that backup.
+
+### Local OAuth setup for unpacked builds
+If you see `bad client id` or auth failures in dev, your unpacked extension ID likely does
+not match the OAuth client's configured Chrome Extension ID.
+1. Set `CHROME_EXTENSION_KEY` (or `EXTENSION_MANIFEST_KEY`) to a fixed extension private key.
+2. Set `GOOGLE_OAUTH_CLIENT_ID` to the OAuth client tied to that extension ID.
+3. Restart `pnpm dev` (or rebuild + reload extension).
+
+`wxt.config.ts` uses these env vars so your local extension ID remains stable and matches OAuth.
+
 ## Project structure
 - `entrypoints/background/index.ts` — action handler, condense logic, list tab focus/pin.
 - `entrypoints/nufftabs/` — list UI (`index.html`, `index.ts`, `style.css`).
-- `entrypoints/options/` — settings UI for theme, exclude pinned tabs, restore batch size, and memory-saving restore.
+- `entrypoints/options/` — settings UI for theme, exclude pinned tabs, restore batch size, memory-saving restore, and Drive backup actions.
+- `entrypoints/drive/` — Drive auth helpers, REST client, and backup orchestration logic.
+- `entrypoints/drive-auth/` — standalone auth page logic kept for direct-entry/debug flows.
+- `entrypoints/ui/notifications.ts` — shared user-notification adapters used by UI pages (snackbar + inline status text).
 - `public/icon/` — PNG icons (16/19/32/38/48/96/128).
 - `wxt.config.ts` — manifest config and permissions.
 
 ## Permissions
 - `tabs`: required to query, create, update, close, and discard tabs/windows.
 - `storage`: required to persist `savedTabsIndex`, `savedTabs:<groupKey>`, and settings in `chrome.storage.local`.
+- `identity`: required to acquire OAuth tokens for optional Google Drive backup actions.
+- `https://www.googleapis.com/` host permission: required to call Google Drive REST APIs for manual backup/restore.
 
 ## Troubleshooting
 - **List doesn’t update after condense:** reload the list tab or check the service worker console for errors.
 - **Condense closes tabs but list is empty:** check `chrome.storage.local` in DevTools and ensure the list tab is open.
 - **No action when clicking icon:** open `chrome://extensions`, click “service worker” for nufftabs, and check logs.
+- **Google Drive auth says `bad client id`:** ensure `GOOGLE_OAUTH_CLIENT_ID` is for a Chrome Extension OAuth client whose extension ID matches the one generated from `CHROME_EXTENSION_KEY`.
 
 ## FAQ
 
