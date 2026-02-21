@@ -155,6 +155,43 @@ describe('drive backup integration', () => {
     });
   });
 
+  it('shows nothing-to-backup message and skips upload when no groups exist', async () => {
+    const mock = createMockChrome({
+      initialStorage: {
+        [STORAGE_KEYS.settings]: {
+          excludePinned: true,
+          restoreBatchSize: 100,
+          discardRestoredTabs: false,
+          theme: 'os',
+        },
+      },
+    });
+    setMockChrome(mock.chrome);
+
+    mock.chrome.identity.getAuthToken = (_details, callback) => {
+      delete mock.chrome.runtime.lastError;
+      callback('token-1');
+    };
+
+    const fetchMock = vi.fn(async (_input: string | URL) => new Response(JSON.stringify({ files: [] }), { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    mountSettingsDom();
+    await initSettingsPage(document);
+
+    const backupNow = document.querySelector<HTMLButtonElement>('#backupNow');
+    const driveStatus = document.querySelector<HTMLDivElement>('#driveStatus');
+    if (!backupNow || !driveStatus) {
+      throw new Error('Missing backup controls');
+    }
+
+    backupNow.click();
+    await waitForCondition(() => (driveStatus.textContent ?? '').includes('Nothing to backup.'));
+
+    const uploadCalls = fetchMock.mock.calls.filter((call) => String(call[0]).includes('/upload/drive/v3/files'));
+    expect(uploadCalls).toHaveLength(0);
+  });
+
   it('keeps restore disabled when disconnected and surfaces auth/retention errors', async () => {
     const mock = createMockChrome({
       initialStorage: {

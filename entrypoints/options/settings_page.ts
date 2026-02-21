@@ -6,6 +6,7 @@ import {
   DEFAULT_SETTINGS,
   STORAGE_KEYS,
   normalizeSettings,
+  readSavedGroups,
   writeSettings,
   type Settings,
   type SettingsInput,
@@ -302,6 +303,16 @@ async function initDriveBackupSection(documentRef: Document): Promise<void> {
         const token = await getAuthToken(true);
         currentToken = token;
         isConnected = true;
+        /**
+         * Backup uploads are only meaningful when at least one saved group exists.
+         * This early return prevents empty backup files and gives immediate, clear feedback.
+         */
+        const groups = await readSavedGroups();
+        const groupCount = Object.keys(groups).length;
+        if (groupCount === 0) {
+          setStatus(driveStatusEl, 'Nothing to backup.');
+          return;
+        }
         const retentionCount = await writeRetentionCount(normalizeRetentionCount(Number(retentionEl.value)));
         const backups = await performBackup(token, retentionCount);
         retentionEl.value = String(retentionCount);
