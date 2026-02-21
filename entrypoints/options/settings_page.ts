@@ -94,30 +94,54 @@ function renderDriveBackups(listEl: HTMLTableSectionElement | null, backups: Dri
   if (!listEl) return;
 
   if (backups.length === 0) {
-    listEl.innerHTML = '<tr><td class="row-empty" colspan="4">No backups found yet.</td></tr>';
+    const emptyRow = document.createElement('tr');
+    const emptyCell = document.createElement('td');
+    emptyCell.className = 'row-empty';
+    emptyCell.colSpan = 4;
+    emptyCell.textContent = 'No backups found yet.';
+    emptyRow.appendChild(emptyCell);
+    listEl.replaceChildren(emptyRow);
     return;
   }
 
-  const rows = backups
-    .map((entry) => {
-      const when = formatBackupTimestamp(entry.timestamp);
-      const groups = entry.tabGroupCount;
-      const size = formatBytes(entry.size);
-      return [
-        '<tr>',
-        `<td>${when}</td>`,
-        `<td>${groups}</td>`,
-        `<td>${size}</td>`,
-        '<td class="row-actions">',
-        `<button type="button" data-action="restore-backup" data-file-id="${entry.fileId}">Restore</button>`,
-        `<button type="button" class="danger" data-action="delete-backup" data-file-id="${entry.fileId}">Delete</button>`,
-        '</td>',
-        '</tr>',
-      ].join('');
-    })
-    .join('');
+  const rowNodes: HTMLTableRowElement[] = backups.map((entry) => {
+    const row = document.createElement('tr');
 
-  listEl.innerHTML = rows;
+    const whenCell = document.createElement('td');
+    whenCell.textContent = formatBackupTimestamp(entry.timestamp);
+    row.appendChild(whenCell);
+
+    const groupsCell = document.createElement('td');
+    groupsCell.textContent = String(entry.tabGroupCount);
+    row.appendChild(groupsCell);
+
+    const sizeCell = document.createElement('td');
+    sizeCell.textContent = formatBytes(entry.size);
+    row.appendChild(sizeCell);
+
+    const actionsCell = document.createElement('td');
+    actionsCell.className = 'row-actions';
+
+    const restoreButton = document.createElement('button');
+    restoreButton.type = 'button';
+    restoreButton.dataset.action = 'restore-backup';
+    restoreButton.dataset.fileId = entry.fileId;
+    restoreButton.textContent = 'Restore';
+    actionsCell.appendChild(restoreButton);
+
+    const deleteButton = document.createElement('button');
+    deleteButton.type = 'button';
+    deleteButton.className = 'danger';
+    deleteButton.dataset.action = 'delete-backup';
+    deleteButton.dataset.fileId = entry.fileId;
+    deleteButton.textContent = 'Delete';
+    actionsCell.appendChild(deleteButton);
+
+    row.appendChild(actionsCell);
+    return row;
+  });
+
+  listEl.replaceChildren(...rowNodes);
 }
 
 /**
