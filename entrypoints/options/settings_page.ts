@@ -11,7 +11,7 @@ import {
   type SettingsInput,
 } from '../shared/storage';
 import { logExtensionError } from '../shared/utils';
-import { getAuthToken, getAuthTokenSilently } from '../drive/auth';
+import { formatDriveAuthError, getAuthToken, getAuthTokenSilently } from '../drive/auth';
 import {
   getBackupsWithFallback,
   performBackup,
@@ -164,7 +164,7 @@ async function initDriveBackupSection(documentRef: Document): Promise<void> {
         renderDriveBackups(backupListEl, backups);
         setStatus(driveStatusEl, `Backup completed. ${backups.length} backup${backups.length === 1 ? '' : 's'} stored.`);
       } catch (error) {
-        const message = error instanceof Error ? error.message : 'Backup failed.';
+        const message = formatDriveAuthError(error, 'Backup failed.');
         setStatus(driveStatusEl, message);
       } finally {
         setBusy(false);
@@ -198,7 +198,7 @@ async function initDriveBackupSection(documentRef: Document): Promise<void> {
           `Restore completed. ${restored.restoredTabs} tab${restored.restoredTabs === 1 ? '' : 's'} across ${restored.restoredGroups} group${restored.restoredGroups === 1 ? '' : 's'}.`,
         );
       } catch (error) {
-        const message = error instanceof Error ? error.message : 'Restore failed.';
+        const message = formatDriveAuthError(error, 'Restore failed.');
         setStatus(driveStatusEl, message);
       } finally {
         setBusy(false);

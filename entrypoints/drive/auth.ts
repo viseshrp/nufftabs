@@ -42,6 +42,25 @@ export async function getAuthToken(interactive: boolean): Promise<string> {
 }
 
 /**
+ * Converts OAuth/identity failures into user-actionable guidance while
+ * preserving original non-auth error messages.
+ */
+export function formatDriveAuthError(error: unknown, fallbackMessage: string): string {
+  const rawMessage = error instanceof Error ? error.message.trim() : '';
+  if (rawMessage.length === 0) return fallbackMessage;
+
+  const normalized = rawMessage.toLowerCase();
+  if (!normalized.includes('bad client id')) return rawMessage;
+
+  const extensionId = typeof chrome !== 'undefined' && chrome.runtime?.id ? chrome.runtime.id : 'unknown';
+  return [
+    'Google Drive OAuth is misconfigured for this build.',
+    `Set GOOGLE_OAUTH_CLIENT_ID to a Chrome Extension OAuth client for extension ID ${extensionId}.`,
+    'Set CHROME_EXTENSION_KEY (or EXTENSION_MANIFEST_KEY), then restart dev/build and reload the extension.',
+  ].join(' ');
+}
+
+/**
  * Best-effort non-interactive auth check. Returns `null` instead of throwing
  * when no cached token is currently available.
  */

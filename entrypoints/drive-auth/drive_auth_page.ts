@@ -2,7 +2,14 @@
  * Google Drive auth page logic. This page lets users explicitly connect or
  * disconnect OAuth access used by manual Drive backups.
  */
-import { getAuthToken, getAuthTokenSilently, isIdentityApiAvailable, removeCachedAuthToken, revokeToken } from '../drive/auth';
+import {
+  formatDriveAuthError,
+  getAuthToken,
+  getAuthTokenSilently,
+  isIdentityApiAvailable,
+  removeCachedAuthToken,
+  revokeToken,
+} from '../drive/auth';
 
 /** Writes status messages to the auth-page status region. */
 function setStatus(statusEl: HTMLDivElement | null, message: string): void {
@@ -49,7 +56,7 @@ export async function initDriveAuthPage(documentRef: Document = document): Promi
         applyButtonState(connectEl, disconnectEl, true);
         setStatus(statusEl, 'Connected to Google Drive.');
       } catch (error) {
-        const message = error instanceof Error ? error.message : 'Failed to connect to Google Drive.';
+        const message = formatDriveAuthError(error, 'Failed to connect to Google Drive.');
         setStatus(statusEl, message);
       }
     })();
