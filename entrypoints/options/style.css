@@ -165,6 +165,18 @@ h1 {
   color: var(--md-sys-color-on-primary);
 }
 
+/* Connected state uses a calm container color so the section no longer looks like a pending action. */
+.drive-controls #openDriveAuth[data-connected="true"] {
+  background: var(--md-sys-color-secondary-container);
+  color: var(--md-sys-color-on-secondary-container);
+}
+
+/* Busy connect/disconnect state gets a lighter surface treatment to signal in-progress work. */
+.drive-controls #openDriveAuth[data-busy="true"] {
+  background: var(--md-sys-color-surface-variant);
+  color: var(--md-sys-color-on-surface-variant);
+}
+
 .drive-controls button:disabled {
   opacity: 0.6;
   cursor: not-allowed;

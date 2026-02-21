@@ -11,7 +11,13 @@ import {
   type SettingsInput,
 } from '../shared/storage';
 import { logExtensionError } from '../shared/utils';
-import { formatDriveAuthError, getAuthToken, getAuthTokenSilently } from '../drive/auth';
+import {
+  formatDriveAuthError,
+  getAuthToken,
+  getAuthTokenSilently,
+  removeCachedAuthToken,
+  revokeToken,
+} from '../drive/auth';
 import {
   getBackupsWithFallback,
   performBackup,
@@ -92,6 +98,7 @@ function renderDriveBackups(listEl: HTMLTableSectionElement | null, backups: Dri
  * This section is intentionally isolated so missing elements never break base settings.
  */
 async function initDriveBackupSection(documentRef: Document): Promise<void> {
+  const driveSectionEl = documentRef.querySelector<HTMLElement>('.drive-backup');
   const openAuthEl = documentRef.querySelector<HTMLButtonElement>('#openDriveAuth');
   const backupNowEl = documentRef.querySelector<HTMLButtonElement>('#backupNow');
   const retentionEl = documentRef.querySelector<HTMLInputElement>('#driveRetentionCount');
@@ -100,43 +107,120 @@ async function initDriveBackupSection(documentRef: Document): Promise<void> {
 
   if (!openAuthEl || !backupNowEl || !retentionEl || !backupListEl) return;
 
-  let busy = false;
-  const setBusy = (nextBusy: boolean) => {
-    busy = nextBusy;
-    backupNowEl.disabled = busy || backupNowEl.disabled;
+  /**
+   * Small local state model for the Drive subsection.
+   * Keeping this centralized avoids split/implicit UI logic and makes updates predictable.
+   */
+  type DriveBusyReason = 'loading' | 'connecting' | 'disconnecting' | 'backup' | 'restore' | null;
+  let busyReason: DriveBusyReason = null;
+  let isConnected = false;
+  let currentToken: string | null = null;
+
+  /** Enables/disables all restore buttons rendered in the current backup table body. */
+  const setRestoreButtonsDisabled = (disabled: boolean) => {
+    const restoreButtons = backupListEl.querySelectorAll<HTMLButtonElement>('button[data-action="restore-backup"]');
+    for (const restoreButton of restoreButtons) {
+      restoreButton.disabled = disabled;
+    }
+  };
+
+  /** Computes the connect button label from current connection + operation state. */
+  const getConnectButtonLabel = () => {
+    if (busyReason === 'loading') return 'Checking Google Drive...';
+    if (busyReason === 'connecting') return 'Connecting to Google Drive...';
+    if (busyReason === 'disconnecting') return 'Disconnecting Google Drive...';
+    if (isConnected) return 'Connected to Google Drive (Disconnect)';
+    return 'Connect to Google Drive';
+  };
+
+  /** Computes the backup button label so users get immediate progress feedback while running uploads. */
+  const getBackupButtonLabel = () => {
+    if (busyReason === 'backup') return 'Backing up...';
+    return 'Backup now';
+  };
+
+  /**
+   * Applies UI state in one place so controls stay consistent:
+   * - Connect button shows status and active operation directly in its own label.
+   * - Backup/restore actions are disabled whenever disconnected or busy.
+   */
+  const applyDriveUiState = () => {
+    const busy = busyReason !== null;
+    openAuthEl.textContent = getConnectButtonLabel();
+    openAuthEl.disabled = busy;
+    openAuthEl.dataset.connected = isConnected ? 'true' : 'false';
+    openAuthEl.dataset.busy = busy ? 'true' : 'false';
+    backupNowEl.disabled = busy || !isConnected;
+    backupNowEl.textContent = getBackupButtonLabel();
     retentionEl.disabled = busy;
+    setRestoreButtonsDisabled(busy || !isConnected);
+
+    if (!driveSectionEl) return;
+    driveSectionEl.setAttribute('aria-busy', busy ? 'true' : 'false');
+    driveSectionEl.dataset.connected = isConnected ? 'true' : 'false';
+  };
+
+  /** Updates the current busy reason and reapplies button/section state in one call. */
+  const setBusyReason = (nextBusyReason: DriveBusyReason) => {
+    busyReason = nextBusyReason;
+    applyDriveUiState();
   };
 
   const refreshAuthState = async () => {
     const token = await getAuthTokenSilently();
-    backupNowEl.disabled = busy || !token;
-    if (token) {
-      setStatus(driveStatusEl, 'Connected. You can create manual backups.');
-    }
+    currentToken = token;
+    isConnected = Boolean(token);
+    applyDriveUiState();
   };
 
   const refreshBackupList = async () => {
     const localIndex = await readLocalIndex();
     renderDriveBackups(backupListEl, localIndex.backups);
+    applyDriveUiState();
 
     if (localIndex.backups.length > 0) return;
-    const token = await getAuthTokenSilently();
-    if (!token) return;
+    if (!isConnected || !currentToken) return;
 
-    const backups = await getBackupsWithFallback(token);
+    const backups = await getBackupsWithFallback(currentToken);
     renderDriveBackups(backupListEl, backups);
+    applyDriveUiState();
   };
 
   const retention = await readRetentionCount();
   retentionEl.value = String(retention);
 
   openAuthEl.addEventListener('click', () => {
-    void chrome.tabs
-      .create({ url: chrome.runtime.getURL('drive-auth.html'), active: true })
-      .catch((error) => {
-        logExtensionError('Failed to open Drive auth page', error, { operation: 'runtime_context' });
-        setStatus(driveStatusEl, 'Failed to open Drive auth page.');
-      });
+    void (async () => {
+      try {
+        if (!isConnected) {
+          setBusyReason('connecting');
+          setStatus(driveStatusEl, 'Opening Google authentication...');
+          currentToken = await getAuthToken(true);
+          isConnected = true;
+          await refreshBackupList();
+          setStatus(driveStatusEl, 'Connected to Google Drive. Backup is now enabled.');
+          return;
+        }
+
+        setBusyReason('disconnecting');
+        if (currentToken) {
+          await removeCachedAuthToken(currentToken);
+          await revokeToken(currentToken);
+        }
+        currentToken = null;
+        isConnected = false;
+        setStatus(driveStatusEl, 'Disconnected from Google Drive. Backup is now disabled.');
+      } catch (error) {
+        const fallback = isConnected
+          ? 'Failed to disconnect from Google Drive.'
+          : 'Failed to connect to Google Drive.';
+        const message = formatDriveAuthError(error, fallback);
+        setStatus(driveStatusEl, message);
+      } finally {
+        setBusyReason(null);
+        await refreshAuthState();
+      }
+    })();
   });
 
   retentionEl.addEventListener('change', () => {
@@ -153,27 +237,27 @@ async function initDriveBackupSection(documentRef: Document): Promise<void> {
 
   backupNowEl.addEventListener('click', () => {
     void (async () => {
-      setBusy(true);
+      setBusyReason('backup');
       setStatus(driveStatusEl, 'Starting backup...');
 
       try {
         const token = await getAuthToken(true);
+        currentToken = token;
+        isConnected = true;
         const retentionCount = await writeRetentionCount(normalizeRetentionCount(Number(retentionEl.value)));
         const backups = await performBackup(token, retentionCount);
         retentionEl.value = String(retentionCount);
         renderDriveBackups(backupListEl, backups);
+        applyDriveUiState();
         setStatus(driveStatusEl, `Backup completed. ${backups.length} backup${backups.length === 1 ? '' : 's'} stored.`);
       } catch (error) {
         const message = formatDriveAuthError(error, 'Backup failed.');
         setStatus(driveStatusEl, message);
       } finally {
-        setBusy(false);
+        setBusyReason(null);
         await refreshAuthState();
       }
-    })().catch((error) => {
-      logExtensionError('Failed to run Drive backup', error, { operation: 'runtime_context' });
-      setBusy(false);
-    });
+    })();
   });
 
   backupListEl.addEventListener('click', (event) => {
@@ -187,11 +271,13 @@ async function initDriveBackupSection(documentRef: Document): Promise<void> {
     if (!fileId) return;
 
     void (async () => {
-      setBusy(true);
+      setBusyReason('restore');
       setStatus(driveStatusEl, 'Restoring backup...');
 
       try {
         const token = await getAuthToken(true);
+        currentToken = token;
+        isConnected = true;
         const restored = await restoreFromBackup(fileId, token);
         setStatus(
           driveStatusEl,
@@ -201,17 +287,39 @@ async function initDriveBackupSection(documentRef: Document): Promise<void> {
         const message = formatDriveAuthError(error, 'Restore failed.');
         setStatus(driveStatusEl, message);
       } finally {
-        setBusy(false);
+        setBusyReason(null);
         await refreshAuthState();
       }
-    })().catch((error) => {
-      logExtensionError('Failed to restore from Drive backup', error, { operation: 'runtime_context' });
-      setBusy(false);
-    });
+    })();
   });
 
-  await refreshBackupList();
+  /**
+   * Keep auth status fresh when returning to the options tab.
+   * This removes the need for manual page refreshes after auth completes elsewhere.
+   */
+  const refreshAuthStateOnVisibility = () => {
+    void refreshAuthState().catch((error) => {
+      logExtensionError('Failed to refresh Drive auth state on tab visibility change', error, {
+        operation: 'runtime_context',
+      });
+    });
+  };
+
+  documentRef.addEventListener('visibilitychange', refreshAuthStateOnVisibility);
+  if (typeof window !== 'undefined') {
+    window.addEventListener('focus', refreshAuthStateOnVisibility);
+  }
+
+  setBusyReason('loading');
+  setStatus(driveStatusEl, 'Checking Google Drive connection...');
   await refreshAuthState();
+  await refreshBackupList();
+  setBusyReason(null);
+  if (!isConnected) {
+    setStatus(driveStatusEl, 'Not connected. Connect Google Drive to enable backup and restore.');
+  } else {
+    setStatus(driveStatusEl, 'Connected to Google Drive. Backup is ready.');
+  }
 }
 
 /**

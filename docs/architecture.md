@@ -29,7 +29,8 @@ junior developers and useful for future maintenance.
 
 4) **Drive backup modules** (`entrypoints/drive/`, `entrypoints/drive-auth/`)
 - `entrypoints/drive/` contains auth wrappers, Drive REST client helpers, and backup orchestration.
-- `entrypoints/drive-auth/` provides a dedicated connect/disconnect auth tab.
+- `entrypoints/options/` drives the primary connect/disconnect UX directly in the options page.
+- `entrypoints/drive-auth/` remains available for direct-entry/debug auth flows.
 
 ## Data flow summary
 
@@ -230,7 +231,7 @@ For the full schema and reasoning, see `docs/storage.md`.
 - **List UI not updating:** `entrypoints/nufftabs/index.ts`
 - **Storage format issues:** `entrypoints/shared/storage.ts`
 - **Settings not respected:** `entrypoints/options/index.ts`
-- **Drive backup/auth issues:** `entrypoints/drive/` and `entrypoints/drive-auth/`
+- **Drive backup/auth issues:** `entrypoints/options/`, `entrypoints/drive/`, and `entrypoints/drive-auth/`
 
 ## Troubleshooting matrix
 - **Condense closes tabs but list is empty:** storage write failed; check background console

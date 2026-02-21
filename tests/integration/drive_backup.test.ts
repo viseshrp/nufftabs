@@ -163,13 +163,14 @@ describe('drive backup integration', () => {
     });
     setMockChrome(mock.chrome);
 
-    mock.chrome.identity.getAuthToken = (_details, callback) => {
-      delete mock.chrome.runtime.lastError;
-      callback('token-1');
-    };
-
-    mock.chrome.tabs.create = async () => {
-      throw new Error('cannot open tab');
+    mock.chrome.identity.getAuthToken = (details, callback) => {
+      if (!details.interactive) {
+        delete mock.chrome.runtime.lastError;
+        callback(undefined);
+        return;
+      }
+      mock.chrome.runtime.lastError = { message: 'auth denied' };
+      callback(undefined);
     };
 
     const fetchMock = vi.fn(async (input: string | URL, init?: RequestInit) => {
@@ -207,16 +208,19 @@ describe('drive backup integration', () => {
     await initSettingsPage(document);
 
     const backupTable = document.querySelector<HTMLTableSectionElement>('#driveBackupList');
-    expect(backupTable?.textContent).toContain('2 KB');
+    expect(backupTable?.textContent).toContain('No backups found yet.');
 
     const openAuth = document.querySelector<HTMLButtonElement>('#openDriveAuth');
+    const backupNow = document.querySelector<HTMLButtonElement>('#backupNow');
     const driveStatus = document.querySelector<HTMLDivElement>('#driveStatus');
-    if (!openAuth || !driveStatus) {
+    if (!openAuth || !backupNow || !driveStatus) {
       throw new Error('Missing Drive controls');
     }
+    expect(backupNow.disabled).toBe(true);
+    expect(openAuth.textContent).toContain('Connect to Google Drive');
 
     openAuth.click();
-    await waitForCondition(() => (driveStatus.textContent ?? '').includes('Failed to open Drive auth page.'));
+    await waitForCondition(() => (driveStatus.textContent ?? '').includes('auth denied'));
 
     const originalSet = mock.chrome.storage.local.set;
     mock.chrome.storage.local.set = async (payload) => {
@@ -234,6 +238,191 @@ describe('drive backup integration', () => {
     retentionInput.dispatchEvent(new Event('change'));
 
     await waitForCondition(() => (driveStatus.textContent ?? '').includes('Failed to save retention setting.'));
+  });
+
+  it('loads fallback backups while connected and supports in-page disconnect', async () => {
+    const mock = createMockChrome({
+      initialStorage: {
+        [STORAGE_KEYS.settings]: {
+          excludePinned: true,
+          restoreBatchSize: 100,
+          discardRestoredTabs: false,
+          theme: 'os',
+        },
+      },
+    });
+    setMockChrome(mock.chrome);
+
+    mock.chrome.identity.getAuthToken = (details, callback) => {
+      delete mock.chrome.runtime.lastError;
+      if (!details.interactive) {
+        callback('token-1');
+        return;
+      }
+      callback('token-1');
+    };
+
+    const removeCachedAuthToken = vi.fn((details: chrome.identity.InvalidTokenDetails, callback?: () => void) => {
+      callback?.();
+      return details;
+    });
+    mock.chrome.identity.removeCachedAuthToken = removeCachedAuthToken;
+
+    const fetchMock = vi.fn(async (input: string | URL, init?: RequestInit) => {
+      const url = String(input);
+      const method = init?.method ?? 'GET';
+      if (method === 'GET' && url.includes('/drive/v3/files?') && url.includes('mimeType')) {
+        return new Response(JSON.stringify({ files: [{ id: 'folder-1' }] }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      if (method === 'GET' && url.includes('/drive/v3/files?')) {
+        return new Response(
+          JSON.stringify({
+            files: [
+              {
+                id: 'fallback-file',
+                name: 'backup-fallback-g4.json',
+                createdTime: '2024-01-02T00:00:00.000Z',
+                size: '2048',
+              },
+            ],
+          }),
+          {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          },
+        );
+      }
+      return new Response('', { status: 200 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    mountSettingsDom();
+    await initSettingsPage(document);
+
+    const backupTable = document.querySelector<HTMLTableSectionElement>('#driveBackupList');
+    const backupNow = document.querySelector<HTMLButtonElement>('#backupNow');
+    const openAuth = document.querySelector<HTMLButtonElement>('#openDriveAuth');
+    const driveStatus = document.querySelector<HTMLDivElement>('#driveStatus');
+    if (!backupTable || !backupNow || !openAuth || !driveStatus) {
+      throw new Error('Missing Drive controls');
+    }
+
+    expect(backupTable.textContent).toContain('2 KB');
+    expect(backupNow.disabled).toBe(false);
+    expect(openAuth.textContent).toContain('Connected to Google Drive');
+
+    openAuth.click();
+    await waitForCondition(() => (driveStatus.textContent ?? '').includes('Disconnected from Google Drive.'));
+    expect(removeCachedAuthToken).toHaveBeenCalledOnce();
+    expect(backupNow.disabled).toBe(true);
+    expect(openAuth.textContent).toContain('Connect to Google Drive');
+  });
+
+  it('connects in-page from disconnected state and enables backup action', async () => {
+    const mock = createMockChrome({
+      initialStorage: {
+        [STORAGE_KEYS.settings]: {
+          excludePinned: true,
+          restoreBatchSize: 100,
+          discardRestoredTabs: false,
+          theme: 'os',
+        },
+      },
+    });
+    setMockChrome(mock.chrome);
+
+    mock.chrome.identity.getAuthToken = (details, callback) => {
+      delete mock.chrome.runtime.lastError;
+      if (!details.interactive) {
+        callback(undefined);
+        return;
+      }
+      callback('token-connected');
+    };
+
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ files: [] }), { status: 200 })));
+
+    mountSettingsDom();
+    await initSettingsPage(document);
+
+    const openAuth = document.querySelector<HTMLButtonElement>('#openDriveAuth');
+    const backupNow = document.querySelector<HTMLButtonElement>('#backupNow');
+    const driveStatus = document.querySelector<HTMLDivElement>('#driveStatus');
+    if (!openAuth || !backupNow || !driveStatus) {
+      throw new Error('Missing Drive controls');
+    }
+
+    expect(backupNow.disabled).toBe(true);
+    openAuth.click();
+    await waitForCondition(() => (driveStatus.textContent ?? '').includes('Connected to Google Drive.'));
+    expect(openAuth.textContent).toContain('Connected to Google Drive');
+    expect(backupNow.disabled).toBe(false);
+  });
+
+  it('shows disconnect error messaging and handles visibility refresh events', async () => {
+    const mock = createMockChrome({
+      initialStorage: {
+        [STORAGE_KEYS.settings]: {
+          excludePinned: true,
+          restoreBatchSize: 100,
+          discardRestoredTabs: false,
+          theme: 'os',
+        },
+      },
+    });
+    setMockChrome(mock.chrome);
+
+    mock.chrome.identity.getAuthToken = (_details, callback) => {
+      delete mock.chrome.runtime.lastError;
+      callback('token-1');
+    };
+    mock.chrome.identity.removeCachedAuthToken = () => {
+      throw new Error('disconnect-failed');
+    };
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: string | URL, init?: RequestInit) => {
+        const url = String(input);
+        const method = init?.method ?? 'GET';
+        if (method === 'GET' && url.includes('/drive/v3/files?') && url.includes('mimeType')) {
+          return new Response(JSON.stringify({ files: [{ id: 'folder-1' }] }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          });
+        }
+        if (method === 'GET' && url.includes('/drive/v3/files?')) {
+          return new Response(JSON.stringify({ files: [] }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          });
+        }
+        return new Response('', { status: 200 });
+      }),
+    );
+
+    mountSettingsDom();
+    await initSettingsPage(document);
+
+    const openAuth = document.querySelector<HTMLButtonElement>('#openDriveAuth');
+    const retentionInput = document.querySelector<HTMLInputElement>('#driveRetentionCount');
+    const driveStatus = document.querySelector<HTMLDivElement>('#driveStatus');
+    if (!openAuth || !retentionInput || !driveStatus) {
+      throw new Error('Missing Drive controls');
+    }
+
+    retentionInput.value = '9';
+    retentionInput.dispatchEvent(new Event('change'));
+    await waitForCondition(() => (driveStatus.textContent ?? '').includes('Retention saved: keep latest 9 backups.'));
+
+    document.dispatchEvent(new Event('visibilitychange'));
+    await waitForCondition(() => openAuth.textContent?.includes('Connected to Google Drive') ?? false);
+
+    openAuth.click();
+    await waitForCondition(() => (driveStatus.textContent ?? '').includes('disconnect-failed'));
   });
 
   it('shows backup auth errors and supports restore actions', async () => {

@@ -4,7 +4,7 @@
 nufftabs supports optional manual backup and restore to Google Drive. This feature is user-initiated from the options page and does not run automatically.
 
 ## User-visible behavior
-- Users connect Google Drive from a dedicated auth page.
+- Users connect/disconnect Google Drive directly from the options-page Drive section.
 - Users click **Backup now** to upload a full snapshot.
 - Users can configure retention (default: 30 backups).
 - Users can restore any listed backup, which overwrites local saved tabs + settings.
@@ -44,7 +44,7 @@ Backup JSON shape:
 
 ## Implementation boundaries
 - Drive logic is isolated under `entrypoints/drive/`.
-- Auth page logic is isolated under `entrypoints/drive-auth/`.
+- Optional standalone auth page logic is isolated under `entrypoints/drive-auth/` for direct-entry/debug flows.
 - Options page owns all user-facing backup controls.
 - Existing storage module is reused for writing restored tabs/settings.
 
@@ -54,7 +54,7 @@ Backup JSON shape:
 - Files past the retention cutoff are deleted via Drive API.
 
 ## Error behavior
-- Errors are surfaced as status text in options/auth pages.
+- Errors are surfaced as status text in the options page (and auth page when that standalone page is used).
 - Drive fallback listing failures keep local UI responsive and show an empty list.
 - Restore fails fast on malformed payloads.
 

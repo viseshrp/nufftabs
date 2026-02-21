@@ -195,9 +195,10 @@ The packaged extension zip is generated under `.output/`.
 ### Google Drive manual backup (optional)
 1. Open the options page.
 2. Click **Connect to Google Drive** and approve OAuth access.
-3. Set **Retention** (how many backups to keep).
-4. Click **Backup now** to upload a snapshot of saved tabs + settings.
-5. Use **Restore** on any listed backup row to overwrite local data from that backup.
+3. The same button updates in place to show connection progress/state and acts as **Disconnect** when already connected.
+4. Set **Retention** (how many backups to keep).
+5. Click **Backup now** to upload a snapshot of saved tabs + settings.
+6. Use **Restore** on any listed backup row to overwrite local data from that backup.
 
 ### Local OAuth setup for unpacked builds
 If you see `bad client id` or auth failures in dev, your unpacked extension ID likely does
@@ -213,7 +214,7 @@ not match the OAuth client's configured Chrome Extension ID.
 - `entrypoints/nufftabs/` — list UI (`index.html`, `index.ts`, `style.css`).
 - `entrypoints/options/` — settings UI for theme, exclude pinned tabs, restore batch size, memory-saving restore, and Drive backup actions.
 - `entrypoints/drive/` — Drive auth helpers, REST client, and backup orchestration logic.
-- `entrypoints/drive-auth/` — dedicated auth page for connect/disconnect.
+- `entrypoints/drive-auth/` — standalone auth page logic kept for direct-entry/debug flows.
 - `public/icon/` — PNG icons (16/19/32/38/48/96/128).
 - `wxt.config.ts` — manifest config and permissions.
 
