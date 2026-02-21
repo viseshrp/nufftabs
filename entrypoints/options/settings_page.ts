@@ -222,12 +222,6 @@ async function initDriveBackupSection(documentRef: Document): Promise<void> {
     return 'Restore from backup';
   };
 
-  /** Computes labels for page-navigation controls so active fetches are visible. */
-  const getPageNavigationLabel = () => {
-    if (busyReason === 'loading_more_restore_list') return 'Loading more backups...';
-    return null;
-  };
-
   /** Opens restore dialog safely in both real browser runtime and test/runtime contexts without `showModal`. */
   const openRestoreDialog = () => {
     if (typeof driveRestoreDialogEl.showModal === 'function') {
@@ -276,11 +270,10 @@ async function initDriveBackupSection(documentRef: Document): Promise<void> {
     retentionEl.disabled = busy;
     restorePageSizeEl.disabled = busy;
     setRestoreButtonsDisabled(busy || !isConnected);
-    const pageNavigationBusyLabel = getPageNavigationLabel();
     previousBackupsPageEl.disabled = busy || !isConnected || previousPageTokens.length === 0;
     nextBackupsPageEl.disabled = busy || !isConnected || nextPageToken === null;
-    previousBackupsPageEl.textContent = pageNavigationBusyLabel ?? 'Previous';
-    nextBackupsPageEl.textContent = pageNavigationBusyLabel ?? 'Next';
+    previousBackupsPageEl.textContent = 'Previous';
+    nextBackupsPageEl.textContent = 'Next';
 
     if (!driveSectionEl) return;
     driveSectionEl.setAttribute('aria-busy', busy ? 'true' : 'false');
@@ -322,6 +315,19 @@ async function initDriveBackupSection(documentRef: Document): Promise<void> {
       driveStatusEl,
       `Showing ${currentPageBackups.length} backup${currentPageBackups.length === 1 ? '' : 's'} on this page.`,
     );
+  };
+
+  /**
+   * Re-fetches the currently selected restore page using the latest dropdown page-size value.
+   * This keeps visible rows synchronized with user-selected page size (both up/down changes).
+   */
+  const reloadCurrentRestorePageForSelectedSize = async () => {
+    const token = await resolveConnectedToken();
+    const targetPageToken = currentPageToken ?? undefined;
+    const page = await listDriveBackupsPage(token, targetPageToken, getRestoreListPageSize());
+    previousPageTokens = [];
+    applyRestorePage(page.backups, currentPageToken, page.nextPageToken);
+    setCurrentPageStatus();
   };
 
   const retention = await readRetentionCount();
@@ -471,6 +477,28 @@ async function initDriveBackupSection(documentRef: Document): Promise<void> {
         setCurrentPageStatus();
       } catch (error) {
         const message = formatDriveAuthError(error, 'Failed to load previous page.');
+        setStatus(driveStatusEl, message);
+      } finally {
+        setBusyReason(null);
+        applyDriveUiState();
+        await refreshAuthState();
+      }
+    })();
+  });
+
+  /**
+   * Applies new page-size selection immediately while restore modal is open.
+   * The visible list is replaced with a freshly fetched page and prior page-history is cleared.
+   */
+  restorePageSizeEl.addEventListener('change', () => {
+    void (async () => {
+      if (!driveRestoreDialogEl.open) return;
+      setBusyReason('loading_restore_list');
+      setStatus(driveStatusEl, 'Updating page size...');
+      try {
+        await reloadCurrentRestorePageForSelectedSize();
+      } catch (error) {
+        const message = formatDriveAuthError(error, 'Failed to update restore page size.');
         setStatus(driveStatusEl, message);
       } finally {
         setBusyReason(null);
