@@ -215,6 +215,7 @@ not match the OAuth client's configured Chrome Extension ID.
 - `entrypoints/options/` — settings UI for theme, exclude pinned tabs, restore batch size, memory-saving restore, and Drive backup actions.
 - `entrypoints/drive/` — Drive auth helpers, REST client, and backup orchestration logic.
 - `entrypoints/drive-auth/` — standalone auth page logic kept for direct-entry/debug flows.
+- `entrypoints/ui/notifications.ts` — shared user-notification adapters used by UI pages (snackbar + inline status text).
 - `public/icon/` — PNG icons (16/19/32/38/48/96/128).
 - `wxt.config.ts` — manifest config and permissions.
 

@@ -12,6 +12,7 @@ import {
   type SettingsInput,
 } from '../shared/storage';
 import { logExtensionError } from '../shared/utils';
+import { createInlineNotifier } from '../ui/notifications';
 import {
   formatDriveAuthError,
   getAuthToken,
@@ -30,8 +31,23 @@ import { normalizeRetentionCount, type DriveBackupEntry } from '../drive/types';
 
 /** Updates the status element's text content (used for save/error feedback). */
 export function setStatus(statusEl: HTMLDivElement | null, message: string): void {
-  if (statusEl) statusEl.textContent = message;
+  if (!statusEl) return;
+  /**
+   * Cache one notifier per element so all writes for that region are routed
+   * through the centralized notification system without re-allocating adapters.
+   */
+  const cached =
+    inlineNotifierByElement.get(statusEl) ??
+    (() => {
+      const nextNotifier = createInlineNotifier(statusEl);
+      inlineNotifierByElement.set(statusEl, nextNotifier);
+      return nextNotifier;
+    })();
+  cached.notify(message);
 }
+
+/** Per-element cache for inline notifiers used by options page status regions. */
+const inlineNotifierByElement = new WeakMap<HTMLDivElement, ReturnType<typeof createInlineNotifier>>();
 
 /** Parses and validates the batch-size input, returning null if empty or invalid. */
 export function getBatchSizeInput(input: HTMLInputElement): number | null {

@@ -10,11 +10,23 @@ import {
   removeCachedAuthToken,
   revokeToken,
 } from '../drive/auth';
+import { createInlineNotifier } from '../ui/notifications';
 
 /** Writes status messages to the auth-page status region. */
 function setStatus(statusEl: HTMLDivElement | null, message: string): void {
-  if (statusEl) statusEl.textContent = message;
+  if (!statusEl) return;
+  const notifier =
+    inlineNotifierByElement.get(statusEl) ??
+    (() => {
+      const nextNotifier = createInlineNotifier(statusEl);
+      inlineNotifierByElement.set(statusEl, nextNotifier);
+      return nextNotifier;
+    })();
+  notifier.notify(message);
 }
+
+/** Per-element cache so repeated status writes reuse one notifier adapter. */
+const inlineNotifierByElement = new WeakMap<HTMLDivElement, ReturnType<typeof createInlineNotifier>>();
 
 /** Enables/disables connect/disconnect actions based on current auth state. */
 function applyButtonState(

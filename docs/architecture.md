@@ -21,16 +21,22 @@ junior developers and useful for future maintenance.
 - Provides actions: restore single, restore group, delete group.
 - Provides import/export tools (JSON, file, OneTab).
 - Listens to storage changes to refresh the view.
+- Routes user-facing snackbar/status messages through shared UI notifier adapters.
 
 3) **Options page** (`entrypoints/options/`)
 - Manages settings like Exclude pinned tabs, Tabs per restore window, and
   Save memory when restoring tabs.
 - Hosts optional manual Google Drive backup controls (backup now, retention, restore).
+- Uses the shared inline notifier adapter for all status text regions.
 
 4) **Drive backup modules** (`entrypoints/drive/`, `entrypoints/drive-auth/`)
 - `entrypoints/drive/` contains auth wrappers, Drive REST client helpers, and backup orchestration.
 - `entrypoints/options/` drives the primary connect/disconnect UX directly in the options page.
 - `entrypoints/drive-auth/` remains available for direct-entry/debug auth flows.
+
+5) **UI notification adapters** (`entrypoints/ui/notifications.ts`)
+- Provides centralized, DOM-focused notification primitives for user-facing messages.
+- Includes timed snackbar behavior and persistent inline status behavior.
 
 ## Data flow summary
 
