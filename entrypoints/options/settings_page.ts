@@ -561,8 +561,26 @@ async function initDriveBackupSection(documentRef: Document): Promise<void> {
           const token = await resolveConnectedToken();
           await deleteFile(fileId, token);
           currentPageBackups = currentPageBackups.filter((entry) => entry.fileId !== fileId);
+          /**
+           * UX rule for page-mode pagination:
+           * If the current page becomes empty after delete and a prior page exists,
+           * navigate back one page immediately so users are never stranded on an empty page.
+           */
+          if (currentPageBackups.length === 0 && currentPageToken !== null) {
+            setStatus(driveStatusEl, 'Loading previous page...');
+            const hasHistoryToken = previousPageTokens.length > 0;
+            const previousPageToken = hasHistoryToken ? previousPageTokens[previousPageTokens.length - 1] ?? '' : '';
+            if (hasHistoryToken) {
+              previousPageTokens = previousPageTokens.slice(0, -1);
+            }
+            const resolvedPreviousPageToken = previousPageToken.length > 0 ? previousPageToken : undefined;
+            const page = await listDriveBackupsPage(token, resolvedPreviousPageToken, getRestoreListPageSize());
+            applyRestorePage(page.backups, resolvedPreviousPageToken ?? null, page.nextPageToken);
+            setCurrentPageStatus();
+            return;
+          }
           renderDriveBackups(backupListEl, currentPageBackups);
-          setStatus(driveStatusEl, 'Backup deleted.');
+          setCurrentPageStatus();
         } catch (error) {
           const message = formatDriveAuthError(error, 'Delete failed.');
           setStatus(driveStatusEl, message);
