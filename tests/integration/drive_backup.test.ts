@@ -668,6 +668,88 @@ describe('drive backup integration', () => {
     expect(String(listCalls[2]?.[0])).toContain('pageSize=5');
   });
 
+  it('replaces visible rows immediately when restore page size selection changes', async () => {
+    const mock = createMockChrome({
+      initialStorage: {
+        [STORAGE_KEYS.settings]: {
+          excludePinned: true,
+          restoreBatchSize: 100,
+          discardRestoredTabs: false,
+          duplicateTabsPolicy: 'allow',
+          theme: 'os',
+        },
+      },
+    });
+    setMockChrome(mock.chrome);
+
+    mock.chrome.identity.getAuthToken = (_details, callback) => {
+      delete mock.chrome.runtime.lastError;
+      callback('token-1');
+    };
+
+    const createFiles = (count: number) =>
+      Array.from({ length: count }, (_, index) => ({
+        id: `f${index + 1}`,
+        name: `backup-${index + 1}-g1.json`,
+        createdTime: `2024-01-${String(index + 1).padStart(2, '0')}T00:00:00.000Z`,
+        size: String(10 + index),
+      }));
+
+    const fetchMock = vi.fn(async (input: string | URL) => {
+      const url = String(input);
+      if (url.includes('/drive/v3/files?') && url.includes('mimeType')) {
+        return new Response(JSON.stringify({ files: [{ id: 'folder-1' }] }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      if (url.includes('/drive/v3/files?') && url.includes('pageSize=10')) {
+        return new Response(JSON.stringify({ files: createFiles(10) }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      if (url.includes('/drive/v3/files?') && url.includes('pageSize=5')) {
+        return new Response(JSON.stringify({ files: createFiles(5) }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      return new Response('', { status: 200 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    mountSettingsDom();
+    await initSettingsPage(document);
+
+    const openRestore = document.querySelector<HTMLButtonElement>('#openDriveRestore');
+    const restorePageSize = document.querySelector<HTMLSelectElement>('#driveRestorePageSize');
+    const backupTable = document.querySelector<HTMLTableSectionElement>('#driveBackupList');
+    if (!openRestore || !restorePageSize || !backupTable) {
+      throw new Error('Missing restore controls');
+    }
+
+    openRestore.click();
+    await waitForCondition(() => backupTable.querySelectorAll('button[data-action="restore-backup"]').length === 5);
+
+    restorePageSize.value = '10';
+    restorePageSize.dispatchEvent(new Event('change'));
+    await waitForCondition(() => backupTable.querySelectorAll('button[data-action="restore-backup"]').length === 10);
+
+    restorePageSize.value = '5';
+    restorePageSize.dispatchEvent(new Event('change'));
+    await waitForCondition(() => backupTable.querySelectorAll('button[data-action="restore-backup"]').length === 5);
+
+    const listCalls = fetchMock.mock.calls.filter((call) => {
+      const url = String(call[0]);
+      return url.includes('/drive/v3/files?') && !url.includes('mimeType');
+    });
+    expect(listCalls).toHaveLength(3);
+    expect(String(listCalls[0]?.[0])).toContain('pageSize=5');
+    expect(String(listCalls[1]?.[0])).toContain('pageSize=10');
+    expect(String(listCalls[2]?.[0])).toContain('pageSize=5');
+  });
+
   it('deletes a backup from restore modal without downloading backup payload', async () => {
     const mock = createMockChrome({
       initialStorage: {
