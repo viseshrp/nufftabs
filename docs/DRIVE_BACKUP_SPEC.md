@@ -37,6 +37,7 @@ Backup JSON shape:
     "excludePinned": true,
     "restoreBatchSize": 100,
     "discardRestoredTabs": false,
+    "duplicateTabsPolicy": "allow",
     "theme": "os"
   }
 }
