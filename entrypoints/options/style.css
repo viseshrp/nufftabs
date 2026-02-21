@@ -291,6 +291,12 @@ h1 {
   font-size: 13px;
 }
 
+.drive-page-nav {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .drive-restore-actions button {
   border: 0;
   border-radius: var(--md-sys-shape-corner-medium);

@@ -134,7 +134,8 @@ async function initDriveBackupSection(documentRef: Document): Promise<void> {
   const retentionEl = documentRef.querySelector<HTMLInputElement>('#driveRetentionCount');
   const backupListEl = documentRef.querySelector<HTMLTableSectionElement>('#driveBackupList');
   const restorePageSizeEl = documentRef.querySelector<HTMLSelectElement>('#driveRestorePageSize');
-  const loadMoreBackupsEl = documentRef.querySelector<HTMLButtonElement>('#loadMoreDriveBackups');
+  const previousBackupsPageEl = documentRef.querySelector<HTMLButtonElement>('#previousDriveBackupsPage');
+  const nextBackupsPageEl = documentRef.querySelector<HTMLButtonElement>('#nextDriveBackupsPage');
   const driveStatusEl = documentRef.querySelector<HTMLDivElement>('#driveStatus');
   const driveRestoreDialogEl = documentRef.querySelector<HTMLDialogElement>('#driveRestoreDialog');
   const closeDriveRestoreEl = documentRef.querySelector<HTMLButtonElement>('#closeDriveRestore');
@@ -146,7 +147,8 @@ async function initDriveBackupSection(documentRef: Document): Promise<void> {
     !retentionEl ||
     !backupListEl ||
     !restorePageSizeEl ||
-    !loadMoreBackupsEl ||
+    !previousBackupsPageEl ||
+    !nextBackupsPageEl ||
     !driveRestoreDialogEl ||
     !closeDriveRestoreEl
   ) {
@@ -170,8 +172,14 @@ async function initDriveBackupSection(documentRef: Document): Promise<void> {
   let busyReason: DriveBusyReason = null;
   let isConnected = false;
   let currentToken: string | null = null;
-  let restoreBackups: DriveBackupEntry[] = [];
-  let nextRestorePageToken: string | null = null;
+  let currentPageBackups: DriveBackupEntry[] = [];
+  let currentPageToken: string | null = null;
+  let nextPageToken: string | null = null;
+  /**
+   * Token stack for backward navigation.
+   * The root/first page is represented with an empty-string sentinel.
+   */
+  let previousPageTokens: string[] = [];
 
   /**
    * Reads selected restore page size from modal UI.
@@ -214,10 +222,10 @@ async function initDriveBackupSection(documentRef: Document): Promise<void> {
     return 'Restore from backup';
   };
 
-  /** Computes label for modal pagination action so users can tell when additional pages are loading. */
-  const getLoadMoreButtonLabel = () => {
+  /** Computes labels for page-navigation controls so active fetches are visible. */
+  const getPageNavigationLabel = () => {
     if (busyReason === 'loading_more_restore_list') return 'Loading more backups...';
-    return 'Load more backups';
+    return null;
   };
 
   /** Opens restore dialog safely in both real browser runtime and test/runtime contexts without `showModal`. */
@@ -268,9 +276,11 @@ async function initDriveBackupSection(documentRef: Document): Promise<void> {
     retentionEl.disabled = busy;
     restorePageSizeEl.disabled = busy;
     setRestoreButtonsDisabled(busy || !isConnected);
-    loadMoreBackupsEl.disabled = busy || !isConnected || !nextRestorePageToken;
-    loadMoreBackupsEl.hidden = nextRestorePageToken === null;
-    loadMoreBackupsEl.textContent = getLoadMoreButtonLabel();
+    const pageNavigationBusyLabel = getPageNavigationLabel();
+    previousBackupsPageEl.disabled = busy || !isConnected || previousPageTokens.length === 0;
+    nextBackupsPageEl.disabled = busy || !isConnected || nextPageToken === null;
+    previousBackupsPageEl.textContent = pageNavigationBusyLabel ?? 'Previous';
+    nextBackupsPageEl.textContent = pageNavigationBusyLabel ?? 'Next';
 
     if (!driveSectionEl) return;
     driveSectionEl.setAttribute('aria-busy', busy ? 'true' : 'false');
@@ -288,6 +298,30 @@ async function initDriveBackupSection(documentRef: Document): Promise<void> {
     currentToken = token;
     isConnected = Boolean(token);
     applyDriveUiState();
+  };
+
+  /** Replaces modal rows with a single page and stores pagination cursors for subsequent navigation. */
+  const applyRestorePage = (
+    pageBackups: DriveBackupEntry[],
+    pageToken: string | null,
+    nextToken: string | null,
+  ) => {
+    currentPageBackups = pageBackups;
+    currentPageToken = pageToken;
+    nextPageToken = nextToken;
+    renderDriveBackups(backupListEl, currentPageBackups);
+  };
+
+  /** Status helper for page-based restore list updates (always scoped to the currently visible page only). */
+  const setCurrentPageStatus = () => {
+    if (currentPageBackups.length === 0) {
+      setStatus(driveStatusEl, 'No backups found. Create a backup first, then restore it here.');
+      return;
+    }
+    setStatus(
+      driveStatusEl,
+      `Showing ${currentPageBackups.length} backup${currentPageBackups.length === 1 ? '' : 's'} on this page.`,
+    );
   };
 
   const retention = await readRetentionCount();
@@ -382,17 +416,11 @@ async function initDriveBackupSection(documentRef: Document): Promise<void> {
       try {
         const token = await resolveConnectedToken();
         const page = await listDriveBackupsPage(token, undefined, getRestoreListPageSize());
-        restoreBackups = page.backups;
-        nextRestorePageToken = page.nextPageToken;
-        renderDriveBackups(backupListEl, restoreBackups);
+        previousPageTokens = [];
+        applyRestorePage(page.backups, null, page.nextPageToken);
         applyDriveUiState();
         openRestoreDialog();
-        setStatus(
-          driveStatusEl,
-          restoreBackups.length > 0
-            ? 'Choose a backup to restore.'
-            : 'No backups found. Create a backup first, then restore it here.',
-        );
+        setCurrentPageStatus();
       } catch (error) {
         const message = formatDriveAuthError(error, 'Failed to load backup list.');
         setStatus(driveStatusEl, message);
@@ -403,31 +431,46 @@ async function initDriveBackupSection(documentRef: Document): Promise<void> {
     })();
   });
 
-  /**
-   * Fetches the next restore-list page only when users request more rows.
-   * This keeps list rendering responsive even for accounts with many backups.
-   */
-  loadMoreBackupsEl.addEventListener('click', () => {
+  /** Fetches and shows the next restore page only when explicitly requested by users. */
+  nextBackupsPageEl.addEventListener('click', () => {
     void (async () => {
-      if (!nextRestorePageToken) return;
+      if (!nextPageToken) return;
       setBusyReason('loading_more_restore_list');
-      setStatus(driveStatusEl, 'Loading more backups...');
+      setStatus(driveStatusEl, 'Loading next page...');
       try {
         const token = await resolveConnectedToken();
-        const page = await listDriveBackupsPage(token, nextRestorePageToken, getRestoreListPageSize());
-        const seenIds = new Set(restoreBackups.map((entry) => entry.fileId));
-        const uniqueNext = page.backups.filter((entry) => !seenIds.has(entry.fileId));
-        restoreBackups = [...restoreBackups, ...uniqueNext];
-        nextRestorePageToken = page.nextPageToken;
-        renderDriveBackups(backupListEl, restoreBackups);
-        setStatus(
-          driveStatusEl,
-          nextRestorePageToken
-            ? `Loaded ${restoreBackups.length} backup${restoreBackups.length === 1 ? '' : 's'}.`
-            : `Loaded all ${restoreBackups.length} backup${restoreBackups.length === 1 ? '' : 's'}.`,
-        );
+        previousPageTokens = [...previousPageTokens, currentPageToken ?? ''];
+        const targetPageToken = nextPageToken;
+        const page = await listDriveBackupsPage(token, targetPageToken, getRestoreListPageSize());
+        applyRestorePage(page.backups, targetPageToken, page.nextPageToken);
+        setCurrentPageStatus();
       } catch (error) {
-        const message = formatDriveAuthError(error, 'Failed to load more backups.');
+        const message = formatDriveAuthError(error, 'Failed to load next page.');
+        setStatus(driveStatusEl, message);
+      } finally {
+        setBusyReason(null);
+        applyDriveUiState();
+        await refreshAuthState();
+      }
+    })();
+  });
+
+  /** Fetches and shows the previous restore page only when explicitly requested by users. */
+  previousBackupsPageEl.addEventListener('click', () => {
+    void (async () => {
+      if (previousPageTokens.length === 0) return;
+      setBusyReason('loading_more_restore_list');
+      setStatus(driveStatusEl, 'Loading previous page...');
+      try {
+        const token = await resolveConnectedToken();
+        const previousPageToken = previousPageTokens[previousPageTokens.length - 1] ?? '';
+        previousPageTokens = previousPageTokens.slice(0, -1);
+        const resolvedPreviousPageToken = previousPageToken.length > 0 ? previousPageToken : undefined;
+        const page = await listDriveBackupsPage(token, resolvedPreviousPageToken, getRestoreListPageSize());
+        applyRestorePage(page.backups, resolvedPreviousPageToken ?? null, page.nextPageToken);
+        setCurrentPageStatus();
+      } catch (error) {
+        const message = formatDriveAuthError(error, 'Failed to load previous page.');
         setStatus(driveStatusEl, message);
       } finally {
         setBusyReason(null);
@@ -489,12 +532,9 @@ async function initDriveBackupSection(documentRef: Document): Promise<void> {
            */
           const token = await resolveConnectedToken();
           await deleteFile(fileId, token);
-          restoreBackups = restoreBackups.filter((entry) => entry.fileId !== fileId);
-          renderDriveBackups(backupListEl, restoreBackups);
-          setStatus(
-            driveStatusEl,
-            `Backup deleted. ${restoreBackups.length} backup${restoreBackups.length === 1 ? '' : 's'} listed.`,
-          );
+          currentPageBackups = currentPageBackups.filter((entry) => entry.fileId !== fileId);
+          renderDriveBackups(backupListEl, currentPageBackups);
+          setStatus(driveStatusEl, 'Backup deleted.');
         } catch (error) {
           const message = formatDriveAuthError(error, 'Delete failed.');
           setStatus(driveStatusEl, message);
@@ -522,9 +562,8 @@ async function initDriveBackupSection(documentRef: Document): Promise<void> {
 
   setBusyReason('loading');
   setStatus(driveStatusEl, 'Checking Google Drive connection...');
-  restoreBackups = [];
-  nextRestorePageToken = null;
-  renderDriveBackups(backupListEl, []);
+  previousPageTokens = [];
+  applyRestorePage([], null, null);
   await refreshAuthState();
   setBusyReason(null);
   if (!isConnected) {
