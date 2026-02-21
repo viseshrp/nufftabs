@@ -1409,14 +1409,11 @@ async function importOneTab(): Promise<void> {
   const windowId = await getCurrentWindowId();
   const groupKey = createCondenseGroupKey(windowId);
   const existing = state.indexedGroupKeySet.has(groupKey) ? await ensureGroupLoaded(groupKey) : [];
-  const knownUrls =
-    settings.duplicateTabsPolicy === 'reject' ? collectSavedTabUrls(await readSavedGroups()) : new Set<string>();
-  const { tabs: updatedGroup, addedCount } = appendTabsByDuplicatePolicy(
-    existing,
-    imported,
-    settings.duplicateTabsPolicy,
-    knownUrls,
-  );
+  const mergeResult =
+    settings.duplicateTabsPolicy === 'reject'
+      ? appendTabsByDuplicatePolicy(existing, imported, 'reject', collectSavedTabUrls(await readSavedGroups()))
+      : appendTabsByDuplicatePolicy(existing, imported, 'allow');
+  const { tabs: updatedGroup, addedCount } = mergeResult;
   if (addedCount === 0) {
     setStatus('No new OneTab links found to import.');
     return;

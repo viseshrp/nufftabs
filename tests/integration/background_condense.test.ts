@@ -217,6 +217,10 @@ describe('background condense', () => {
       .map((tab) => tab.url);
     expect(allUrls.filter((url) => url === 'https://dup.com')).toHaveLength(1);
     expect(allUrls).toContain('https://unique.com');
+
+    // Duplicate tabs that were not saved should remain open in the source window.
+    const secondWindowTabs = await mock.chrome.tabs.query({ windowId: secondWindow.id as number });
+    expect(secondWindowTabs.some((tab) => tab.url === 'https://dup.com')).toBe(true);
+    expect(secondWindowTabs.some((tab) => tab.url === 'https://unique.com')).toBe(false);
   });
 });
-

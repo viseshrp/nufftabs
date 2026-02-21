@@ -138,7 +138,7 @@ export function mergeGroups(
   duplicateTabsPolicy: DuplicateTabsPolicy = 'allow',
 ): SavedTabGroups {
   const merged = cloneGroups(existing);
-  const knownUrls = collectSavedTabUrls(existing);
+  const knownUrls = duplicateTabsPolicy === 'reject' ? collectSavedTabUrls(existing) : undefined;
   for (const [groupKey, tabs] of Object.entries(incoming)) {
     if (tabs.length === 0) continue;
     const existingTabs = merged[groupKey] ?? [];

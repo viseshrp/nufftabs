@@ -45,17 +45,13 @@ export function saveTabsToList(
   tabs: chrome.tabs.Tab[],
   existing: SavedTab[],
   now = Date.now(),
-  existingUrls?: Set<string>,
 ): SavedTab[] {
   const saved: SavedTab[] = [];
-  // Track URLs already known to storage when duplicate rejection is enabled.
-  const dedupeUrlSet = existingUrls ?? null;
   for (const tab of tabs) {
     // Keep pendingUrl support in sync with filterEligibleTabs to avoid dropping new tabs.
     const candidateUrl =
       typeof tab.url === 'string' && tab.url.length > 0 ? tab.url : tab.pendingUrl;
     if (typeof candidateUrl !== 'string' || candidateUrl.length === 0) continue;
-    if (dedupeUrlSet?.has(candidateUrl)) continue;
     saved.push(
       createSavedTab({
         url: candidateUrl,
@@ -64,9 +60,6 @@ export function saveTabsToList(
         savedAt: now,
       }),
     );
-    if (dedupeUrlSet) {
-      dedupeUrlSet.add(candidateUrl);
-    }
   }
   return saved.length > 0 ? [...saved, ...existing] : existing;
 }

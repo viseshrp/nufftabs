@@ -44,9 +44,20 @@ export async function condenseCurrentWindow(targetWindowId?: number): Promise<vo
   const now = Date.now();
   // Timestamp is captured once to keep group keys and savedAt values consistent.
   const groupKey = createCondenseGroupKey(resolvedWindowId, now);
-  const existingUrls =
-    settings.duplicateTabsPolicy === 'reject' ? collectSavedTabUrls(await readSavedGroups()) : undefined;
-  const updatedGroup = saveTabsToList(eligibleTabs, [], now, existingUrls);
+  let tabsToSave = eligibleTabs;
+  if (settings.duplicateTabsPolicy === 'reject') {
+    const knownUrls = collectSavedTabUrls(await readSavedGroups());
+    const uniqueTabs: chrome.tabs.Tab[] = [];
+    for (const tab of eligibleTabs) {
+      const candidateUrl = typeof tab.url === 'string' && tab.url.length > 0 ? tab.url : tab.pendingUrl;
+      if (typeof candidateUrl !== 'string' || candidateUrl.length === 0) continue;
+      if (knownUrls.has(candidateUrl)) continue;
+      uniqueTabs.push(tab);
+      knownUrls.add(candidateUrl);
+    }
+    tabsToSave = uniqueTabs;
+  }
+  const updatedGroup = saveTabsToList(tabsToSave, [], now);
   if (updatedGroup.length === 0) {
     await focusExistingListTabOrCreate(listTabs, listUrl, resolvedWindowId);
     return;
@@ -71,7 +82,7 @@ export async function condenseCurrentWindow(targetWindowId?: number): Promise<vo
   }
 
   // Remove condensed tabs after saving, but only when tab IDs are available.
-  const tabIds = eligibleTabs.map((tab) => tab.id).filter((id): id is number => typeof id === 'number');
+  const tabIds = tabsToSave.map((tab) => tab.id).filter((id): id is number => typeof id === 'number');
   if (tabIds.length > 0) {
     try {
       await chrome.tabs.remove(tabIds);

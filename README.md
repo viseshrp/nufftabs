@@ -192,6 +192,7 @@ The packaged extension zip is generated under `.output/`.
 1. Open the options page.
 2. Set **Duplicates** to **Allow duplicates** or **Silently reject duplicates**.
 3. When reject mode is enabled, condense and import flows skip URLs already saved in nufftabs.
+4. During condense in reject mode, skipped duplicate tabs are left open in the source window.
 
 ### Existing list tab reuse
 - If a list tab already exists anywhere, condense focuses the most recently active one.

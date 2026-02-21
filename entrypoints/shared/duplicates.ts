@@ -25,13 +25,16 @@ export function appendTabsByDuplicatePolicy(
   existingTabs: SavedTab[],
   incomingTabs: SavedTab[],
   duplicateTabsPolicy: DuplicateTabsPolicy,
-  knownUrls: Set<string>,
+  knownUrls?: Set<string>,
 ): { tabs: SavedTab[]; addedCount: number } {
   if (incomingTabs.length === 0) {
     return { tabs: existingTabs, addedCount: 0 };
   }
   if (duplicateTabsPolicy === 'allow') {
     return { tabs: [...existingTabs, ...incomingTabs], addedCount: incomingTabs.length };
+  }
+  if (!knownUrls) {
+    throw new Error('knownUrls is required when duplicate policy is reject');
   }
 
   const appended: SavedTab[] = [];
