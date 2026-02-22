@@ -6,11 +6,17 @@
 import { LIST_PAGE_PATH, STORAGE_KEYS, normalizeSettings, readSettings, type SavedTab } from '../shared/storage';
 import { logExtensionError } from '../shared/utils';
 
-/** Maximum number of tabs being created concurrently during a restore operation. */
-export const RESTORE_CONCURRENCY = 6;
+/**
+ * Maximum number of tabs being created concurrently during a restore operation.
+ * Keep this conservative to avoid overwhelming the browser process during bulk restores.
+ */
+export const RESTORE_CONCURRENCY = 1;
 
-/** Maximum number of tabs being discarded concurrently after a restore operation. */
-const DISCARD_CONCURRENCY = 8;
+/**
+ * Maximum number of tabs being discarded concurrently after a restore operation.
+ * Lower concurrency helps avoid bursty tab lifecycle churn in Chromium.
+ */
+const DISCARD_CONCURRENCY = 2;
 
 /** How long (ms) to wait for a tab's URL to resolve before giving up on discarding it. */
 const DISCARD_WAIT_TIMEOUT_MS = 5000;
@@ -282,11 +288,12 @@ export async function restoreTabs(savedTabs: SavedTab[]): Promise<boolean> {
   const settings = await readSettings();
   const shouldDiscard = settings.discardRestoredTabs;
   let discardSession: DiscardSession | null = null;
-  const scheduleDiscard = (tabIds: Array<number | undefined | null>) => {
+  const pendingDiscardIds: number[] = [];
+  const collectDiscardCandidates = (tabIds: Array<number | undefined | null>) => {
     if (!shouldDiscard) return;
-    if (!tabIds.some((id) => typeof id === 'number')) return;
-    if (!discardSession) discardSession = createDiscardSession();
-    discardSession.schedule(tabIds);
+    for (const tabId of tabIds) {
+      if (typeof tabId === 'number') pendingDiscardIds.push(tabId);
+    }
   };
   const chunkSize = settings.restoreBatchSize > 0 ? settings.restoreBatchSize : 100;
   const chunks: SavedTab[][] = [];
@@ -305,7 +312,7 @@ export async function restoreTabs(savedTabs: SavedTab[]): Promise<boolean> {
           firstChunk.map((tab) => tab.url),
           startIndex,
         );
-        scheduleDiscard(createdIds);
+        collectDiscardCandidates(createdIds);
       }
       await chrome.tabs.update(reuse.tabId, { active: true });
       for (const chunk of remainingChunks) {
@@ -326,10 +333,10 @@ export async function restoreTabs(savedTabs: SavedTab[]): Promise<boolean> {
           );
         }
         if (typeof firstTabId === 'number') {
-          scheduleDiscard([firstTabId, ...createdIds]);
+          collectDiscardCandidates([firstTabId, ...createdIds]);
         } else {
           const fallbackIds = await getWindowTabIdsBestEffort(windowId);
-          scheduleDiscard(fallbackIds);
+          collectDiscardCandidates(fallbackIds);
         }
       }
     } else {
@@ -351,16 +358,22 @@ export async function restoreTabs(savedTabs: SavedTab[]): Promise<boolean> {
           );
         }
         if (typeof firstTabId === 'number') {
-          scheduleDiscard([firstTabId, ...createdIds]);
+          collectDiscardCandidates([firstTabId, ...createdIds]);
         } else {
           const fallbackIds = await getWindowTabIdsBestEffort(windowId);
-          scheduleDiscard(fallbackIds);
+          collectDiscardCandidates(fallbackIds);
         }
       }
     }
   } catch (error) {
     logExtensionError('Failed to restore tabs', error, { operation: 'tab_query' });
     return false;
+  }
+
+  // Run discard only after restore creation is complete to avoid overlapping create/discard churn.
+  if (pendingDiscardIds.length > 0) {
+    discardSession = createDiscardSession();
+    discardSession.schedule(pendingDiscardIds);
   }
 
   return true;
