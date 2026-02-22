@@ -12,7 +12,7 @@ import {
   type SavedTabGroups,
   type Settings,
 } from '../shared/storage';
-import { logExtensionError } from '../shared/utils';
+import { logExtensionError, runWithConcurrency } from '../shared/utils';
 import {
   deleteFile,
   downloadJsonFile,
@@ -59,28 +59,6 @@ const defaultDeps: DriveApiDeps = {
 
 /** Max number of concurrent Drive delete calls when enforcing retention. */
 const RETENTION_DELETE_CONCURRENCY = 4;
-
-/**
- * Runs async work over a list with bounded parallelism.
- * Keeps memory and API fan-out predictable for large batches.
- */
-async function runWithConcurrency<T>(
-  items: T[],
-  limit: number,
-  task: (item: T) => Promise<void>,
-): Promise<void> {
-  if (items.length === 0) return;
-  let nextIndex = 0;
-  const workerCount = Math.min(limit, items.length);
-  const workers = Array.from({ length: workerCount }, async () => {
-    while (nextIndex < items.length) {
-      const current = items[nextIndex];
-      nextIndex += 1;
-      if (current !== undefined) await task(current);
-    }
-  });
-  await Promise.all(workers);
-}
 
 /**
  * Converts Drive file metadata into normalized local backup entries used by

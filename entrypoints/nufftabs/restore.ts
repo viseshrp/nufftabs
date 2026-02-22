@@ -4,7 +4,7 @@
  * limited creation, with optional post-restore tab discarding to save RAM.
  */
 import { LIST_PAGE_PATH, STORAGE_KEYS, normalizeSettings, readSettings, type SavedTab } from '../shared/storage';
-import { logExtensionError } from '../shared/utils';
+import { logExtensionError, runWithConcurrency } from '../shared/utils';
 
 /**
  * Maximum number of tabs being discarded concurrently after a restore operation.
@@ -200,27 +200,8 @@ async function getWindowTabsBestEffort(windowId: number): Promise<chrome.tabs.Ta
   }
 }
 
-/**
- * Runs async tasks over an item list with a bounded concurrency pool.
- * Worker ordering is not guaranteed.
- */
-export async function runWithConcurrency<T>(
-  items: T[],
-  limit: number,
-  task: (item: T) => Promise<void>,
-): Promise<void> {
-  // Executes tasks concurrently for speed; ordering of completion is not guaranteed.
-  if (items.length === 0) return;
-  let index = 0;
-  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
-    while (index < items.length) {
-      const current = items[index];
-      index += 1;
-      if (current !== undefined) await task(current);
-    }
-  });
-  await Promise.all(workers);
-}
+/** Re-exported for compatibility with existing restore-module consumers/tests. */
+export { runWithConcurrency };
 
 /**
  * Determines whether the current window can be reused for restoring tabs.

@@ -30,7 +30,7 @@ import {
   type SavedTabGroups,
 } from '../shared/storage';
 import { appendTabsByDuplicatePolicy, collectSavedTabUrls } from '../shared/duplicates';
-import { logExtensionError, type ExtensionErrorOperation } from '../shared/utils';
+import { logExtensionError, runWithConcurrency, type ExtensionErrorOperation } from '../shared/utils';
 import { createSnackbarNotifier } from '../ui/notifications';
 
 // ── DOM element references (queried once at module load) ──
@@ -768,19 +768,10 @@ function scheduleViewportGroupLoad(): void {
 async function loadGroupsForSearch(loadToken: number): Promise<void> {
   const keysToLoad = getSortedGroupKeys().filter((groupKey) => !isGroupLoaded(groupKey));
   if (keysToLoad.length === 0) return;
-
-  let nextIndex = 0;
-  const workerCount = Math.min(SEARCH_GROUP_LOAD_CONCURRENCY, keysToLoad.length);
-  const workers = Array.from({ length: workerCount }, async () => {
-    while (nextIndex < keysToLoad.length) {
-      if (loadToken !== state.searchLoadToken || !state.activeSearchTerm) return;
-      const groupKey = keysToLoad[nextIndex];
-      nextIndex += 1;
-      if (!groupKey) continue;
-      await ensureGroupLoaded(groupKey);
-    }
+  await runWithConcurrency(keysToLoad, SEARCH_GROUP_LOAD_CONCURRENCY, async (groupKey) => {
+    if (loadToken !== state.searchLoadToken || !state.activeSearchTerm) return;
+    await ensureGroupLoaded(groupKey);
   });
-  await Promise.all(workers);
 }
 
 /** Increments the search load token and kicks off progressive group loading for search. */
