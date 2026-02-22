@@ -156,7 +156,11 @@ export function createDiscardSession(): DiscardSession {
     schedule: (tabIds) => {
       if (abortController.signal.aborted) return;
       activeTasks += 1;
-      void discardTabsBestEffort(tabIds, abortController.signal).finally(() => {
+      void discardTabsBestEffort(tabIds, abortController.signal)
+        .catch((error) => {
+          logExtensionError('Unexpected discard session failure', error, { operation: 'runtime_context' });
+        })
+        .finally(() => {
           activeTasks -= 1;
           maybeCleanup();
         });
