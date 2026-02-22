@@ -1,11 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import { LIST_PAGE_PATH } from '../../entrypoints/shared/storage';
-import { createDiscardSession, discardTabsBestEffort, restoreTabs } from '../../entrypoints/nufftabs/restore';
+import {
+  createDiscardSession,
+  discardTabsBestEffort,
+  getReuseWindowContext,
+  restoreTabs,
+} from '../../entrypoints/nufftabs/restore';
 import { writeSettings } from '../../entrypoints/shared/storage';
 import { createMockChrome, setMockChrome } from '../helpers/mock_chrome';
 
 describe('restore logic', () => {
-  it('reuses list window when it is the only tab', async () => {
+  it('keeps the list window untouched and restores into chunked windows', async () => {
     const mock = createMockChrome();
     setMockChrome(mock.chrome);
 
@@ -25,15 +30,12 @@ describe('restore logic', () => {
     const restored = await restoreTabs(savedTabs);
     expect(restored).toBe(true);
 
-    const tabsInWindow = await mock.chrome.tabs.query({ windowId: window.id as number });
-    const listTab = tabsInWindow.find((tab: chrome.tabs.Tab) => tab.url === listUrl);
-    expect(listTab?.active).toBe(true);
-    const createdTabs = tabsInWindow.filter((tab: chrome.tabs.Tab) => tab.url !== listUrl);
-    expect(createdTabs).toHaveLength(2);
-    expect(createdTabs.map((tab: chrome.tabs.Tab) => tab.url)).toEqual(
-      expect.arrayContaining(['https://a.com', 'https://b.com']),
-    );
-    expect(mock.windows.size).toBe(2);
+    const tabsInListWindow = await mock.chrome.tabs.query({ windowId: window.id as number });
+    expect(tabsInListWindow).toHaveLength(1);
+    expect(tabsInListWindow[0]?.url).toBe(listUrl);
+    expect(tabsInListWindow[0]?.active).toBe(true);
+
+    expect(mock.windows.size).toBe(3);
     const cTab = (await mock.chrome.tabs.query({ url: 'https://c.com' }))[0];
     expect(cTab?.windowId).not.toBe(window.id);
   });
@@ -83,6 +85,16 @@ describe('restore logic', () => {
     expect(restored).toBe(true);
   });
 
+  it('returns false when window creation unexpectedly returns undefined', async () => {
+    const mock = createMockChrome();
+    setMockChrome(mock.chrome);
+
+    mock.chrome.windows.create = async () => undefined as unknown as chrome.windows.Window;
+
+    const restored = await restoreTabs([{ id: '1', url: 'https://a.com', title: 'A', savedAt: 1 }]);
+    expect(restored).toBe(false);
+  });
+
   it('fails when window id is missing', async () => {
     const mock = createMockChrome();
     setMockChrome(mock.chrome);
@@ -101,7 +113,7 @@ describe('restore logic', () => {
     expect(restored).toBe(false);
   });
 
-  it('covers reuse branch window creation and rest tabs', async () => {
+  it('restores chunked tabs into separate windows for each batch', async () => {
     const mock = createMockChrome();
     setMockChrome(mock.chrome);
 
@@ -122,20 +134,25 @@ describe('restore logic', () => {
     const restored = await restoreTabs(savedTabs);
     expect(restored).toBe(true);
 
-    expect(mock.windows.size).toBe(3);
+    expect(mock.windows.size).toBe(4);
 
     const listWindowTabs = await mock.chrome.tabs.query({ windowId: window.id as number });
-    expect(listWindowTabs.map((tab: chrome.tabs.Tab) => tab.url)).toEqual(
-      expect.arrayContaining(['https://a.com', 'https://b.com', listUrl]),
-    );
+    expect(listWindowTabs).toHaveLength(1);
+    expect(listWindowTabs[0]?.url).toBe(listUrl);
 
+    const aTab = (await mock.chrome.tabs.query({ url: 'https://a.com' }))[0];
+    const bTab = (await mock.chrome.tabs.query({ url: 'https://b.com' }))[0];
     const cTab = (await mock.chrome.tabs.query({ url: 'https://c.com' }))[0];
     const dTab = (await mock.chrome.tabs.query({ url: 'https://d.com' }))[0];
     const eTab = (await mock.chrome.tabs.query({ url: 'https://e.com' }))[0];
 
+    expect(aTab?.windowId).toBeDefined();
+    expect(bTab?.windowId).toBeDefined();
     expect(cTab?.windowId).toBeDefined();
     expect(dTab?.windowId).toBeDefined();
     expect(eTab?.windowId).toBeDefined();
+    expect(aTab?.windowId).toBe(bTab?.windowId);
+    expect(aTab?.windowId).not.toBe(window.id);
     expect(cTab?.windowId).toBe(dTab?.windowId);
     expect(cTab?.windowId).not.toBe(window.id);
     expect(eTab?.windowId).not.toBe(window.id);
@@ -152,6 +169,27 @@ describe('restore logic', () => {
 
     const restored = await restoreTabs([{ id: '1', url: 'https://a.com', title: 'A', savedAt: 1 }]);
     expect(restored).toBe(true);
+  });
+
+  it('returns no-reuse context when no current tab exists', async () => {
+    const mock = createMockChrome();
+    setMockChrome(mock.chrome);
+
+    mock.chrome.tabs.getCurrent = async () => null;
+    const context = await getReuseWindowContext();
+    expect(context).toEqual({ shouldReuse: false });
+  });
+
+  it('returns no-reuse context when getCurrent throws', async () => {
+    const mock = createMockChrome();
+    setMockChrome(mock.chrome);
+
+    mock.chrome.tabs.getCurrent = async () => {
+      throw new Error('boom');
+    };
+
+    const context = await getReuseWindowContext();
+    expect(context).toEqual({ shouldReuse: false });
   });
 
   it('discards restored tabs when enabled', async () => {
@@ -172,8 +210,8 @@ describe('restore logic', () => {
     expect(restored).toBe(true);
     await new Promise((resolve) => setTimeout(resolve, 20));
 
-    const tabsInWindow = await mock.chrome.tabs.query({ windowId: window.id as number });
-    const restoredTabs = tabsInWindow.filter((tab: chrome.tabs.Tab) => tab.url !== listUrl);
+    const restoredTabs = (await mock.chrome.tabs.query({}))
+      .filter((tab: chrome.tabs.Tab) => tab.url === 'https://a.com' || tab.url === 'https://b.com');
     expect(restoredTabs).toHaveLength(2);
     for (const tab of restoredTabs) {
       expect(tab.discarded).toBe(true);
@@ -210,7 +248,8 @@ describe('restore logic', () => {
     const session = createDiscardSession();
     session.schedule([tabId]);
 
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    // Give the discard job time to register this tab as pending before settings disable it.
+    await new Promise((resolve) => setTimeout(resolve, 20));
     await writeSettings({ excludePinned: true, restoreBatchSize: 2, discardRestoredTabs: false });
     await new Promise((resolve) => setTimeout(resolve, 0));
 
@@ -299,5 +338,3 @@ describe('restore logic', () => {
     expect(restored).toBe(false);
   });
 });
-
-
