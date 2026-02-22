@@ -30,7 +30,7 @@ import {
   type SavedTabGroups,
 } from '../shared/storage';
 import { appendTabsByDuplicatePolicy, collectSavedTabUrls } from '../shared/duplicates';
-import { logExtensionError, type ExtensionErrorOperation } from '../shared/utils';
+import { logExtensionError, runWithConcurrency, type ExtensionErrorOperation } from '../shared/utils';
 import { createSnackbarNotifier } from '../ui/notifications';
 
 // ── DOM element references (queried once at module load) ──
@@ -71,7 +71,11 @@ type ListPageState = {
   totalTabCount: number;
   /** Ordered list of known group keys from the storage index. */
   indexedGroupKeys: string[];
+  /** Same keys as `indexedGroupKeys`, sorted newest-first for stable rendering/search traversal. */
+  sortedIndexedGroupKeys: string[];
   indexedGroupKeySet: Set<string>;
+  /** Per-group tab counts used to keep the header count fresh without full storage scans. */
+  groupTabCounts: Map<string, number>;
   /** In-flight load promises per group key to avoid duplicate fetches. */
   groupLoadTasks: Map<string, Promise<SavedTab[]>>;
   viewportLoadFrame: number;
@@ -94,7 +98,9 @@ const state: ListPageState = {
   draggedTab: null,
   totalTabCount: 0,
   indexedGroupKeys: [],
+  sortedIndexedGroupKeys: [],
   indexedGroupKeySet: new Set<string>(),
+  groupTabCounts: new Map<string, number>(),
   groupLoadTasks: new Map<string, Promise<SavedTab[]>>(),
   viewportLoadFrame: 0,
   searchLoadToken: 0,
@@ -114,6 +120,13 @@ const userNotifier = createSnackbarNotifier(snackbarEl);
 
 /** Maximum number of tab rows to render per group before showing a "Load more" control. */
 const RENDER_PAGE_SIZE = 200;
+/** Max concurrent group fetches while search is active to avoid serial latency. */
+const SEARCH_GROUP_LOAD_CONCURRENCY = 4;
+/**
+ * Large storage change bursts (imports/replace) are cheaper to recount via one
+ * full scan than many per-group reads.
+ */
+const TAB_COUNT_INCREMENTAL_REFRESH_LIMIT = 25;
 
 /** Descriptor for a child element inside an SVG icon. */
 type SvgElementSpec = {
@@ -626,7 +639,12 @@ function updateEmptyStateText(message: 'saved' | 'matching'): void {
 
 /** Returns group keys sorted newest-first by creation timestamp. */
 function getSortedGroupKeys(): string[] {
-  return state.indexedGroupKeys
+  return state.sortedIndexedGroupKeys.slice();
+}
+
+/** Rebuilds the cached newest-first key order from `indexedGroupKeys`. */
+function rebuildSortedIndexedGroupKeys(): void {
+  state.sortedIndexedGroupKeys = state.indexedGroupKeys
     .slice()
     .sort((a, b) => (parseGroupCreationTime(b) ?? 0) - (parseGroupCreationTime(a) ?? 0));
 }
@@ -641,6 +659,7 @@ function upsertIndexedGroupKey(groupKey: string): void {
   if (state.indexedGroupKeySet.has(groupKey)) return;
   state.indexedGroupKeys.push(groupKey);
   state.indexedGroupKeySet.add(groupKey);
+  rebuildSortedIndexedGroupKeys();
 }
 
 /** Removes a group key from the index and clears its cached data. */
@@ -648,15 +667,18 @@ function removeIndexedGroupKey(groupKey: string): void {
   if (!state.indexedGroupKeySet.has(groupKey)) return;
   state.indexedGroupKeys = state.indexedGroupKeys.filter((key) => key !== groupKey);
   state.indexedGroupKeySet.delete(groupKey);
+  state.groupTabCounts.delete(groupKey);
   delete state.currentGroups[groupKey];
   delete state.visibleGroups[groupKey];
   state.groupLoadTasks.delete(groupKey);
+  rebuildSortedIndexedGroupKeys();
 }
 
 /** Replaces the entire indexed key set, pruning stale groups from caches. */
 function setIndexedGroups(nextKeys: string[]): void {
   state.indexedGroupKeys = nextKeys.slice();
   state.indexedGroupKeySet = new Set(nextKeys);
+  rebuildSortedIndexedGroupKeys();
   for (const key of Object.keys(state.currentGroups)) {
     if (!state.indexedGroupKeySet.has(key)) delete state.currentGroups[key];
   }
@@ -665,6 +687,9 @@ function setIndexedGroups(nextKeys: string[]): void {
   }
   for (const key of state.groupLoadTasks.keys()) {
     if (!state.indexedGroupKeySet.has(key)) state.groupLoadTasks.delete(key);
+  }
+  for (const key of state.groupTabCounts.keys()) {
+    if (!state.indexedGroupKeySet.has(key)) state.groupTabCounts.delete(key);
   }
 }
 
@@ -739,13 +764,14 @@ function scheduleViewportGroupLoad(): void {
   });
 }
 
-/** Sequentially loads all groups from storage for search filtering, aborting if the token changes. */
+/** Loads groups for search filtering with bounded parallelism, aborting if the token changes. */
 async function loadGroupsForSearch(loadToken: number): Promise<void> {
-  for (const groupKey of getSortedGroupKeys()) {
+  const keysToLoad = getSortedGroupKeys().filter((groupKey) => !isGroupLoaded(groupKey));
+  if (keysToLoad.length === 0) return;
+  await runWithConcurrency(keysToLoad, SEARCH_GROUP_LOAD_CONCURRENCY, async (groupKey) => {
     if (loadToken !== state.searchLoadToken || !state.activeSearchTerm) return;
-    if (isGroupLoaded(groupKey)) continue;
     await ensureGroupLoaded(groupKey);
-  }
+  });
 }
 
 /** Increments the search load token and kicks off progressive group loading for search. */
@@ -767,10 +793,54 @@ function adjustTabCount(delta: number): void {
   setTabCount(state.totalTabCount + delta);
 }
 
-/** Re-reads all groups from storage and recomputes the total tab count. */
-async function refreshTotalTabCount(): Promise<void> {
-  const savedGroups = await readSavedGroups();
-  setTabCount(countTotalTabs(savedGroups));
+/** Recomputes the total tab count using cached per-group counts and targeted refreshes. */
+async function refreshTotalTabCount(changedGroupKeys?: string[]): Promise<void> {
+  // Loaded groups already carry exact counts; keep the cache in sync opportunistically.
+  for (const [groupKey, tabs] of Object.entries(state.currentGroups)) {
+    if (state.indexedGroupKeySet.has(groupKey)) {
+      state.groupTabCounts.set(groupKey, tabs.length);
+    }
+  }
+  // Drop cache entries for groups that no longer exist in the index.
+  for (const key of state.groupTabCounts.keys()) {
+    if (!state.indexedGroupKeySet.has(key)) state.groupTabCounts.delete(key);
+  }
+
+  const keysToRefresh = Array.from(new Set(changedGroupKeys ?? [])).filter((groupKey) =>
+    state.indexedGroupKeySet.has(groupKey),
+  );
+  const shouldRefreshIncrementally = keysToRefresh.length > 0 && keysToRefresh.length <= TAB_COUNT_INCREMENTAL_REFRESH_LIMIT;
+  const shouldForceFullRefresh = keysToRefresh.length > TAB_COUNT_INCREMENTAL_REFRESH_LIMIT;
+  if (shouldRefreshIncrementally) {
+    await Promise.all(
+      keysToRefresh.map(async (groupKey) => {
+        if (isGroupLoaded(groupKey)) {
+          state.groupTabCounts.set(groupKey, (state.currentGroups[groupKey] ?? []).length);
+          return;
+        }
+        const tabs = await readSavedGroup(groupKey);
+        if (state.indexedGroupKeySet.has(groupKey)) {
+          state.groupTabCounts.set(groupKey, tabs.length);
+        }
+      }),
+    );
+  }
+
+  // Fallback to one full read only when coverage is incomplete (initial load or missed change).
+  if (shouldForceFullRefresh || state.groupTabCounts.size !== state.indexedGroupKeys.length) {
+    const savedGroups = await readSavedGroups();
+    state.groupTabCounts.clear();
+    for (const [groupKey, tabs] of Object.entries(savedGroups)) {
+      state.groupTabCounts.set(groupKey, tabs.length);
+    }
+    for (const groupKey of state.indexedGroupKeys) {
+      if (!state.groupTabCounts.has(groupKey)) state.groupTabCounts.set(groupKey, 0);
+    }
+  }
+
+  let total = 0;
+  for (const count of state.groupTabCounts.values()) total += count;
+  setTabCount(total);
 }
 
 /** Returns true when every indexed group key has been loaded from storage. */
@@ -1044,7 +1114,7 @@ async function refreshList(changedGroupKeys?: string[]): Promise<void> {
   } else {
     await loadGroupsNearViewport();
   }
-  await refreshTotalTabCount();
+  await refreshTotalTabCount(changedGroupKeys);
 }
 
 /** Delegated click handler for all group-card buttons (collapse, restore, delete, load more). */

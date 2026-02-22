@@ -76,6 +76,28 @@ export function getErrorMessage(error: unknown): string {
   return String(error);
 }
 
+/**
+ * Runs async work over a list with bounded parallelism.
+ * Uses a small worker pool to cap in-flight tasks while preserving throughput.
+ */
+export async function runWithConcurrency<T>(
+  items: T[],
+  limit: number,
+  task: (item: T) => Promise<void>,
+): Promise<void> {
+  if (items.length === 0) return;
+  let nextIndex = 0;
+  const workerCount = Math.min(limit, items.length);
+  const workers = Array.from({ length: workerCount }, async () => {
+    while (nextIndex < items.length) {
+      const current = items[nextIndex];
+      nextIndex += 1;
+      if (current !== undefined) await task(current);
+    }
+  });
+  await Promise.all(workers);
+}
+
 /** Returns true if the error matches a known-ignorable pattern for the given operation. */
 export function isIgnorableExtensionError(error: unknown, operation: ExtensionErrorOperation): boolean {
   const message = getErrorMessage(error);

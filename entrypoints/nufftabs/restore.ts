@@ -4,13 +4,13 @@
  * limited creation, with optional post-restore tab discarding to save RAM.
  */
 import { LIST_PAGE_PATH, STORAGE_KEYS, normalizeSettings, readSettings, type SavedTab } from '../shared/storage';
-import { logExtensionError } from '../shared/utils';
+import { logExtensionError, runWithConcurrency } from '../shared/utils';
 
-/** Maximum number of tabs being created concurrently during a restore operation. */
-export const RESTORE_CONCURRENCY = 6;
-
-/** Maximum number of tabs being discarded concurrently after a restore operation. */
-const DISCARD_CONCURRENCY = 8;
+/**
+ * Maximum number of tabs being discarded concurrently after a restore operation.
+ * Lower concurrency helps avoid bursty tab lifecycle churn in Chromium.
+ */
+const DISCARD_CONCURRENCY = 2;
 
 /** How long (ms) to wait for a tab's URL to resolve before giving up on discarding it. */
 const DISCARD_WAIT_TIMEOUT_MS = 5000;
@@ -190,60 +190,18 @@ export async function discardTabsBestEffort(
   });
 }
 
-/** Returns all tab IDs in a window, best-effort (returns empty on failure). */
-async function getWindowTabIdsBestEffort(windowId: number): Promise<number[]> {
+/** Returns all tabs in a window, best-effort (returns empty on failure). */
+async function getWindowTabsBestEffort(windowId: number): Promise<chrome.tabs.Tab[]> {
   try {
-    const tabs = await chrome.tabs.query({ windowId });
-    return tabs.map((tab) => tab.id).filter((id): id is number => typeof id === 'number');
+    return await chrome.tabs.query({ windowId });
   } catch (error) {
-    logExtensionError(`Failed to query window tab ids (${windowId})`, error, { operation: 'tab_query' });
+    logExtensionError(`Failed to query window tabs (${windowId})`, error, { operation: 'tab_query' });
     return [];
   }
 }
 
-/**
- * Runs async tasks over an item list with a bounded concurrency pool.
- * Worker ordering is not guaranteed.
- */
-export async function runWithConcurrency<T>(
-  items: T[],
-  limit: number,
-  task: (item: T) => Promise<void>,
-): Promise<void> {
-  // Executes tasks concurrently for speed; ordering of completion is not guaranteed.
-  if (items.length === 0) return;
-  let index = 0;
-  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
-    while (index < items.length) {
-      const current = items[index];
-      index += 1;
-      if (current !== undefined) await task(current);
-    }
-  });
-  await Promise.all(workers);
-}
-
-/** Creates tabs in a specific window using concurrency-limited parallel creation. */
-export async function createTabsInWindow(windowId: number, urls: string[], startIndex?: number): Promise<number[]> {
-  // Uses concurrency-limited creation; tabs may appear slightly out of order versus strict
-  // sequential creation, which is accepted for better restore throughput.
-  const createdIds: number[] = [];
-  const tasks = urls.map((url, offset) => ({
-    url,
-    index: typeof startIndex === 'number' ? startIndex + offset : undefined,
-  }));
-  await runWithConcurrency(tasks, RESTORE_CONCURRENCY, async (task) => {
-    const createOptions: chrome.tabs.CreateProperties = {
-      windowId,
-      url: task.url,
-      active: false,
-    };
-    if (typeof task.index === 'number') createOptions.index = task.index;
-    const created = await chrome.tabs.create(createOptions);
-    if (typeof created.id === 'number') createdIds.push(created.id);
-  });
-  return createdIds;
-}
+/** Re-exported for compatibility with existing restore-module consumers/tests. */
+export { runWithConcurrency };
 
 /**
  * Determines whether the current window can be reused for restoring tabs.
@@ -282,85 +240,51 @@ export async function restoreTabs(savedTabs: SavedTab[]): Promise<boolean> {
   const settings = await readSettings();
   const shouldDiscard = settings.discardRestoredTabs;
   let discardSession: DiscardSession | null = null;
-  const scheduleDiscard = (tabIds: Array<number | undefined | null>) => {
+  const pendingDiscardIds: number[] = [];
+  const collectDiscardCandidates = (tabs: Array<Pick<chrome.tabs.Tab, 'id' | 'active'>>): void => {
     if (!shouldDiscard) return;
-    if (!tabIds.some((id) => typeof id === 'number')) return;
-    if (!discardSession) discardSession = createDiscardSession();
-    discardSession.schedule(tabIds);
+    // Keep the focused tab for each restored window so the user does not see a blank active tab.
+    const focusedTabId =
+      tabs.find((tab) => tab.active && typeof tab.id === 'number')?.id ??
+      tabs.find((tab) => typeof tab.id === 'number')?.id;
+    for (const tab of tabs) {
+      if (typeof tab.id !== 'number') continue;
+      if (typeof focusedTabId === 'number' && tab.id === focusedTabId) continue;
+      pendingDiscardIds.push(tab.id);
+    }
   };
   const chunkSize = settings.restoreBatchSize > 0 ? settings.restoreBatchSize : 100;
-  const chunks: SavedTab[][] = [];
-  for (let i = 0; i < savedTabs.length; i += chunkSize) {
-    chunks.push(savedTabs.slice(i, i + chunkSize));
-  }
   try {
-    const reuse = await getReuseWindowContext();
-    if (reuse.shouldReuse && typeof reuse.tabId === 'number' && typeof reuse.windowId === 'number') {
-      const [firstChunk, ...remainingChunks] = chunks;
-      if (firstChunk && firstChunk.length > 0) {
-        const existingTabs = await chrome.tabs.query({ windowId: reuse.windowId });
-        const startIndex = existingTabs.length;
-        const createdIds = await createTabsInWindow(
-          reuse.windowId,
-          firstChunk.map((tab) => tab.url),
-          startIndex,
-        );
-        scheduleDiscard(createdIds);
+    // Use one window creation call per chunk to minimize tab-strip mutations and
+    // reduce extension-driven API churn during bulk restore.
+    for (let start = 0; start < savedTabs.length; start += chunkSize) {
+      const chunk = savedTabs.slice(start, start + chunkSize);
+      if (chunk.length === 0) continue;
+      const createdWindow = await chrome.windows.create({ url: chunk.map((tab) => tab.url) });
+      if (!createdWindow) {
+        throw new Error('Missing window');
       }
-      await chrome.tabs.update(reuse.tabId, { active: true });
-      for (const chunk of remainingChunks) {
-        const [first, ...rest] = chunk;
-        if (!first) continue;
-        const createdWindow = await chrome.windows.create({ url: first.url });
-        const windowId = createdWindow?.id;
-        if (typeof windowId !== 'number') {
-          throw new Error('Missing window id');
-        }
-        const firstTabId = createdWindow?.tabs?.[0]?.id;
-        let createdIds: number[] = [];
-        if (rest.length > 0) {
-          createdIds = await createTabsInWindow(
-            windowId,
-            rest.map((tab) => tab.url),
-            1,
-          );
-        }
-        if (typeof firstTabId === 'number') {
-          scheduleDiscard([firstTabId, ...createdIds]);
-        } else {
-          const fallbackIds = await getWindowTabIdsBestEffort(windowId);
-          scheduleDiscard(fallbackIds);
-        }
+      const windowId = createdWindow?.id;
+      if (typeof windowId !== 'number') {
+        throw new Error('Missing window id');
       }
-    } else {
-      for (const chunk of chunks) {
-        const [first, ...rest] = chunk;
-        if (!first) continue;
-        const createdWindow = await chrome.windows.create({ url: first.url });
-        const windowId = createdWindow?.id;
-        if (typeof windowId !== 'number') {
-          throw new Error('Missing window id');
-        }
-        const firstTabId = createdWindow?.tabs?.[0]?.id;
-        let createdIds: number[] = [];
-        if (rest.length > 0) {
-          createdIds = await createTabsInWindow(
-            windowId,
-            rest.map((tab) => tab.url),
-            1,
-          );
-        }
-        if (typeof firstTabId === 'number') {
-          scheduleDiscard([firstTabId, ...createdIds]);
-        } else {
-          const fallbackIds = await getWindowTabIdsBestEffort(windowId);
-          scheduleDiscard(fallbackIds);
-        }
+      const createdTabs = createdWindow.tabs ?? [];
+      if (createdTabs.length > 0) {
+        collectDiscardCandidates(createdTabs);
+      } else {
+        const fallbackTabs = await getWindowTabsBestEffort(windowId);
+        collectDiscardCandidates(fallbackTabs);
       }
     }
   } catch (error) {
     logExtensionError('Failed to restore tabs', error, { operation: 'tab_query' });
     return false;
+  }
+
+  // Run discard only after restore creation is complete to avoid overlapping create/discard churn.
+  if (pendingDiscardIds.length > 0) {
+    discardSession = createDiscardSession();
+    discardSession.schedule(pendingDiscardIds);
   }
 
   return true;

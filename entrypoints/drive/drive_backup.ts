@@ -12,7 +12,7 @@ import {
   type SavedTabGroups,
   type Settings,
 } from '../shared/storage';
-import { logExtensionError } from '../shared/utils';
+import { logExtensionError, runWithConcurrency } from '../shared/utils';
 import {
   deleteFile,
   downloadJsonFile,
@@ -56,6 +56,9 @@ const defaultDeps: DriveApiDeps = {
   downloadJsonFile,
   deleteFile,
 };
+
+/** Max number of concurrent Drive delete calls when enforcing retention. */
+const RETENTION_DELETE_CONCURRENCY = 4;
 
 /**
  * Converts Drive file metadata into normalized local backup entries used by
@@ -220,9 +223,9 @@ export async function enforceRetention(
   if (entries.length <= normalizedRetention) return entries;
 
   const stale = entries.slice(normalizedRetention);
-  for (const entry of stale) {
+  await runWithConcurrency(stale, RETENTION_DELETE_CONCURRENCY, async (entry) => {
     await deps.deleteFile(entry.fileId, token);
-  }
+  });
 
   return entries.slice(0, normalizedRetention);
 }
@@ -278,10 +281,14 @@ export async function performBackup(
   token: string,
   requestedRetentionCount?: number,
   deps: DriveApiDeps = defaultDeps,
+  preloaded?: {
+    groups?: SavedTabGroups;
+    settings?: Settings;
+  },
 ): Promise<DriveBackupEntry[]> {
   const installId = await getOrCreateInstallId();
-  const settings = await readSettings();
-  const groups = await readSavedGroups();
+  const settings = preloaded?.settings ?? (await readSettings());
+  const groups = preloaded?.groups ?? (await readSavedGroups());
 
   const timestamp = Date.now();
   const payload = serializeBackup(groups, settings, installId, timestamp);
