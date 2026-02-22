@@ -9,6 +9,27 @@ import {
 import { writeSettings } from '../../entrypoints/shared/storage';
 import { createMockChrome, setMockChrome } from '../helpers/mock_chrome';
 
+/**
+ * Waits until the mock discard API has been called `expected` times.
+ * This avoids time-based polling and keeps discard assertions deterministic.
+ */
+function waitForDiscardCalls(mock: ReturnType<typeof createMockChrome>, expected: number): Promise<void> {
+  if (expected === 0) return Promise.resolve();
+  const originalDiscard = mock.chrome.tabs.discard;
+  let observed = 0;
+  return new Promise((resolve) => {
+    mock.chrome.tabs.discard = async (tabId: number) => {
+      const result = await originalDiscard(tabId);
+      observed += 1;
+      if (observed >= expected) {
+        mock.chrome.tabs.discard = originalDiscard;
+        resolve();
+      }
+      return result;
+    };
+  });
+}
+
 describe('restore logic', () => {
   it('keeps the list window untouched and restores into chunked windows', async () => {
     const mock = createMockChrome();
@@ -192,7 +213,7 @@ describe('restore logic', () => {
     expect(context).toEqual({ shouldReuse: false });
   });
 
-  it('discards restored tabs when enabled', async () => {
+  it('discards restored tabs when enabled but keeps the focused tab', async () => {
     const mock = createMockChrome();
     setMockChrome(mock.chrome);
 
@@ -203,19 +224,86 @@ describe('restore logic', () => {
     const listTabId = window.tabs?.[0]?.id as number;
     mock.setCurrentTab(listTabId);
 
+    const discardObserved = waitForDiscardCalls(mock, 1);
+
     const restored = await restoreTabs([
       { id: '1', url: 'https://a.com', title: 'A', savedAt: 1 },
       { id: '2', url: 'https://b.com', title: 'B', savedAt: 1 },
     ]);
     expect(restored).toBe(true);
-    await new Promise((resolve) => setTimeout(resolve, 20));
+    await discardObserved;
 
     const restoredTabs = (await mock.chrome.tabs.query({}))
       .filter((tab: chrome.tabs.Tab) => tab.url === 'https://a.com' || tab.url === 'https://b.com');
     expect(restoredTabs).toHaveLength(2);
-    for (const tab of restoredTabs) {
-      expect(tab.discarded).toBe(true);
-    }
+    expect(restoredTabs.filter((tab) => tab.discarded)).toHaveLength(1);
+    const focused = restoredTabs.find((tab) => tab.active);
+    expect(focused?.discarded).toBe(false);
+  });
+
+  it('keeps one focused tab per restore chunk when discarding is enabled', async () => {
+    const mock = createMockChrome();
+    setMockChrome(mock.chrome);
+
+    await writeSettings({ excludePinned: true, restoreBatchSize: 2, discardRestoredTabs: true });
+
+    const listUrl = mock.chrome.runtime.getURL(LIST_PAGE_PATH);
+    const window = mock.createWindow([listUrl]);
+    const listTabId = window.tabs?.[0]?.id as number;
+    mock.setCurrentTab(listTabId);
+
+    const discardObserved = waitForDiscardCalls(mock, 1);
+
+    const restored = await restoreTabs([
+      { id: '1', url: 'https://a.com', title: 'A', savedAt: 1 },
+      { id: '2', url: 'https://b.com', title: 'B', savedAt: 1 },
+      { id: '3', url: 'https://c.com', title: 'C', savedAt: 1 },
+    ]);
+    expect(restored).toBe(true);
+    await discardObserved;
+
+    const restoredTabs = (await mock.chrome.tabs.query({})).filter(
+      (tab: chrome.tabs.Tab) => tab.url === 'https://a.com' || tab.url === 'https://b.com' || tab.url === 'https://c.com',
+    );
+    expect(restoredTabs).toHaveLength(3);
+    expect(restoredTabs.filter((tab) => tab.discarded)).toHaveLength(1);
+    expect(restoredTabs.filter((tab) => !tab.discarded && tab.active)).toHaveLength(2);
+  });
+
+  it('falls back to the first tab when active metadata is unavailable', async () => {
+    const mock = createMockChrome();
+    setMockChrome(mock.chrome);
+
+    await writeSettings({ excludePinned: true, restoreBatchSize: 2, discardRestoredTabs: true });
+
+    const originalCreate = mock.chrome.windows.create;
+    mock.chrome.windows.create = async (createData?: chrome.windows.CreateData) => {
+      const created = await originalCreate(createData);
+      for (const tab of created.tabs ?? []) {
+        // Simulate environments where active-state metadata is missing from create response.
+        delete (tab as { active?: boolean }).active;
+      }
+      return created;
+    };
+
+    const listUrl = mock.chrome.runtime.getURL(LIST_PAGE_PATH);
+    const window = mock.createWindow([listUrl]);
+    const listTabId = window.tabs?.[0]?.id as number;
+    mock.setCurrentTab(listTabId);
+
+    const discardObserved = waitForDiscardCalls(mock, 1);
+
+    const restored = await restoreTabs([
+      { id: '1', url: 'https://a.com', title: 'A', savedAt: 1 },
+      { id: '2', url: 'https://b.com', title: 'B', savedAt: 1 },
+    ]);
+    expect(restored).toBe(true);
+    await discardObserved;
+
+    const aTab = (await mock.chrome.tabs.query({ url: 'https://a.com' }))[0];
+    const bTab = (await mock.chrome.tabs.query({ url: 'https://b.com' }))[0];
+    expect(aTab?.discarded).toBe(false);
+    expect(bTab?.discarded).toBe(true);
   });
 
   it('waits for real URL before discarding', async () => {

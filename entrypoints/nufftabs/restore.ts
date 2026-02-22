@@ -186,13 +186,12 @@ export async function discardTabsBestEffort(
   });
 }
 
-/** Returns all tab IDs in a window, best-effort (returns empty on failure). */
-async function getWindowTabIdsBestEffort(windowId: number): Promise<number[]> {
+/** Returns all tabs in a window, best-effort (returns empty on failure). */
+async function getWindowTabsBestEffort(windowId: number): Promise<chrome.tabs.Tab[]> {
   try {
-    const tabs = await chrome.tabs.query({ windowId });
-    return tabs.map((tab) => tab.id).filter((id): id is number => typeof id === 'number');
+    return await chrome.tabs.query({ windowId });
   } catch (error) {
-    logExtensionError(`Failed to query window tab ids (${windowId})`, error, { operation: 'tab_query' });
+    logExtensionError(`Failed to query window tabs (${windowId})`, error, { operation: 'tab_query' });
     return [];
   }
 }
@@ -257,10 +256,16 @@ export async function restoreTabs(savedTabs: SavedTab[]): Promise<boolean> {
   const shouldDiscard = settings.discardRestoredTabs;
   let discardSession: DiscardSession | null = null;
   const pendingDiscardIds: number[] = [];
-  const collectDiscardCandidates = (tabIds: Array<number | undefined | null>) => {
+  const collectDiscardCandidates = (tabs: Array<Pick<chrome.tabs.Tab, 'id' | 'active'>>): void => {
     if (!shouldDiscard) return;
-    for (const tabId of tabIds) {
-      if (typeof tabId === 'number') pendingDiscardIds.push(tabId);
+    // Keep the focused tab for each restored window so the user does not see a blank active tab.
+    const focusedTabId =
+      tabs.find((tab) => tab.active && typeof tab.id === 'number')?.id ??
+      tabs.find((tab) => typeof tab.id === 'number')?.id;
+    for (const tab of tabs) {
+      if (typeof tab.id !== 'number') continue;
+      if (typeof focusedTabId === 'number' && tab.id === focusedTabId) continue;
+      pendingDiscardIds.push(tab.id);
     }
   };
   const chunkSize = settings.restoreBatchSize > 0 ? settings.restoreBatchSize : 100;
@@ -278,14 +283,12 @@ export async function restoreTabs(savedTabs: SavedTab[]): Promise<boolean> {
       if (typeof windowId !== 'number') {
         throw new Error('Missing window id');
       }
-      const createdTabIds = (createdWindow.tabs ?? [])
-        .map((tab) => tab.id)
-        .filter((tabId): tabId is number => typeof tabId === 'number');
-      if (createdTabIds.length > 0) {
-        collectDiscardCandidates(createdTabIds);
+      const createdTabs = createdWindow.tabs ?? [];
+      if (createdTabs.length > 0) {
+        collectDiscardCandidates(createdTabs);
       } else {
-        const fallbackIds = await getWindowTabIdsBestEffort(windowId);
-        collectDiscardCandidates(fallbackIds);
+        const fallbackTabs = await getWindowTabsBestEffort(windowId);
+        collectDiscardCandidates(fallbackTabs);
       }
     }
   } catch (error) {
