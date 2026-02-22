@@ -264,14 +264,11 @@ export async function restoreTabs(savedTabs: SavedTab[]): Promise<boolean> {
     }
   };
   const chunkSize = settings.restoreBatchSize > 0 ? settings.restoreBatchSize : 100;
-  const chunks: SavedTab[][] = [];
-  for (let i = 0; i < savedTabs.length; i += chunkSize) {
-    chunks.push(savedTabs.slice(i, i + chunkSize));
-  }
   try {
     // Use one window creation call per chunk to minimize tab-strip mutations and
     // reduce extension-driven API churn during bulk restore.
-    for (const chunk of chunks) {
+    for (let start = 0; start < savedTabs.length; start += chunkSize) {
+      const chunk = savedTabs.slice(start, start + chunkSize);
       if (chunk.length === 0) continue;
       const createdWindow = await chrome.windows.create({ url: chunk.map((tab) => tab.url) });
       if (!createdWindow) {

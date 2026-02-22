@@ -57,6 +57,31 @@ const defaultDeps: DriveApiDeps = {
   deleteFile,
 };
 
+/** Max number of concurrent Drive delete calls when enforcing retention. */
+const RETENTION_DELETE_CONCURRENCY = 4;
+
+/**
+ * Runs async work over a list with bounded parallelism.
+ * Keeps memory and API fan-out predictable for large batches.
+ */
+async function runWithConcurrency<T>(
+  items: T[],
+  limit: number,
+  task: (item: T) => Promise<void>,
+): Promise<void> {
+  if (items.length === 0) return;
+  let nextIndex = 0;
+  const workerCount = Math.min(limit, items.length);
+  const workers = Array.from({ length: workerCount }, async () => {
+    while (nextIndex < items.length) {
+      const current = items[nextIndex];
+      nextIndex += 1;
+      if (current !== undefined) await task(current);
+    }
+  });
+  await Promise.all(workers);
+}
+
 /**
  * Converts Drive file metadata into normalized local backup entries used by
  * options-page rendering and local-index caching.
@@ -220,9 +245,9 @@ export async function enforceRetention(
   if (entries.length <= normalizedRetention) return entries;
 
   const stale = entries.slice(normalizedRetention);
-  for (const entry of stale) {
+  await runWithConcurrency(stale, RETENTION_DELETE_CONCURRENCY, async (entry) => {
     await deps.deleteFile(entry.fileId, token);
-  }
+  });
 
   return entries.slice(0, normalizedRetention);
 }
