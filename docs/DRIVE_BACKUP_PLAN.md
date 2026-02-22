@@ -42,7 +42,7 @@ All functions take an OAuth token parameter (no global state). Uses `fetch()` wi
 Backup orchestration logic. Functions for:
 - `getOrCreateInstallId()` — reads/creates `installId` in `chrome.storage.local` using `crypto.randomUUID()`
 - `serializeBackup(groups, settings)` — creates the backup JSON payload `{ version: 1, timestamp, installId, savedTabs, settings }`
-- `performBackup(token)` — orchestrates: read data → serialize → upload → update local index → run retention
+- `performBackup(token, retention?, deps?, preloaded?)` — orchestrates: read data → serialize → upload → update local index → run retention (optionally reuses preloaded groups/settings to avoid duplicate reads)
 - `enforceRetention(installFolderId, retentionCount, token)` — lists backups, deletes oldest beyond N
 - `updateLocalIndex(installId, backups)` — writes local backup index to `chrome.storage.local`
 - `readLocalIndex()` → reads and normalizes the local backup index
