@@ -278,10 +278,14 @@ export async function performBackup(
   token: string,
   requestedRetentionCount?: number,
   deps: DriveApiDeps = defaultDeps,
+  preloaded?: {
+    groups?: SavedTabGroups;
+    settings?: Settings;
+  },
 ): Promise<DriveBackupEntry[]> {
   const installId = await getOrCreateInstallId();
-  const settings = await readSettings();
-  const groups = await readSavedGroups();
+  const settings = preloaded?.settings ?? (await readSettings());
+  const groups = preloaded?.groups ?? (await readSavedGroups());
 
   const timestamp = Date.now();
   const payload = serializeBackup(groups, settings, installId, timestamp);

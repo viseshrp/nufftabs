@@ -157,6 +157,7 @@ export async function readSavedGroupsIndex(): Promise<string[]> {
 async function writeAllGroupsInternal(savedTabs: SavedTabGroups, existingIndex: string[]): Promise<void> {
   const entries = Object.entries(savedTabs).filter(([, tabs]) => tabs.length > 0);
   const nextIndex = entries.map(([key]) => key);
+  const nextIndexSet = new Set(nextIndex);
   const payload: Record<string, unknown> = {
     [STORAGE_KEYS.savedTabsIndex]: nextIndex,
   };
@@ -168,7 +169,7 @@ async function writeAllGroupsInternal(savedTabs: SavedTabGroups, existingIndex: 
 
   const removedKeys: string[] = [];
   for (const key of existingIndex) {
-    if (!nextIndex.includes(key)) removedKeys.push(groupStorageKey(key));
+    if (!nextIndexSet.has(key)) removedKeys.push(groupStorageKey(key));
   }
   if (removedKeys.length > 0) {
     await chrome.storage.local.remove(removedKeys);

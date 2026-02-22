@@ -422,7 +422,7 @@ async function initDriveBackupSection(documentRef: Document): Promise<void> {
           return;
         }
         const retentionCount = await writeRetentionCount(normalizeRetentionCount(Number(retentionEl.value)));
-        const backups = await performBackup(token, retentionCount);
+        const backups = await performBackup(token, retentionCount, undefined, { groups });
         retentionEl.value = String(retentionCount);
         setStatus(driveStatusEl, `Backup completed. ${backups.length} backup${backups.length === 1 ? '' : 's'} stored.`);
       } catch (error) {
