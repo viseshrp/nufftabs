@@ -213,6 +213,25 @@ describe('background condense', () => {
     }
   });
 
+  it('condenses 50 tabs from one window without dropping entries', async () => {
+    const mock = createMockChrome();
+    setMockChrome(mock.chrome);
+
+    const bulkUrls = Array.from({ length: 50 }, (_, index) => `https://bulk-condense-50.example/${index}`);
+    const window = mock.createWindow(bulkUrls);
+    await condenseCurrentWindow(window.id as number);
+
+    const savedGroups = await readSavedGroups();
+    const groupKey = Object.keys(savedGroups).find((key) => key.startsWith(`${window.id}-`));
+    expect(groupKey).toBeTruthy();
+    const savedGroup = groupKey ? savedGroups[groupKey] : [];
+    expect(savedGroup).toHaveLength(50);
+    const savedUrls = new Set(savedGroup?.map((tab) => tab.url));
+    for (const url of bulkUrls) {
+      expect(savedUrls.has(url)).toBe(true);
+    }
+  });
+
   it('silently skips duplicate URLs when duplicate rejection is enabled', async () => {
     const mock = createMockChrome({
       initialStorage: {

@@ -309,6 +309,32 @@ describe('list page actions', () => {
     expect(restoredTabs).toHaveLength(25);
   });
 
+  it('restores a very large group (50 tabs) from the UI in one action', async () => {
+    const veryLargeGroup = Array.from({ length: 50 }, (_, index) => ({
+      id: `bulk-50-${index}`,
+      url: `https://bulk-restore-50.example/${index}`,
+      title: `Bulk 50 ${index}`,
+      savedAt: 200 + index,
+    }));
+    const { mock } = await setupListPage({ '1-bulk-50': veryLargeGroup });
+
+    const restoreGroup = document.querySelector<HTMLButtonElement>('button[data-action="restore-group"]');
+    restoreGroup?.click();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const status = document.querySelector<HTMLDivElement>('#snackbar');
+    expect(status?.textContent).toContain('Restored all tabs.');
+
+    const remainingGroups = document.querySelectorAll('.group-card');
+    expect(remainingGroups.length).toBe(0);
+
+    // Count only the restored bulk URLs for this test case.
+    const restoredTabs = (await mock.chrome.tabs.query({})).filter((tab: chrome.tabs.Tab) =>
+      typeof tab.url === 'string' && tab.url.startsWith('https://bulk-restore-50.example/'),
+    );
+    expect(restoredTabs).toHaveLength(50);
+  });
+
   it('updates scroll controls and handles missing tab ids', async () => {
     await setupListPage({
       '1': [{ id: 'a', url: 'https://example.com', title: 'Example', savedAt: 1 }],
