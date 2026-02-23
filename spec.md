@@ -52,7 +52,7 @@ Triggered by clicking the extension action icon.
 
 **Eligible tab definition**
 - Must have a `url` that can be saved (string).
-- No special-case logic required; if it has a URL string, save it.
+- Browser-internal URLs (`chrome://`, `chrome-extension://`, `chrome-search://`, `chrome-untrusted://`, `devtools://`, `about:`) are excluded from condense.
 
 **Data captured per saved tab**
 - `id`: string UUID
@@ -134,7 +134,6 @@ When user clicks Delete all:
 - No custom naming for groups.
 - No keyboard shortcut.
 - No context menu.
-- No special casing for `chrome://` or internal tabs beyond basic validation.
 - Settings are stored locally (no sync); saved tabs remain local-only.
 - No attempt to match OneTab UX.
 - No fuzzy search, tokenized search, or regex-based search.

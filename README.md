@@ -22,6 +22,7 @@ nufftabs is a minimal Chrome (MV3) extension to condense all tabs from the curre
 ### Condense
 - Triggered by clicking the extension action icon.
 - Reads settings (`excludePinned`, `restoreBatchSize`, `discardRestoredTabs`, `duplicateTabsPolicy`) from `chrome.storage.local`.
+- Skips browser-internal URLs (`chrome://`, `chrome-extension://`, `chrome-search://`, `chrome-untrusted://`, `devtools://`, `about:`) so only user-content tabs are condensed.
 - Saves eligible tabs (URL + title + timestamp) to a new group under `savedTabs:<groupKey>` and updates `savedTabsIndex`.
 - Verifies the saved group can be read back with matching tab entries.
 - Closes eligible tabs only after verification succeeds.
