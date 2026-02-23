@@ -182,6 +182,77 @@ describe('list page actions', () => {
     expect(status?.textContent).toContain('skipped');
   });
 
+  it('preserves existing collapse states and expands new groups on append import', async () => {
+    const older = '1-1000-older';
+    const newer = '1-2000-newer';
+    const imported = '1-3000-imported';
+    await setupListPage({
+      [older]: [{ id: 'old', url: 'https://old.example', title: 'Old', savedAt: 10 }],
+      [newer]: [{ id: 'new', url: 'https://new.example', title: 'New', savedAt: 20 }],
+    });
+
+    // Baseline for this test: initial render keeps newest open and collapses older groups.
+    const olderCardBefore = document.querySelector<HTMLElement>(`[data-group-key="${older}"]`);
+    const newerCardBefore = document.querySelector<HTMLElement>(`[data-group-key="${newer}"]`);
+    expect(olderCardBefore?.classList.contains('is-collapsed')).toBe(true);
+    expect(newerCardBefore?.classList.contains('is-collapsed')).toBe(false);
+
+    const toggleIo = document.querySelector<HTMLButtonElement>('#toggleIo');
+    toggleIo?.click();
+    const jsonArea = document.querySelector<HTMLTextAreaElement>('#jsonArea');
+    if (jsonArea) {
+      jsonArea.value = JSON.stringify({
+        savedTabs: {
+          [imported]: [{ id: 'imp', url: 'https://imported.example', title: 'Imported', savedAt: 30 }],
+        },
+      });
+    }
+    const importJson = document.querySelector<HTMLButtonElement>('button#importJson');
+    importJson?.click();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const olderCardAfter = document.querySelector<HTMLElement>(`[data-group-key="${older}"]`);
+    const newerCardAfter = document.querySelector<HTMLElement>(`[data-group-key="${newer}"]`);
+    const importedCard = document.querySelector<HTMLElement>(`[data-group-key="${imported}"]`);
+    expect(olderCardAfter?.classList.contains('is-collapsed')).toBe(true);
+    expect(newerCardAfter?.classList.contains('is-collapsed')).toBe(false);
+    expect(importedCard?.classList.contains('is-collapsed')).toBe(false);
+  });
+
+  it('keeps newly imported groups collapsed when collapse-all is active', async () => {
+    const older = '1-1000-older';
+    const newer = '1-2000-newer';
+    const imported = '1-3000-imported';
+    await setupListPage({
+      [older]: [{ id: 'old', url: 'https://old.example', title: 'Old', savedAt: 10 }],
+      [newer]: [{ id: 'new', url: 'https://new.example', title: 'New', savedAt: 20 }],
+    });
+
+    // Activate collapse-all first, then append-import another group.
+    const collapseAll = document.querySelector<HTMLButtonElement>('#toggleCollapseAll');
+    collapseAll?.click();
+
+    const toggleIo = document.querySelector<HTMLButtonElement>('#toggleIo');
+    toggleIo?.click();
+    const jsonArea = document.querySelector<HTMLTextAreaElement>('#jsonArea');
+    if (jsonArea) {
+      jsonArea.value = JSON.stringify({
+        savedTabs: {
+          [imported]: [{ id: 'imp', url: 'https://imported.example', title: 'Imported', savedAt: 30 }],
+        },
+      });
+    }
+    const importJson = document.querySelector<HTMLButtonElement>('button#importJson');
+    importJson?.click();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const importedCard = document.querySelector<HTMLElement>(`[data-group-key="${imported}"]`);
+    expect(importedCard?.classList.contains('is-collapsed')).toBe(true);
+    expect(collapseAll?.getAttribute('aria-label')).toBe('Expand all groups');
+  });
+
   it('silently rejects duplicates during JSON and OneTab imports when configured', async () => {
     const { mock } = await setupListPage({
       '1': [{ id: 'a', url: 'https://existing.com', title: 'Existing', savedAt: 1 }],

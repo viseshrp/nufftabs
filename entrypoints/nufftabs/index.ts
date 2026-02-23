@@ -76,6 +76,11 @@ type ListPageState = {
   indexedGroupKeySet: Set<string>;
   /** Per-group tab counts used to keep the header count fresh without full storage scans. */
   groupTabCounts: Map<string, number>;
+  /**
+   * Source of truth for per-group collapse state.
+   * A key present in this set is collapsed; absent means expanded.
+   */
+  collapsedGroupKeys: Set<string>;
   /** In-flight load promises per group key to avoid duplicate fetches. */
   groupLoadTasks: Map<string, Promise<SavedTab[]>>;
   viewportLoadFrame: number;
@@ -101,6 +106,7 @@ const state: ListPageState = {
   sortedIndexedGroupKeys: [],
   indexedGroupKeySet: new Set<string>(),
   groupTabCounts: new Map<string, number>(),
+  collapsedGroupKeys: new Set<string>(),
   groupLoadTasks: new Map<string, Promise<SavedTab[]>>(),
   viewportLoadFrame: 0,
   searchLoadToken: 0,
@@ -668,6 +674,7 @@ function removeIndexedGroupKey(groupKey: string): void {
   state.indexedGroupKeys = state.indexedGroupKeys.filter((key) => key !== groupKey);
   state.indexedGroupKeySet.delete(groupKey);
   state.groupTabCounts.delete(groupKey);
+  state.collapsedGroupKeys.delete(groupKey);
   delete state.currentGroups[groupKey];
   delete state.visibleGroups[groupKey];
   state.groupLoadTasks.delete(groupKey);
@@ -690,6 +697,9 @@ function setIndexedGroups(nextKeys: string[]): void {
   }
   for (const key of state.groupTabCounts.keys()) {
     if (!state.indexedGroupKeySet.has(key)) state.groupTabCounts.delete(key);
+  }
+  for (const key of state.collapsedGroupKeys.keys()) {
+    if (!state.indexedGroupKeySet.has(key)) state.collapsedGroupKeys.delete(key);
   }
 }
 
@@ -882,6 +892,32 @@ function scheduleRenderGroups(): void {
   state.renderGroupsFallbackTimer = window.setTimeout(flush, 0);
 }
 
+/** Persists per-group collapse state into the shared in-memory set. */
+function setGroupCollapsePreference(groupKey: string, collapsed: boolean): void {
+  if (collapsed) {
+    state.collapsedGroupKeys.add(groupKey);
+  } else {
+    state.collapsedGroupKeys.delete(groupKey);
+  }
+}
+
+/**
+ * Applies collapse/expand visuals for one group card without triggering data loads.
+ *
+ * This is intentionally DOM-only so render reconciliation can safely synchronize
+ * visual state without accidentally kicking off eager storage reads.
+ */
+function applyGroupCollapsedDomState(groupKey: string): void {
+  const view = groupViews.get(groupKey);
+  if (!view) return;
+  const collapsed = state.collapsedGroupKeys.has(groupKey);
+  view.card.classList.toggle('is-collapsed', collapsed);
+  view.itemsWrap.hidden = collapsed;
+  const collapseLabel = collapsed ? 'Expand list' : 'Collapse list';
+  view.collapseButton.setAttribute('aria-label', collapseLabel);
+  view.collapseButton.setAttribute('title', collapseLabel);
+}
+
 /**
  * Sets the collapsed state of a single group card.
  *
@@ -890,17 +926,8 @@ function scheduleRenderGroups(): void {
  * if the group's tab payload has not been fetched yet, a lazy-load is kicked off.
  */
 function setGroupCollapsed(groupKey: string, collapsed: boolean): void {
-  const view = groupViews.get(groupKey);
-  if (!view) return;
-
-  // Synchronize the CSS class that drives the chevron rotation and item visibility.
-  view.card.classList.toggle('is-collapsed', collapsed);
-  view.itemsWrap.hidden = collapsed;
-
-  // Update the per-group collapse toggle button's accessible label.
-  const collapseLabel = collapsed ? 'Expand list' : 'Collapse list';
-  view.collapseButton.setAttribute('aria-label', collapseLabel);
-  view.collapseButton.setAttribute('title', collapseLabel);
+  setGroupCollapsePreference(groupKey, collapsed);
+  applyGroupCollapsedDomState(groupKey);
 
   // If the group is being expanded and its tabs haven't been loaded yet, fetch them.
   if (!collapsed && !isGroupLoaded(groupKey)) {
@@ -947,10 +974,8 @@ function syncAllGroupsCollapsedState(): void {
   if (groupViews.size === 0) {
     state.allGroupsCollapsed = false;
   } else {
-    // All groups collapsed only when every card carries the `is-collapsed` class.
-    state.allGroupsCollapsed = Array.from(groupViews.values()).every((view) =>
-      view.card.classList.contains('is-collapsed'),
-    );
+    // The toggle-all state is collapsed only when every rendered key is collapsed in state.
+    state.allGroupsCollapsed = Array.from(groupViews.keys()).every((groupKey) => state.collapsedGroupKeys.has(groupKey));
   }
   updateToggleCollapseAllButton();
 }
@@ -981,6 +1006,7 @@ function updateToggleCollapseAllButton(): void {
  */
 function applyDefaultCollapse(sortedGroupKeys: string[]): void {
   state.initialCollapseApplied = true;
+  state.collapsedGroupKeys.clear();
 
   // Only one group (or none) — nothing to collapse.
   if (sortedGroupKeys.length <= 1) return;
@@ -989,7 +1015,7 @@ function applyDefaultCollapse(sortedGroupKeys: string[]): void {
   for (let i = 1; i < sortedGroupKeys.length; i++) {
     const groupKey = sortedGroupKeys[i];
     if (groupKey) {
-      setGroupCollapsed(groupKey, true);
+      state.collapsedGroupKeys.add(groupKey);
     }
   }
 
@@ -1068,27 +1094,33 @@ function renderGroups(): void {
     fragment.appendChild(view.card);
   }
 
+  // New groups introduced after the first render must receive a deterministic
+  // initial state. Existing groups keep their previous per-key state.
+  if (state.initialCollapseApplied) {
+    for (const entry of entries) {
+      if (state.collapsedGroupKeys.has(entry.groupKey)) continue;
+      if (state.allGroupsCollapsed) {
+        state.collapsedGroupKeys.add(entry.groupKey);
+      }
+    }
+  }
+
   // On the very first render with multiple groups, collapse all except the most
-  // recent one so the page is not overwhelmed with open cards. Must run before
-  // replaceChildren so that the itemsWrap.hidden check below picks up the class.
+  // recent one so the page is not overwhelmed with open cards.
   if (!state.initialCollapseApplied && entries.length > 0) {
     applyDefaultCollapse(entries.map((e) => e.groupKey));
   }
 
-  // Sync each card's item visibility with its collapsed class.
-  // Done after applyDefaultCollapse so the initial collapse is reflected.
+  // Sync per-card visual state from the explicit collapse-state set.
   for (const entry of entries) {
-    const view = groupViews.get(entry.groupKey);
-    if (view) {
-      view.itemsWrap.hidden = view.card.classList.contains('is-collapsed');
-    }
+    applyGroupCollapsedDomState(entry.groupKey);
   }
 
   groupsEl.replaceChildren(fragment);
   state.visibleGroups = nextVisibleGroups;
 
   updateScrollControls();
-  updateToggleCollapseAllButton();
+  syncAllGroupsCollapsedState();
 
   if (!state.activeSearchTerm) {
     scheduleViewportGroupLoad();
@@ -1134,15 +1166,8 @@ function handleGroupAction(event: Event): void {
   switch (action) {
     case 'toggle-collapse': {
       if (!card || !groupKey) return;
-      const isCollapsed = card.classList.toggle('is-collapsed');
-      const label = isCollapsed ? 'Expand list' : 'Collapse list';
-      button.setAttribute('aria-label', label);
-      button.setAttribute('title', label);
-      const view = groupViews.get(groupKey);
-      if (view) view.itemsWrap.hidden = isCollapsed;
-      if (!isCollapsed && !isGroupLoaded(groupKey)) {
-        runAsyncTask(ensureGroupLoaded(groupKey), `Failed to load group (${groupKey})`);
-      }
+      const isCollapsed = card.classList.contains('is-collapsed');
+      setGroupCollapsed(groupKey, !isCollapsed);
       // Sync the global collapse state after a single group is toggled.
       syncAllGroupsCollapsedState();
       updateScrollControls();
