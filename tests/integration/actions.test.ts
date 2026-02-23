@@ -352,6 +352,48 @@ describe('list page actions', () => {
     expect(restoredTab?.windowId).not.toBe(listTab?.windowId);
   });
 
+  it('keeps a single tab in storage when restore cannot be verified', async () => {
+    const { mock } = await setupListPage({
+      '1': [{ id: 'a', url: 'https://single-restore-verify.example', title: 'Single', savedAt: 1 }],
+    });
+
+    mock.chrome.windows.create = async () => ({ id: 777 } as chrome.windows.Window);
+
+    const restoreSingle = document.querySelector<HTMLButtonElement>('button[data-action="restore-single"]');
+    restoreSingle?.click();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const status = document.querySelector<HTMLDivElement>('#snackbar');
+    expect(status?.textContent).toContain('Restore could not be verified');
+
+    const tabCount = document.querySelector<HTMLSpanElement>('#tabCount');
+    expect(tabCount?.textContent).toBe('1');
+    expect(mock.storageData['savedTabs:1']).toEqual([
+      { id: 'a', url: 'https://single-restore-verify.example', title: 'Single', savedAt: 1 },
+    ]);
+  });
+
+  it('keeps a group in storage when restore-all fails', async () => {
+    const { mock } = await setupListPage({
+      '1': [{ id: 'a', url: 'https://group-restore-fail.example', title: 'Group', savedAt: 1 }],
+    });
+
+    mock.chrome.windows.create = async () => {
+      throw new Error('boom');
+    };
+
+    const restoreGroup = document.querySelector<HTMLButtonElement>('button[data-action="restore-group"]');
+    restoreGroup?.click();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const status = document.querySelector<HTMLDivElement>('#snackbar');
+    expect(status?.textContent).toContain('Failed to restore tabs.');
+    expect(document.querySelectorAll('.group-card')).toHaveLength(1);
+    expect(mock.storageData['savedTabs:1']).toEqual([
+      { id: 'a', url: 'https://group-restore-fail.example', title: 'Group', savedAt: 1 },
+    ]);
+  });
+
   it('updates scroll controls and handles missing tab ids', async () => {
     await setupListPage({
       '1': [{ id: 'a', url: 'https://example.com', title: 'Example', savedAt: 1 }],

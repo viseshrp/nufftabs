@@ -93,6 +93,20 @@ describe('restore logic', () => {
     expect(mock.windows.size).toBeGreaterThanOrEqual(2);
   });
 
+  it('restores duplicate URLs without under-counting verification matches', async () => {
+    const mock = createMockChrome();
+    setMockChrome(mock.chrome);
+
+    const restored = await restoreTabs([
+      { id: '1', url: 'https://dup-verify.example', title: 'Duplicate A', savedAt: 1 },
+      { id: '2', url: 'https://dup-verify.example', title: 'Duplicate B', savedAt: 1 },
+    ]);
+    expect(restored).toBe(true);
+
+    const restoredDuplicates = await mock.chrome.tabs.query({ url: 'https://dup-verify.example' });
+    expect(restoredDuplicates).toHaveLength(2);
+  });
+
   it('returns false when restoration fails', async () => {
     const mock = createMockChrome();
     setMockChrome(mock.chrome);
@@ -378,7 +392,12 @@ describe('restore logic', () => {
     const listTabId = window.tabs?.[0]?.id as number;
     mock.setCurrentTab(listTabId);
 
-    mock.chrome.windows.create = async () => ({ id: 999 } as chrome.windows.Window);
+    const originalCreate = mock.chrome.windows.create;
+    mock.chrome.windows.create = async (createData?: chrome.windows.CreateData) => {
+      const created = await originalCreate(createData);
+      // Drop the `tabs` payload to force the restore flow through query-based fallback verification/collection.
+      return { id: created.id } as chrome.windows.Window;
+    };
 
     const restored = await restoreTabs([
       { id: '1', url: 'https://a.com', title: 'A', savedAt: 1 },
@@ -387,7 +406,7 @@ describe('restore logic', () => {
     expect(restored).toBe(true);
   });
 
-  it('handles fallback discard lookup failures', async () => {
+  it('fails restore when fallback verification lookup fails', async () => {
     const mock = createMockChrome();
     setMockChrome(mock.chrome);
 
@@ -398,7 +417,7 @@ describe('restore logic', () => {
     };
 
     const restored = await restoreTabs([{ id: '1', url: 'https://a.com', title: 'A', savedAt: 1 }]);
-    expect(restored).toBe(true);
+    expect(restored).toBe(false);
   });
 
   it('ignores tab lookup failures during discard', async () => {
