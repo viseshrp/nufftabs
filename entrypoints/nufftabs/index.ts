@@ -1198,6 +1198,21 @@ async function restoreSingle(groupKey: string, id: string): Promise<void> {
     if (!createdWindow || typeof createdWindow.id !== 'number') {
       throw new Error('Missing window id');
     }
+
+    const matchesRestoredUrl = (restoredTab: chrome.tabs.Tab): boolean =>
+      restoredTab.url === tab.url || restoredTab.pendingUrl === tab.url;
+
+    // Atomicity guard: only remove the saved entry after we can confirm the tab exists.
+    const restoredFromCreatePayload = (createdWindow.tabs ?? []).some(matchesRestoredUrl);
+    let restoreVerified = restoredFromCreatePayload;
+    if (!restoreVerified) {
+      const restoredWindowTabs = await chrome.tabs.query({ windowId: createdWindow.id });
+      restoreVerified = restoredWindowTabs.some(matchesRestoredUrl);
+    }
+    if (!restoreVerified) {
+      setStatus('Restore could not be verified. Tab was kept in your list.');
+      return;
+    }
   } catch (error) {
     logExtensionError('Failed to restore tab', error, { operation: 'tab_query' });
     setStatus('Failed to restore tab.');

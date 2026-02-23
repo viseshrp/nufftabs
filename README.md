@@ -12,6 +12,7 @@ nufftabs is a minimal Chrome (MV3) extension to condense all tabs from the curre
 - Index-first lazy loading: group keys load first, group payloads load on demand.
 - Export/import JSON (append or replace), import from file, and OneTab import.
 - Restore rules: single restore uses the current window; restore all opens new windows per chunk, reusing the list window only when it is the sole tab.
+- Safety guardrails: condense and restore mutate storage only after a successful verification step.
 - List tab is pinned and reused if it already exists.
 - Settings for “Exclude pinned tabs,” “Tabs per restore window,” duplicate handling, and optional memory-saving restore.
 - Optional manual Google Drive backup/restore from the options page.
@@ -22,7 +23,8 @@ nufftabs is a minimal Chrome (MV3) extension to condense all tabs from the curre
 - Triggered by clicking the extension action icon.
 - Reads settings (`excludePinned`, `restoreBatchSize`, `discardRestoredTabs`, `duplicateTabsPolicy`) from `chrome.storage.local`.
 - Saves eligible tabs (URL + title + timestamp) to a new group under `savedTabs:<groupKey>` and updates `savedTabsIndex`.
-- Closes eligible tabs.
+- Verifies the saved group can be read back with matching tab entries.
+- Closes eligible tabs only after verification succeeds.
 - Focuses an existing nufftabs list tab if one exists anywhere (most recently active), or creates a new one if none exist. The list tab is pinned.
 
 ### List page
@@ -136,7 +138,8 @@ The packaged extension zip is generated under `.output/`.
 ### Restore single (current window)
 1. On the list page, click the restore icon for a tab.
 2. The tab opens in the **current window**.
-3. The list item is removed from storage.
+3. nufftabs verifies the restore succeeded.
+4. The list item is removed from storage only after verification.
 
 ### Search saved tabs
 1. Type in the search input in the fixed top bar.
@@ -154,6 +157,7 @@ The packaged extension zip is generated under `.output/`.
 1. Click **Restore all** on a group card.
 2. If the list tab is not the only tab in the window, a **new window** opens for each restore chunk.
 3. If the list tab is the only tab, the first chunk restores **in the same window**, and the list tab stays open.
+4. The saved group is removed from storage only after restore verification succeeds.
 
 ### Delete all (per group)
 1. Click **Delete all** on a group card.

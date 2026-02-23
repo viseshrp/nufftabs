@@ -2,11 +2,36 @@
  * Orchestrates the condense workflow: query tabs, save eligible ones,
  * close them, and focus/create the list page tab.
  */
-import { LIST_PAGE_PATH, appendSavedGroup, readSavedGroups, readSettings } from '../shared/storage';
+import {
+  LIST_PAGE_PATH,
+  appendSavedGroup,
+  readSavedGroup,
+  readSavedGroups,
+  readSettings,
+  type SavedTab,
+} from '../shared/storage';
 import { createCondenseGroupKey, filterEligibleTabs, resolveWindowId, saveTabsToList } from '../shared/condense';
 import { collectSavedTabUrls } from '../shared/duplicates';
 import { logExtensionError } from '../shared/utils';
 import { focusExistingListTabOrCreate } from './list_tab';
+
+/**
+ * Verifies that a just-written group can be read back with the exact set of tab IDs and URLs.
+ * This check is intentionally strict so we only close source tabs after persistence is confirmed.
+ */
+async function verifyCondenseWrite(groupKey: string, expectedTabs: SavedTab[]): Promise<boolean> {
+  const persistedTabs = await readSavedGroup(groupKey);
+  if (persistedTabs.length !== expectedTabs.length) return false;
+
+  const expectedById = new Map(expectedTabs.map((tab) => [tab.id, tab]));
+  for (const persistedTab of persistedTabs) {
+    const expectedTab = expectedById.get(persistedTab.id);
+    if (!expectedTab) return false;
+    if (expectedTab.url !== persistedTab.url) return false;
+    if (expectedTab.title !== persistedTab.title) return false;
+  }
+  return true;
+}
 
 /**
  * Main condense action: queries all tabs in the target (or current) window,
@@ -64,6 +89,16 @@ export async function condenseCurrentWindow(targetWindowId?: number): Promise<vo
   }
   const saved = await appendSavedGroup(groupKey, updatedGroup);
   if (!saved) {
+    await focusExistingListTabOrCreate(listTabs, listUrl, resolvedWindowId);
+    return;
+  }
+
+  // Atomicity guard: never close source tabs until we can read back exactly what we wrote.
+  const writeVerified = await verifyCondenseWrite(groupKey, updatedGroup);
+  if (!writeVerified) {
+    logExtensionError('Condense verification failed; source tabs were left open', new Error('condense_verification_failed'), {
+      operation: 'runtime_context',
+    });
     await focusExistingListTabOrCreate(listTabs, listUrl, resolvedWindowId);
     return;
   }

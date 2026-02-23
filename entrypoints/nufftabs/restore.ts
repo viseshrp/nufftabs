@@ -143,8 +143,10 @@ export function createDiscardSession(): DiscardSession {
     if (!change) return;
     const next = normalizeSettings(change.newValue);
     if (!next.discardRestoredTabs) {
-      abortController.abort();
+      // Resolve pending discard waits first, then abort in-flight workers.
+      // This guarantees pending entries are flushed even if no abort listener ran yet.
       cancelPendingDiscards();
+      abortController.abort();
       chrome.storage.onChanged.removeListener(storageListener);
       disposed = true;
     }
@@ -200,6 +202,58 @@ async function getWindowTabsBestEffort(windowId: number): Promise<chrome.tabs.Ta
   }
 }
 
+/**
+ * Returns true when `observedTabs` contains every expected URL occurrence.
+ * Uses multiset matching so duplicate URLs are verified correctly in O(n + m).
+ */
+function hasExpectedUrls(observedTabs: chrome.tabs.Tab[], expectedUrls: string[]): boolean {
+  if (expectedUrls.length === 0) return true;
+  const remaining = new Map<string, number>();
+  for (const url of expectedUrls) {
+    remaining.set(url, (remaining.get(url) ?? 0) + 1);
+  }
+  for (const tab of observedTabs) {
+    // Chrome may expose a target as `pendingUrl` before `url` stabilizes.
+    // Match at most one expected URL per tab to preserve duplicate counts.
+    const candidates = [
+      typeof tab.url === 'string' && tab.url !== 'about:blank' ? tab.url : undefined,
+      typeof tab.pendingUrl === 'string' ? tab.pendingUrl : undefined,
+      typeof tab.url === 'string' ? tab.url : undefined,
+    ].filter((candidate): candidate is string => typeof candidate === 'string' && candidate.length > 0);
+    for (const candidateUrl of candidates) {
+      const left = remaining.get(candidateUrl);
+      if (!left) continue;
+      if (left === 1) {
+        remaining.delete(candidateUrl);
+      } else {
+        remaining.set(candidateUrl, left - 1);
+      }
+      break;
+    }
+  }
+  return remaining.size === 0;
+}
+
+/**
+ * Verifies one restored chunk by checking created-tab metadata first, then a
+ * window query fallback when metadata is missing from the create response.
+ */
+async function verifyRestoredChunk(
+  windowId: number,
+  expectedUrls: string[],
+  createdTabs: chrome.tabs.Tab[],
+): Promise<{ verified: boolean; tabsForDiscard: chrome.tabs.Tab[] }> {
+  if (hasExpectedUrls(createdTabs, expectedUrls)) {
+    return { verified: true, tabsForDiscard: createdTabs };
+  }
+  const queriedTabs = await getWindowTabsBestEffort(windowId);
+  if (hasExpectedUrls(queriedTabs, expectedUrls)) {
+    return { verified: true, tabsForDiscard: queriedTabs };
+  }
+  // Caller will treat failed verification as restore failure and keep saved tabs intact.
+  return { verified: false, tabsForDiscard: createdTabs.length > 0 ? createdTabs : queriedTabs };
+}
+
 /** Re-exported for compatibility with existing restore-module consumers/tests. */
 export { runWithConcurrency };
 
@@ -224,13 +278,13 @@ export async function restoreTabs(savedTabs: SavedTab[]): Promise<boolean> {
       pendingDiscardIds.push(tab.id);
     }
   };
-  const chunkSize = settings.restoreBatchSize > 0 ? settings.restoreBatchSize : 100;
+  // `readSettings()` already normalizes this to a positive integer.
+  const chunkSize = settings.restoreBatchSize;
   try {
     // Use one window creation call per chunk to minimize tab-strip mutations and
     // reduce extension-driven API churn during bulk restore.
     for (let start = 0; start < savedTabs.length; start += chunkSize) {
       const chunk = savedTabs.slice(start, start + chunkSize);
-      if (chunk.length === 0) continue;
       const createdWindow = await chrome.windows.create({ url: chunk.map((tab) => tab.url) });
       if (!createdWindow) {
         throw new Error('Missing window');
@@ -240,12 +294,15 @@ export async function restoreTabs(savedTabs: SavedTab[]): Promise<boolean> {
         throw new Error('Missing window id');
       }
       const createdTabs = createdWindow.tabs ?? [];
-      if (createdTabs.length > 0) {
-        collectDiscardCandidates(createdTabs);
-      } else {
-        const fallbackTabs = await getWindowTabsBestEffort(windowId);
-        collectDiscardCandidates(fallbackTabs);
+      const verification = await verifyRestoredChunk(
+        windowId,
+        chunk.map((tab) => tab.url),
+        createdTabs,
+      );
+      if (!verification.verified) {
+        throw new Error(`Restore verification failed for window ${windowId}`);
       }
+      collectDiscardCandidates(verification.tabsForDiscard);
     }
   } catch (error) {
     logExtensionError('Failed to restore tabs', error, { operation: 'tab_query' });
