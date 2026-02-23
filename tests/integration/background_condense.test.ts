@@ -29,6 +29,28 @@ describe('background condense', () => {
     expect(listTabs[0]?.pinned).toBe(true);
   });
 
+  it('skips chrome internal tabs during condense', async () => {
+    const mock = createMockChrome();
+    setMockChrome(mock.chrome);
+
+    const window = mock.createWindow(['https://eligible.example', 'chrome://settings', 'about:blank']);
+    await condenseCurrentWindow(window.id as number);
+
+    const savedGroups = await readSavedGroups();
+    const groupKey = Object.keys(savedGroups).find((key) => key.startsWith(`${window.id}-`));
+    expect(groupKey).toBeTruthy();
+    const savedGroup = groupKey ? savedGroups[groupKey] : [];
+
+    // Only user-content tabs should be persisted.
+    expect(savedGroup).toHaveLength(1);
+    expect(savedGroup?.[0]?.url).toBe('https://eligible.example');
+
+    const remainingTabs = await mock.chrome.tabs.query({ windowId: window.id as number });
+    // Internal tabs are intentionally left open.
+    expect(remainingTabs.some((tab) => tab.url === 'chrome://settings')).toBe(true);
+    expect(remainingTabs.some((tab) => tab.url === 'about:blank')).toBe(true);
+  });
+
   it('focuses existing list tab when no eligible tabs', async () => {
     const mock = createMockChrome();
     setMockChrome(mock.chrome);
