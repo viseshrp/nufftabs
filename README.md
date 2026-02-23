@@ -175,6 +175,7 @@ The packaged extension zip is generated under `.output/`.
 3. **Import** appends the parsed tabs to existing groups.
 4. **Import (replace)** reads the textarea and replaces the saved list if valid.
 5. **Import file** reads a JSON file and appends the parsed tabs.
+6. Existing groups keep their current collapse/expand state after import; newly added groups follow the current global mode (collapsed if **Collapse all** is active, otherwise expanded).
 
 ### Import from OneTab
 1. In OneTab, open “Export / Import URLs” and copy the text.
