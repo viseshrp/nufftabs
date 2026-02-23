@@ -335,6 +335,23 @@ describe('list page actions', () => {
     expect(restoredTabs).toHaveLength(50);
   });
 
+  it('restores a single tab into a new window', async () => {
+    const { mock, listUrl } = await setupListPage({
+      '1': [{ id: 'a', url: 'https://single-restore.example', title: 'Single', savedAt: 1 }],
+    });
+
+    const listTab = (await mock.chrome.tabs.query({ url: listUrl }))[0];
+    expect(typeof listTab?.windowId).toBe('number');
+
+    const restoreSingle = document.querySelector<HTMLButtonElement>('button[data-action="restore-single"]');
+    restoreSingle?.click();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const restoredTab = (await mock.chrome.tabs.query({ url: 'https://single-restore.example' }))[0];
+    expect(typeof restoredTab?.windowId).toBe('number');
+    expect(restoredTab?.windowId).not.toBe(listTab?.windowId);
+  });
+
   it('updates scroll controls and handles missing tab ids', async () => {
     await setupListPage({
       '1': [{ id: 'a', url: 'https://example.com', title: 'Example', savedAt: 1 }],

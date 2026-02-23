@@ -14,7 +14,7 @@ import {
   normalizeImportedGroups,
 } from './list';
 import { createCondenseGroupKey } from '../shared/condense';
-import { createDiscardSession, getReuseWindowContext, restoreTabs } from './restore';
+import { restoreTabs } from './restore';
 import {
   readSettings,
   readSavedGroup,
@@ -1194,37 +1194,9 @@ async function restoreSingle(groupKey: string, id: string): Promise<void> {
   }
 
   try {
-    const settings = await readSettings();
-    const reuse = await getReuseWindowContext();
-    if (typeof reuse.windowId === 'number') {
-      const created = await chrome.tabs.create({ windowId: reuse.windowId, url: tab.url, active: false });
-      if (typeof reuse.tabId === 'number') {
-        await chrome.tabs.update(reuse.tabId, { active: true });
-      }
-      if (settings.discardRestoredTabs && typeof created.id === 'number') {
-        const discardSession = createDiscardSession();
-        discardSession.schedule([created.id]);
-      }
-    } else {
-      const createdWindow = await chrome.windows.create({ url: tab.url });
-      if (!createdWindow || typeof createdWindow.id !== 'number') {
-        throw new Error('Missing window id');
-      }
-      if (settings.discardRestoredTabs) {
-        const discardSession = createDiscardSession();
-        const firstTabId = createdWindow.tabs?.[0]?.id;
-        if (typeof firstTabId === 'number') {
-          discardSession.schedule([firstTabId]);
-        } else {
-          try {
-            const windowTabs = await chrome.tabs.query({ windowId: createdWindow.id });
-            discardSession.schedule(windowTabs.map((entry) => entry.id));
-          } catch (error) {
-            logExtensionError('Failed to query window tabs for discard fallback', error, { operation: 'tab_query' });
-            // Ignore discard failures for best-effort behavior.
-          }
-        }
-      }
+    const createdWindow = await chrome.windows.create({ url: tab.url });
+    if (!createdWindow || typeof createdWindow.id !== 'number') {
+      throw new Error('Missing window id');
     }
   } catch (error) {
     logExtensionError('Failed to restore tab', error, { operation: 'tab_query' });

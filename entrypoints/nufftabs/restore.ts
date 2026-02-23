@@ -1,9 +1,9 @@
 /**
  * Tab restoration and memory-saving discard logic.
- * Restores saved tabs into new or reused browser windows using concurrency-
- * limited creation, with optional post-restore tab discarding to save RAM.
+ * Restores saved tabs into new browser windows using concurrency-limited
+ * creation, with optional post-restore tab discarding to save RAM.
  */
-import { LIST_PAGE_PATH, STORAGE_KEYS, normalizeSettings, readSettings, type SavedTab } from '../shared/storage';
+import { STORAGE_KEYS, normalizeSettings, readSettings, type SavedTab } from '../shared/storage';
 import { logExtensionError, runWithConcurrency } from '../shared/utils';
 
 /**
@@ -204,36 +204,7 @@ async function getWindowTabsBestEffort(windowId: number): Promise<chrome.tabs.Ta
 export { runWithConcurrency };
 
 /**
- * Determines whether the current window can be reused for restoring tabs.
- * Reuse is allowed only when the window contains exactly the nufftabs list tab.
- */
-export async function getReuseWindowContext(): Promise<{
-  shouldReuse: boolean;
-  windowId?: number;
-  tabId?: number;
-}> {
-  try {
-    const currentTab = await chrome.tabs.getCurrent();
-    if (!currentTab || typeof currentTab.windowId !== 'number' || typeof currentTab.id !== 'number') {
-      return { shouldReuse: false };
-    }
-    const listUrl = chrome.runtime.getURL(LIST_PAGE_PATH);
-    const tabsInWindow = await chrome.tabs.query({ windowId: currentTab.windowId });
-    const onlyListTab =
-      tabsInWindow.length === 1 && tabsInWindow[0]?.url === listUrl && tabsInWindow[0]?.id === currentTab.id;
-    return {
-      shouldReuse: onlyListTab,
-      windowId: currentTab.windowId,
-      tabId: currentTab.id,
-    };
-  } catch (error) {
-    logExtensionError('Failed to resolve reuse window context', error, { operation: 'tab_query' });
-    return { shouldReuse: false };
-  }
-}
-
-/**
- * Restores an array of saved tabs into new or reused browser windows.
+ * Restores an array of saved tabs into new browser windows.
  * Returns true on success; false if an error prevented restoration.
  */
 export async function restoreTabs(savedTabs: SavedTab[]): Promise<boolean> {

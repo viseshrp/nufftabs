@@ -181,7 +181,7 @@ test.describe('nufftabs extension e2e', () => {
 
     await expect(listPage.locator('.group-card')).toHaveCount(1, { timeout: 15000 });
 
-    // Restore single into current list window
+    // Restore single into a new window.
     await expect(listPage.locator('button[data-action="restore-single"]')).toHaveCount(2);
     await listPage.locator('button[data-action="restore-single"]').first().click();
     await expect(listPage.locator('li.item:not(.load-more)')).toHaveCount(1);
@@ -199,7 +199,7 @@ test.describe('nufftabs extension e2e', () => {
     });
 
     expect(restoredTabs.length).toBeGreaterThan(0);
-    expect(restoredTabs[0]?.windowId).toBe(listWindowId);
+    expect(restoredTabs[0]?.windowId).not.toBe(listWindowId);
 
     // Restore all remaining
     await expect(listPage.locator('button[data-action="restore-group"]')).toHaveCount(1);

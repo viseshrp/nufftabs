@@ -1,9 +1,8 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { LIST_PAGE_PATH } from '../../entrypoints/shared/storage';
 import {
   createDiscardSession,
   discardTabsBestEffort,
-  getReuseWindowContext,
   restoreTabs,
 } from '../../entrypoints/nufftabs/restore';
 import { writeSettings } from '../../entrypoints/shared/storage';
@@ -28,6 +27,18 @@ function waitForDiscardCalls(mock: ReturnType<typeof createMockChrome>, expected
       return result;
     };
   });
+}
+
+/**
+ * Waits for a predicate to become true by yielding microtasks.
+ * Fails after a bounded number of cycles to avoid hanging tests.
+ */
+async function waitForPredicate(predicate: () => boolean, maxCycles = 50): Promise<void> {
+  for (let cycle = 0; cycle < maxCycles; cycle += 1) {
+    if (predicate()) return;
+    await Promise.resolve();
+  }
+  throw new Error('Condition did not become true');
 }
 
 describe('restore logic', () => {
@@ -61,7 +72,7 @@ describe('restore logic', () => {
     expect(cTab?.windowId).not.toBe(window.id);
   });
 
-  it('creates new windows when reuse is not allowed', async () => {
+  it('creates new windows for restore batches', async () => {
     const mock = createMockChrome();
     setMockChrome(mock.chrome);
 
@@ -192,27 +203,6 @@ describe('restore logic', () => {
     expect(restored).toBe(true);
   });
 
-  it('returns no-reuse context when no current tab exists', async () => {
-    const mock = createMockChrome();
-    setMockChrome(mock.chrome);
-
-    mock.chrome.tabs.getCurrent = async () => null;
-    const context = await getReuseWindowContext();
-    expect(context).toEqual({ shouldReuse: false });
-  });
-
-  it('returns no-reuse context when getCurrent throws', async () => {
-    const mock = createMockChrome();
-    setMockChrome(mock.chrome);
-
-    mock.chrome.tabs.getCurrent = async () => {
-      throw new Error('boom');
-    };
-
-    const context = await getReuseWindowContext();
-    expect(context).toEqual({ shouldReuse: false });
-  });
-
   it('discards restored tabs when enabled but keeps the focused tab', async () => {
     const mock = createMockChrome();
     setMockChrome(mock.chrome);
@@ -330,22 +320,51 @@ describe('restore logic', () => {
     });
     setMockChrome(mock.chrome);
 
+    let listenerRegistered = false;
+    const originalAddListener = mock.chrome.tabs.onUpdated.addListener;
+    mock.chrome.tabs.onUpdated.addListener = (listener) => {
+      listenerRegistered = true;
+      originalAddListener(listener);
+    };
+
     const tab = await mock.chrome.tabs.create({ url: 'about:blank' });
     const tabId = tab.id as number;
 
     const session = createDiscardSession();
     session.schedule([tabId]);
 
-    // Give the discard job time to register this tab as pending before settings disable it.
-    await new Promise((resolve) => setTimeout(resolve, 20));
+    await waitForPredicate(() => listenerRegistered);
     await writeSettings({ excludePinned: true, restoreBatchSize: 2, discardRestoredTabs: false });
-    await new Promise((resolve) => setTimeout(resolve, 0));
-
     await mock.chrome.tabs.update(tabId, { url: 'https://example.com' });
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await Promise.resolve();
 
     const updated = await mock.chrome.tabs.get(tabId);
     expect(updated.discarded).toBe(false);
+  });
+
+  it('logs unexpected discard-session failures', async () => {
+    const mock = createMockChrome({
+      initialStorage: {
+        settings: { excludePinned: true, restoreBatchSize: 2, discardRestoredTabs: true, duplicateTabsPolicy: 'allow' },
+      },
+    });
+    setMockChrome(mock.chrome);
+
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    mock.chrome.tabs.onUpdated.addListener = () => {
+      throw new Error('listener boom');
+    };
+
+    const tab = await mock.chrome.tabs.create({ url: 'about:blank' });
+    const tabId = tab.id as number;
+
+    const session = createDiscardSession();
+    session.schedule([tabId]);
+
+    await waitForPredicate(() =>
+      warnSpy.mock.calls.some(([message]) => String(message).includes('Unexpected discard session failure')),
+    );
+    warnSpy.mockRestore();
   });
 
   it('uses fallback discard ids when window tabs are missing (reuse branch)', async () => {
