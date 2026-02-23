@@ -77,6 +77,7 @@ groupKey = `${windowId}-${epochMs}-${uuid}` or `unknown-${epochMs}-${uuid}`
 saved = [] // always a new group per condense
 saved = createSavedTab(eligible) + saved
 appendSavedGroup(groupKey, saved)
+verify saved group by reading it back
 close eligible tabs
 focus or create list tab
 ```
@@ -87,6 +88,7 @@ tabs = currentGroups[groupKey]
 tab = tabs.find(id)
 open tab in current window (fallback to new window if unavailable)
 if discardRestoredTabs: discard restored tab after URL set (best-effort)
+verify tab exists in restored window
 tabs = tabs.filter(id)
 writeSavedGroup(groupKey, tabs)
 render UI
@@ -101,6 +103,7 @@ if list tab is only tab in window:
 else:
   create new window for each chunk
 if discardRestoredTabs: discard restored tabs after URL set (best-effort)
+verify restored chunk URLs exist in target windows
 writeSavedGroup(groupKey, [])  // delete group
 render UI
 ```
@@ -151,6 +154,7 @@ were open together").
 - If Save memory when restoring tabs is enabled, the restored tab is discarded
   after its URL is set (best-effort) and loads on demand.
 - Removes the tab from storage immediately.
+- Removes the tab from storage only after restore verification succeeds.
 
 ### Restore group (restore all)
 - Uses `restoreBatchSize` from settings to create **one window per chunk**.
@@ -159,6 +163,7 @@ were open together").
 - If the setting is turned off mid-restore, pending discards are skipped.
 - If the list tab is the only tab in its window, it **reuses** that window for the
   first chunk and keeps the list tab pinned and active.
+- Removes the group from storage only after restore verification succeeds.
 
 ## Performance decisions (and tradeoffs)
 
@@ -193,9 +198,9 @@ Groups are rendered as cards. Each group can be collapsed without deleting data.
 ## UI behavior reference
 - **Collapse group:** hides rows but does not delete data.
 - **Collapse/expand all:** a navbar button toggles every group open or closed. Default on initial load: all groups start collapsed except the most recent one.
-- **Restore all:** restores all tabs in the group, then deletes the group.
+- **Restore all:** restores all tabs in the group, verifies the restore, then deletes the group.
 - **Delete all:** deletes the entire group without opening tabs.
-- **Restore single:** opens one tab, then removes it from the group.
+- **Restore single:** opens one tab, verifies the restore, then removes it from the group.
 - **Save memory on restore:** when enabled, restored tabs are discarded
   after their URLs are set (best-effort) and load when clicked.
 - **Save memory on restore (toggle off):** pending discards are skipped when the setting is turned off mid-restore.

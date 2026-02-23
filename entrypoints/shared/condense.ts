@@ -4,6 +4,27 @@
  */
 import { UNKNOWN_GROUP_KEY, createSavedTab, type SavedTab } from './storage';
 
+/**
+ * URL prefixes that identify browser-internal pages we should not condense.
+ * Condensing these pages is not useful because they are browser UI/privileged
+ * surfaces rather than user content tabs.
+ */
+const INTERNAL_TAB_URL_PREFIXES = [
+  'chrome://',
+  'chrome-extension://',
+  'chrome-search://',
+  'chrome-untrusted://',
+  'devtools://',
+  'about:',
+] as const;
+
+/** Returns true when a tab URL is non-empty and safe to persist/close during condense. */
+function isCondensableTabUrl(url: string): boolean {
+  const normalizedUrl = url.trim().toLowerCase();
+  if (normalizedUrl.length === 0) return false;
+  return !INTERNAL_TAB_URL_PREFIXES.some((prefix) => normalizedUrl.startsWith(prefix));
+}
+
 /** Resolves the effective window ID from an explicit target or the first tab's window. */
 export function resolveWindowId(
   tabs: chrome.tabs.Tab[],
@@ -30,13 +51,16 @@ export function filterEligibleTabs(
   listUrl: string,
   excludePinned: boolean,
 ): chrome.tabs.Tab[] {
+  const normalizedListUrl = listUrl.trim().toLowerCase();
   return tabs.filter((tab) => {
     if (excludePinned && tab.pinned) return false;
     // Chrome may expose pendingUrl before url is populated; treat it as eligible.
     const candidateUrl =
       typeof tab.url === 'string' && tab.url.length > 0 ? tab.url : tab.pendingUrl;
-    if (candidateUrl === listUrl) return false;
-    return typeof candidateUrl === 'string' && candidateUrl.length > 0;
+    if (typeof candidateUrl !== 'string') return false;
+    const normalizedCandidateUrl = candidateUrl.trim().toLowerCase();
+    if (normalizedCandidateUrl === normalizedListUrl) return false;
+    return isCondensableTabUrl(candidateUrl);
   });
 }
 
@@ -51,9 +75,10 @@ export function saveTabsToList(
     // Keep pendingUrl support in sync with filterEligibleTabs to avoid dropping new tabs.
     const candidateUrl =
       typeof tab.url === 'string' && tab.url.length > 0 ? tab.url : tab.pendingUrl;
-    if (typeof candidateUrl !== 'string' || candidateUrl.length === 0) continue;
+    if (typeof candidateUrl !== 'string' || !isCondensableTabUrl(candidateUrl)) continue;
     saved.push(
       createSavedTab({
+        // Persist the original URL string (not lowercased) so user-visible text remains unchanged.
         url: candidateUrl,
         title:
           typeof tab.title === 'string' && tab.title.length > 0 ? tab.title : candidateUrl,

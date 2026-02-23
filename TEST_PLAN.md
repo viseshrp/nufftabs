@@ -23,7 +23,7 @@
   - Focus existing list tab behavior
 
 ## Core scenarios to cover
-- Condense filters pinned/list tab and saves eligible tabs
+- Condense filters pinned/list/internal tabs and saves eligible tabs
 - Group key includes windowId + timestamp + uuid and groups render in UI
 - Restore rules: single restores to current window; restore all opens new windows unless list tab is only tab
 - Save memory on restore: when enabled, restored tabs are discarded after URL set (best-effort)

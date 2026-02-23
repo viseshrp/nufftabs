@@ -182,6 +182,77 @@ describe('list page actions', () => {
     expect(status?.textContent).toContain('skipped');
   });
 
+  it('preserves existing collapse states and expands new groups on append import', async () => {
+    const older = '1-1000-older';
+    const newer = '1-2000-newer';
+    const imported = '1-3000-imported';
+    await setupListPage({
+      [older]: [{ id: 'old', url: 'https://old.example', title: 'Old', savedAt: 10 }],
+      [newer]: [{ id: 'new', url: 'https://new.example', title: 'New', savedAt: 20 }],
+    });
+
+    // Baseline for this test: initial render keeps newest open and collapses older groups.
+    const olderCardBefore = document.querySelector<HTMLElement>(`[data-group-key="${older}"]`);
+    const newerCardBefore = document.querySelector<HTMLElement>(`[data-group-key="${newer}"]`);
+    expect(olderCardBefore?.classList.contains('is-collapsed')).toBe(true);
+    expect(newerCardBefore?.classList.contains('is-collapsed')).toBe(false);
+
+    const toggleIo = document.querySelector<HTMLButtonElement>('#toggleIo');
+    toggleIo?.click();
+    const jsonArea = document.querySelector<HTMLTextAreaElement>('#jsonArea');
+    if (jsonArea) {
+      jsonArea.value = JSON.stringify({
+        savedTabs: {
+          [imported]: [{ id: 'imp', url: 'https://imported.example', title: 'Imported', savedAt: 30 }],
+        },
+      });
+    }
+    const importJson = document.querySelector<HTMLButtonElement>('button#importJson');
+    importJson?.click();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const olderCardAfter = document.querySelector<HTMLElement>(`[data-group-key="${older}"]`);
+    const newerCardAfter = document.querySelector<HTMLElement>(`[data-group-key="${newer}"]`);
+    const importedCard = document.querySelector<HTMLElement>(`[data-group-key="${imported}"]`);
+    expect(olderCardAfter?.classList.contains('is-collapsed')).toBe(true);
+    expect(newerCardAfter?.classList.contains('is-collapsed')).toBe(false);
+    expect(importedCard?.classList.contains('is-collapsed')).toBe(false);
+  });
+
+  it('keeps newly imported groups collapsed when collapse-all is active', async () => {
+    const older = '1-1000-older';
+    const newer = '1-2000-newer';
+    const imported = '1-3000-imported';
+    await setupListPage({
+      [older]: [{ id: 'old', url: 'https://old.example', title: 'Old', savedAt: 10 }],
+      [newer]: [{ id: 'new', url: 'https://new.example', title: 'New', savedAt: 20 }],
+    });
+
+    // Activate collapse-all first, then append-import another group.
+    const collapseAll = document.querySelector<HTMLButtonElement>('#toggleCollapseAll');
+    collapseAll?.click();
+
+    const toggleIo = document.querySelector<HTMLButtonElement>('#toggleIo');
+    toggleIo?.click();
+    const jsonArea = document.querySelector<HTMLTextAreaElement>('#jsonArea');
+    if (jsonArea) {
+      jsonArea.value = JSON.stringify({
+        savedTabs: {
+          [imported]: [{ id: 'imp', url: 'https://imported.example', title: 'Imported', savedAt: 30 }],
+        },
+      });
+    }
+    const importJson = document.querySelector<HTMLButtonElement>('button#importJson');
+    importJson?.click();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const importedCard = document.querySelector<HTMLElement>(`[data-group-key="${imported}"]`);
+    expect(importedCard?.classList.contains('is-collapsed')).toBe(true);
+    expect(collapseAll?.getAttribute('aria-label')).toBe('Expand all groups');
+  });
+
   it('silently rejects duplicates during JSON and OneTab imports when configured', async () => {
     const { mock } = await setupListPage({
       '1': [{ id: 'a', url: 'https://existing.com', title: 'Existing', savedAt: 1 }],
@@ -333,6 +404,65 @@ describe('list page actions', () => {
       typeof tab.url === 'string' && tab.url.startsWith('https://bulk-restore-50.example/'),
     );
     expect(restoredTabs).toHaveLength(50);
+  });
+
+  it('restores a single tab into a new window', async () => {
+    const { mock, listUrl } = await setupListPage({
+      '1': [{ id: 'a', url: 'https://single-restore.example', title: 'Single', savedAt: 1 }],
+    });
+
+    const listTab = (await mock.chrome.tabs.query({ url: listUrl }))[0];
+    expect(typeof listTab?.windowId).toBe('number');
+
+    const restoreSingle = document.querySelector<HTMLButtonElement>('button[data-action="restore-single"]');
+    restoreSingle?.click();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const restoredTab = (await mock.chrome.tabs.query({ url: 'https://single-restore.example' }))[0];
+    expect(typeof restoredTab?.windowId).toBe('number');
+    expect(restoredTab?.windowId).not.toBe(listTab?.windowId);
+  });
+
+  it('keeps a single tab in storage when restore cannot be verified', async () => {
+    const { mock } = await setupListPage({
+      '1': [{ id: 'a', url: 'https://single-restore-verify.example', title: 'Single', savedAt: 1 }],
+    });
+
+    mock.chrome.windows.create = async () => ({ id: 777 } as chrome.windows.Window);
+
+    const restoreSingle = document.querySelector<HTMLButtonElement>('button[data-action="restore-single"]');
+    restoreSingle?.click();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const status = document.querySelector<HTMLDivElement>('#snackbar');
+    expect(status?.textContent).toContain('Restore could not be verified');
+
+    const tabCount = document.querySelector<HTMLSpanElement>('#tabCount');
+    expect(tabCount?.textContent).toBe('1');
+    expect(mock.storageData['savedTabs:1']).toEqual([
+      { id: 'a', url: 'https://single-restore-verify.example', title: 'Single', savedAt: 1 },
+    ]);
+  });
+
+  it('keeps a group in storage when restore-all fails', async () => {
+    const { mock } = await setupListPage({
+      '1': [{ id: 'a', url: 'https://group-restore-fail.example', title: 'Group', savedAt: 1 }],
+    });
+
+    mock.chrome.windows.create = async () => {
+      throw new Error('boom');
+    };
+
+    const restoreGroup = document.querySelector<HTMLButtonElement>('button[data-action="restore-group"]');
+    restoreGroup?.click();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const status = document.querySelector<HTMLDivElement>('#snackbar');
+    expect(status?.textContent).toContain('Failed to restore tabs.');
+    expect(document.querySelectorAll('.group-card')).toHaveLength(1);
+    expect(mock.storageData['savedTabs:1']).toEqual([
+      { id: 'a', url: 'https://group-restore-fail.example', title: 'Group', savedAt: 1 },
+    ]);
   });
 
   it('updates scroll controls and handles missing tab ids', async () => {

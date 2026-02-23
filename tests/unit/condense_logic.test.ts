@@ -7,7 +7,7 @@ import {
 } from '../../entrypoints/shared/condense';
 
 describe('condense', () => {
-  it('filters pinned and list tab URLs', () => {
+  it('filters pinned, list tab, and browser-internal URLs', () => {
     const listUrl = 'chrome-extension://mock/nufftabs.html';
     const tabs = [
       { id: 1, url: 'https://example.com', pinned: false },
@@ -15,6 +15,10 @@ describe('condense', () => {
       { id: 3, url: listUrl, pinned: false },
       { id: 4, url: '', pinned: false },
       { id: 5, url: '', pendingUrl: 'https://pending.com', pinned: false },
+      // Browser-internal surfaces must remain open and should never be saved.
+      { id: 6, url: 'chrome://settings', pinned: false },
+      { id: 7, url: 'devtools://devtools/bundled/inspector.html', pinned: false },
+      { id: 8, url: 'about:blank', pinned: false },
     ] as chrome.tabs.Tab[];
 
     const eligible = filterEligibleTabs(tabs, listUrl, true);

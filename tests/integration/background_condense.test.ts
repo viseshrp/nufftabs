@@ -29,6 +29,28 @@ describe('background condense', () => {
     expect(listTabs[0]?.pinned).toBe(true);
   });
 
+  it('skips chrome internal tabs during condense', async () => {
+    const mock = createMockChrome();
+    setMockChrome(mock.chrome);
+
+    const window = mock.createWindow(['https://eligible.example', 'chrome://settings', 'about:blank']);
+    await condenseCurrentWindow(window.id as number);
+
+    const savedGroups = await readSavedGroups();
+    const groupKey = Object.keys(savedGroups).find((key) => key.startsWith(`${window.id}-`));
+    expect(groupKey).toBeTruthy();
+    const savedGroup = groupKey ? savedGroups[groupKey] : [];
+
+    // Only user-content tabs should be persisted.
+    expect(savedGroup).toHaveLength(1);
+    expect(savedGroup?.[0]?.url).toBe('https://eligible.example');
+
+    const remainingTabs = await mock.chrome.tabs.query({ windowId: window.id as number });
+    // Internal tabs are intentionally left open.
+    expect(remainingTabs.some((tab) => tab.url === 'chrome://settings')).toBe(true);
+    expect(remainingTabs.some((tab) => tab.url === 'about:blank')).toBe(true);
+  });
+
   it('focuses existing list tab when no eligible tabs', async () => {
     const mock = createMockChrome();
     setMockChrome(mock.chrome);
@@ -91,6 +113,30 @@ describe('background condense', () => {
     const tabs = await mock.chrome.tabs.query({ windowId: window.id as number });
     const listTabs = tabs.filter((tab: chrome.tabs.Tab) => tab.url === listUrl);
     expect(listTabs.length).toBe(1);
+  });
+
+  it('does not close source tabs when saved-group verification fails', async () => {
+    const mock = createMockChrome();
+    setMockChrome(mock.chrome);
+
+    const originalSet = mock.chrome.storage.local.set;
+    mock.chrome.storage.local.set = async (payload) => {
+      // Simulate partial persistence: keep the index write but drop group payload rows.
+      const strippedPayload: Record<string, unknown> = {};
+      for (const [key, value] of Object.entries(payload)) {
+        if (!key.startsWith('savedTabs:')) {
+          strippedPayload[key] = value;
+        }
+      }
+      await originalSet(strippedPayload);
+    };
+
+    const window = mock.createWindow(['https://a.com', 'https://b.com']);
+    await condenseCurrentWindow(window.id as number);
+
+    const remainingTabs = await mock.chrome.tabs.query({ windowId: window.id as number });
+    expect(remainingTabs.some((tab) => tab.url === 'https://a.com')).toBe(true);
+    expect(remainingTabs.some((tab) => tab.url === 'https://b.com')).toBe(true);
   });
 
   it('handles list tab query failures gracefully', async () => {
@@ -260,5 +306,32 @@ describe('background condense', () => {
     const secondWindowTabs = await mock.chrome.tabs.query({ windowId: secondWindow.id as number });
     expect(secondWindowTabs.some((tab) => tab.url === 'https://dup.com')).toBe(true);
     expect(secondWindowTabs.some((tab) => tab.url === 'https://unique.com')).toBe(false);
+  });
+
+  it('leaves tabs open when duplicate rejection filters out all eligible tabs', async () => {
+    const mock = createMockChrome({
+      initialStorage: {
+        [STORAGE_KEYS.settings]: {
+          excludePinned: true,
+          duplicateTabsPolicy: 'reject',
+        },
+      },
+    });
+    setMockChrome(mock.chrome);
+
+    const firstWindow = mock.createWindow(['https://duplicate-only.example']);
+    const secondWindow = mock.createWindow(['https://duplicate-only.example']);
+
+    await condenseCurrentWindow(firstWindow.id as number);
+    await condenseCurrentWindow(secondWindow.id as number);
+
+    const secondWindowTabs = await mock.chrome.tabs.query({ windowId: secondWindow.id as number });
+    expect(secondWindowTabs.some((tab) => tab.url === 'https://duplicate-only.example')).toBe(true);
+
+    const savedGroups = await readSavedGroups();
+    const savedUrls = Object.values(savedGroups)
+      .flat()
+      .map((tab) => tab.url);
+    expect(savedUrls.filter((url) => url === 'https://duplicate-only.example')).toHaveLength(1);
   });
 });

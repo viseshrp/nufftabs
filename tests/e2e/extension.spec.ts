@@ -181,7 +181,7 @@ test.describe('nufftabs extension e2e', () => {
 
     await expect(listPage.locator('.group-card')).toHaveCount(1, { timeout: 15000 });
 
-    // Restore single into current list window
+    // Restore single into a new window.
     await expect(listPage.locator('button[data-action="restore-single"]')).toHaveCount(2);
     await listPage.locator('button[data-action="restore-single"]').first().click();
     await expect(listPage.locator('li.item:not(.load-more)')).toHaveCount(1);
@@ -199,13 +199,63 @@ test.describe('nufftabs extension e2e', () => {
     });
 
     expect(restoredTabs.length).toBeGreaterThan(0);
-    expect(restoredTabs[0]?.windowId).toBe(listWindowId);
+    expect(restoredTabs[0]?.windowId).not.toBe(listWindowId);
 
     // Restore all remaining
     await expect(listPage.locator('button[data-action="restore-group"]')).toHaveCount(1);
     await listPage.locator('button[data-action="restore-group"]').click();
     await expect(listPage.locator('#snackbar')).toContainText('Restored all tabs');
     await expect(listPage.locator('.group-card')).toHaveCount(0);
+
+    await context.close();
+  });
+
+  test('repeated single restores remain stable and open outside the list window', async () => {
+    const { context, extensionId, page } = await launchExtension();
+    const listUrl = extensionUrl(extensionId, 'nufftabs.html');
+
+    await page.goto(extensionUrl(extensionId, 'options.html'));
+
+    // Seed a group large enough to exercise repeated single-restore clicks in one run.
+    const singleRestoreUrls = Array.from({ length: 8 }, (_, index) => `https://example.com/single-${index}`);
+    await seedSavedGroup(page, 'single-restore-group', singleRestoreUrls);
+    await waitForSavedGroupCount(page, 1);
+
+    const listPage = await getOrOpenListPage(context, listUrl);
+    await expect(listPage.locator('.group-card')).toHaveCount(1, { timeout: 15000 });
+    await expect(listPage.locator('button[data-action="restore-single"]')).toHaveCount(singleRestoreUrls.length);
+
+    const listWindowId = await listPage.evaluate(async () => {
+      const current = await chrome.tabs.getCurrent();
+      if (!current || typeof current.windowId !== 'number') return null;
+      return current.windowId;
+    });
+    expect(typeof listWindowId).toBe('number');
+
+    // Restore each tab one-by-one and assert the list page remains usable after every click.
+    for (let restoredCount = 1; restoredCount <= singleRestoreUrls.length; restoredCount += 1) {
+      await listPage.locator('button[data-action="restore-single"]').first().click();
+      await expect(listPage.locator('#snackbar')).toContainText('Restored 1 tab.');
+      await expect(listPage).toHaveURL(listUrl);
+      await expect(listPage.locator('button[data-action="restore-single"]')).toHaveCount(
+        singleRestoreUrls.length - restoredCount,
+      );
+    }
+
+    await expect(listPage.locator('.group-card')).toHaveCount(0);
+
+    const restoredWindowIds = await listPage.evaluate(async (urls) => {
+      const allTabs = await chrome.tabs.query({});
+      return allTabs
+        .filter((tab) => typeof tab.url === 'string' && urls.includes(tab.url))
+        .map((tab) => tab.windowId)
+        .filter((windowId): windowId is number => typeof windowId === 'number');
+    }, singleRestoreUrls);
+
+    expect(restoredWindowIds).toHaveLength(singleRestoreUrls.length);
+    for (const windowId of restoredWindowIds) {
+      expect(windowId).not.toBe(listWindowId);
+    }
 
     await context.close();
   });
