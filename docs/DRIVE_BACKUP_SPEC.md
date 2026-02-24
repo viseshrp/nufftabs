@@ -19,7 +19,7 @@ nufftabs supports optional manual backup and restore to Google Drive. This featu
 
 ## Data model
 Drive folder layout:
-- `nufftabs_backups/<install_id>/backup-<timestamp>-g<groupCount>.json`
+- `nufftabs_backups/<install_id>/nufftabs-backup-<timestamp>-g<groupCount>.json`
 
 Local storage keys:
 - `driveInstallId`: stable install folder identifier

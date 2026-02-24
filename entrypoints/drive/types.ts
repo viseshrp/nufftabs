@@ -3,6 +3,10 @@
  * Drive API adapters, and options/auth UI code.
  */
 import type { SavedTabGroups, Settings } from '../shared/storage';
+import {
+  createNufftabsBackupFileName,
+  extractTabGroupCountFromBackupFileName,
+} from '../shared/backup_filename';
 
 /** The top-level folder name used in the user's Google Drive. */
 export const DRIVE_FOLDER_NAME = 'nufftabs_backups';
@@ -79,9 +83,7 @@ export function normalizeRetentionCount(
  * a rough tab-group count for listing without downloading each file.
  */
 export function createBackupFileName(timestamp: number, tabGroupCount: number): string {
-  const iso = new Date(timestamp).toISOString().replace(/[:.]/g, '-');
-  const groupCount = Math.max(0, Math.floor(tabGroupCount));
-  return `backup-${iso}-g${groupCount}.json`;
+  return createNufftabsBackupFileName(timestamp, tabGroupCount);
 }
 
 /**
@@ -89,10 +91,7 @@ export function createBackupFileName(timestamp: number, tabGroupCount: number): 
  * `createBackupFileName`. Returns 0 if the file name does not match.
  */
 export function extractTabGroupCountFromFileName(fileName: string): number {
-  const match = /-g(\d+)\.json$/i.exec(fileName);
-  if (!match) return 0;
-  const parsed = Number(match[1]);
-  return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : 0;
+  return extractTabGroupCountFromBackupFileName(fileName);
 }
 
 /**

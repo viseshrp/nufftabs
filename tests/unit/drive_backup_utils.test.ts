@@ -64,7 +64,7 @@ describe('drive backup utilities', () => {
   it('normalizes retention and backup filename helpers', () => {
     const fileName = createBackupFileName(1700000000000, 12);
 
-    expect(fileName).toContain('backup-');
+    expect(fileName).toContain('nufftabs-backup-');
     expect(fileName).toContain('-g12.json');
     expect(extractTabGroupCountFromFileName(fileName)).toBe(12);
     expect(extractTabGroupCountFromFileName('nope.json')).toBe(0);
@@ -264,7 +264,7 @@ describe('drive backup utilities', () => {
     });
 
     expect(uploads).toHaveLength(1);
-    expect(uploads[0]?.name).toContain('backup-');
+    expect(uploads[0]?.name).toContain('nufftabs-backup-');
     expect(uploads[0]?.content).toContain('"installId": "install-1"');
     expect(backups).toHaveLength(1);
     expect(deleted).toEqual(['old-file']);
