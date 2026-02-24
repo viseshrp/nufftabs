@@ -76,7 +76,7 @@ driveRetentionCount: 10
 driveBackupIndex: {
   "installId": "0f8fad5b-d9cb-469f-a165-70867728950e",
   "backups": [
-    { "fileId": "1AbC...", "fileName": "backup-2026-02-19T20-10-45-120Z-g2.json", "timestamp": 1771531845120, "size": 1824, "tabGroupCount": 2 }
+    { "fileId": "1AbC...", "fileName": "nufftabs-backup-2026-02-19T20-10-45-120Z-g2.json", "timestamp": 1771531845120, "size": 1824, "tabGroupCount": 2 }
   ]
 }
 ```
