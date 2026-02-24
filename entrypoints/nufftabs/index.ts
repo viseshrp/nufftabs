@@ -30,7 +30,13 @@ import {
   type SavedTabGroups,
 } from '../shared/storage';
 import { appendTabsByDuplicatePolicy, collectSavedTabUrls } from '../shared/duplicates';
-import { logExtensionError, runWithConcurrency, type ExtensionErrorOperation } from '../shared/utils';
+import {
+  isIgnorableExtensionError,
+  logExtensionError,
+  runWithConcurrency,
+  type ExtensionErrorOperation,
+} from '../shared/utils';
+import { createNufftabsBackupFileName } from '../shared/backup_filename';
 import { createSnackbarNotifier } from '../ui/notifications';
 
 // ── DOM element references (queried once at module load) ──
@@ -168,6 +174,28 @@ function runAsyncTask(
 ): void {
   void task.catch((error) => {
     logExtensionError(context, error, { operation });
+  });
+}
+
+/**
+ * Runs an IO (import/export) task and surfaces a friendly user message if it throws.
+ *
+ * This is intentionally only used by the Import/Export controls to keep UI changes local:
+ * other list-page actions keep their existing (silent) error handling behavior.
+ */
+function runIoTask(
+  task: Promise<unknown>,
+  options: {
+    logContext: string;
+    userMessage: string;
+    operation?: ExtensionErrorOperation;
+  },
+): void {
+  void task.catch((error) => {
+    const operation = options.operation ?? 'runtime_context';
+    if (isIgnorableExtensionError(error, operation)) return;
+    logExtensionError(options.logContext, error, { operation });
+    setStatus(options.userMessage);
   });
 }
 
@@ -1422,6 +1450,7 @@ async function handleDrop(targetGroupKey: string): Promise<void> {
 async function exportJson(): Promise<void> {
   if (!jsonAreaEl) return;
   const savedGroups = areAllIndexedGroupsLoaded() ? cloneGroups(state.currentGroups) : await readSavedGroups();
+  const groupCount = Object.keys(savedGroups).length;
   const total = countTotalTabs(savedGroups);
   jsonAreaEl.value = JSON.stringify({ savedTabs: savedGroups }, null, 2);
 
@@ -1440,7 +1469,7 @@ async function exportJson(): Promise<void> {
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `nufftabs-backup-${new Date().toISOString().replace(/[:.]/g, '-')}.json`;
+    link.download = createNufftabsBackupFileName(Date.now(), groupCount);
     document.body.appendChild(link);
     link.click();
     link.remove();
@@ -1452,7 +1481,9 @@ async function exportJson(): Promise<void> {
   }
 
   if (!copied && !downloaded) {
-    setStatus('Export failed: Could not copy to clipboard or download file.');
+    setStatus(
+      "Export failed. Couldn't copy to clipboard or download a file. The JSON is still in the text area—copy it manually and try again.",
+    );
     return;
   }
 
@@ -1469,7 +1500,7 @@ async function importJsonText(text: string, mode: 'append' | 'replace'): Promise
     const fallbackKey = createCondenseGroupKey(windowId);
     const normalized = normalizeImportedGroups(parsed, fallbackKey);
     if (!normalized) {
-      setStatus('Import failed: JSON structure not recognized.');
+      setStatus('Import failed. JSON structure not recognized. Paste a NuffTabs export and try again.');
       return;
     }
     const existing = mode === 'replace' ? {} : await readSavedGroups();
@@ -1480,7 +1511,7 @@ async function importJsonText(text: string, mode: 'append' | 'replace'): Promise
     const importedCount = countTotalTabs(nextGroups) - countTotalTabs(existing);
     const saved = await writeSavedGroups(nextGroups);
     if (!saved) {
-      setStatus('Import failed: Could not save tabs to storage.');
+      setStatus("Import failed. Couldn't save tabs to extension storage.");
       await refreshList();
       return;
     }
@@ -1489,7 +1520,7 @@ async function importJsonText(text: string, mode: 'append' | 'replace'): Promise
     setStatus(`Successfully imported ${importedCount} tab${importedCount === 1 ? '' : 's'}.`);
   } catch (error) {
     logExtensionError('Failed to import JSON payload', error, { operation: 'runtime_context' });
-    setStatus('Import failed: Invalid JSON format.');
+    setStatus('Import failed. Invalid JSON.');
   }
 }
 
@@ -1513,7 +1544,7 @@ async function importJsonFile(file: File): Promise<void> {
     await importJsonText(text, 'append');
   } catch (error) {
     logExtensionError('Failed to import JSON file', error, { operation: 'runtime_context' });
-    setStatus('Import failed: Could not read the selected file.');
+    setStatus("Import failed. Couldn't read the selected file.");
   }
 }
 
@@ -1539,7 +1570,7 @@ async function importOneTab(): Promise<void> {
   const { tabs: imported, totalLines } = parseOneTabExport(text);
   const skipped = Math.max(0, totalLines - imported.length);
   if (imported.length === 0) {
-    setStatus('No valid OneTab links found to import.');
+    setStatus('OneTab import: no valid links found.');
     return;
   }
   const windowId = await getCurrentWindowId();
@@ -1554,12 +1585,12 @@ async function importOneTab(): Promise<void> {
   }
   const { tabs: updatedGroup, addedCount } = mergeResult;
   if (addedCount === 0) {
-    setStatus('No new OneTab links found to import.');
+    setStatus('OneTab import: no new links to add.');
     return;
   }
   const saved = await writeSavedGroup(groupKey, updatedGroup);
   if (!saved) {
-    setStatus('Import failed: Could not save tabs to storage.');
+    setStatus("Import failed. Couldn't save tabs to extension storage.");
     await refreshList();
     return;
   }
@@ -1603,15 +1634,24 @@ async function init(): Promise<void> {
   groupsEl?.addEventListener('click', handleGroupAction);
 
   exportJsonEl?.addEventListener('click', () => {
-    runAsyncTask(exportJson(), 'Failed to export JSON');
+    runIoTask(exportJson(), {
+      logContext: 'Failed to export JSON',
+      userMessage: 'Export failed. Something went wrong while exporting your backup. Try again.',
+    });
   });
 
   importJsonEl?.addEventListener('click', () => {
-    runAsyncTask(importJson(), 'Failed to import JSON (append)');
+    runIoTask(importJson(), {
+      logContext: 'Failed to import JSON (append)',
+      userMessage: 'Import failed. Something went wrong while importing. Check the JSON and try again.',
+    });
   });
 
   importJsonReplaceEl?.addEventListener('click', () => {
-    runAsyncTask(importJsonReplace(), 'Failed to import JSON (replace)');
+    runIoTask(importJsonReplace(), {
+      logContext: 'Failed to import JSON (replace)',
+      userMessage: 'Import failed. Something went wrong while replacing your tabs. Check the JSON and try again.',
+    });
   });
 
   importFileEl?.addEventListener('click', () => {
@@ -1621,13 +1661,19 @@ async function init(): Promise<void> {
   importFileInputEl?.addEventListener('change', () => {
     const file = importFileInputEl.files?.[0];
     if (file) {
-      runAsyncTask(importJsonFile(file), 'Failed to import JSON file');
+      runIoTask(importJsonFile(file), {
+        logContext: 'Failed to import JSON file',
+        userMessage: "Import failed. Couldn't import that file. Make sure it's a NuffTabs JSON backup and try again.",
+      });
       importFileInputEl.value = '';
     }
   });
 
   importOneTabEl?.addEventListener('click', () => {
-    runAsyncTask(importOneTab(), 'Failed to import OneTab export');
+    runIoTask(importOneTab(), {
+      logContext: 'Failed to import OneTab export',
+      userMessage: 'OneTab import failed. Something went wrong while parsing the export. Try again.',
+    });
   });
 
   clearJsonEl?.addEventListener('click', () => {
