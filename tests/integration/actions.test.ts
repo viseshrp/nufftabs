@@ -406,7 +406,7 @@ describe('list page actions', () => {
     expect(restoredTabs).toHaveLength(50);
   });
 
-  it('restores a single tab into a new window', async () => {
+  it('restores a single tab into the current window', async () => {
     const { mock, listUrl } = await setupListPage({
       '1': [{ id: 'a', url: 'https://single-restore.example', title: 'Single', savedAt: 1 }],
     });
@@ -420,15 +420,18 @@ describe('list page actions', () => {
 
     const restoredTab = (await mock.chrome.tabs.query({ url: 'https://single-restore.example' }))[0];
     expect(typeof restoredTab?.windowId).toBe('number');
-    expect(restoredTab?.windowId).not.toBe(listTab?.windowId);
+    expect(restoredTab?.windowId).toBe(listTab?.windowId);
   });
 
   it('keeps a single tab in storage when restore cannot be verified', async () => {
-    const { mock } = await setupListPage({
+    const { mock, listUrl } = await setupListPage({
       '1': [{ id: 'a', url: 'https://single-restore-verify.example', title: 'Single', savedAt: 1 }],
     });
+    const listTab = (await mock.chrome.tabs.query({ url: listUrl }))[0];
+    const listWindowId = typeof listTab?.windowId === 'number' ? listTab.windowId : 1;
 
-    mock.chrome.windows.create = async () => ({ id: 777 } as chrome.windows.Window);
+    mock.chrome.tabs.create = async () =>
+      ({ id: 777, windowId: listWindowId, url: 'about:blank', title: 'about:blank' }) as chrome.tabs.Tab;
 
     const restoreSingle = document.querySelector<HTMLButtonElement>('button[data-action="restore-single"]');
     restoreSingle?.click();

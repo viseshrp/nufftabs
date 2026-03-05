@@ -181,7 +181,7 @@ test.describe('nufftabs extension e2e', () => {
 
     await expect(listPage.locator('.group-card')).toHaveCount(1, { timeout: 15000 });
 
-    // Restore single into a new window.
+    // Restore single into the current list window.
     await expect(listPage.locator('button[data-action="restore-single"]')).toHaveCount(2);
     await listPage.locator('button[data-action="restore-single"]').first().click();
     await expect(listPage.locator('li.item:not(.load-more)')).toHaveCount(1);
@@ -199,7 +199,7 @@ test.describe('nufftabs extension e2e', () => {
     });
 
     expect(restoredTabs.length).toBeGreaterThan(0);
-    expect(restoredTabs[0]?.windowId).not.toBe(listWindowId);
+    expect(restoredTabs[0]?.windowId).toBe(listWindowId);
 
     // Restore all remaining
     await expect(listPage.locator('button[data-action="restore-group"]')).toHaveCount(1);
@@ -210,7 +210,7 @@ test.describe('nufftabs extension e2e', () => {
     await context.close();
   });
 
-  test('repeated single restores remain stable and open outside the list window', async () => {
+  test('repeated single restores remain stable and open in the list window', async () => {
     const { context, extensionId, page } = await launchExtension();
     const listUrl = extensionUrl(extensionId, 'nufftabs.html');
 
@@ -254,7 +254,7 @@ test.describe('nufftabs extension e2e', () => {
 
     expect(restoredWindowIds).toHaveLength(singleRestoreUrls.length);
     for (const windowId of restoredWindowIds) {
-      expect(windowId).not.toBe(listWindowId);
+      expect(windowId).toBe(listWindowId);
     }
 
     await context.close();

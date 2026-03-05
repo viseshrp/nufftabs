@@ -46,6 +46,12 @@ describe('list page init', () => {
 
     await new Promise((resolve) => setTimeout(resolve, 0));
 
+    const tabsInListWindow = await mock.chrome.tabs.query({ windowId: listWindow.id as number });
+    const restoredTab = tabsInListWindow.find((entry) => entry.url === 'https://example.com');
+    expect(restoredTab).toBeTruthy();
+    expect(restoredTab?.windowId).toBe(listWindow.id);
+    expect(mock.windows.size).toBe(1);
+
     expect(tabCount?.textContent).toBe('0');
     const empty = document.querySelector<HTMLDivElement>('#empty');
     expect(empty?.style.display).toBe('block');

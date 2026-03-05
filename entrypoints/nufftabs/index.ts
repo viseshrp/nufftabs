@@ -1247,21 +1247,36 @@ async function restoreSingle(groupKey: string, id: string): Promise<void> {
   }
 
   try {
-    const createdWindow = await chrome.windows.create({ url: tab.url });
-    if (!createdWindow || typeof createdWindow.id !== 'number') {
-      throw new Error('Missing window id');
-    }
-
     const matchesRestoredUrl = (restoredTab: chrome.tabs.Tab): boolean =>
       restoredTab.url === tab.url || restoredTab.pendingUrl === tab.url;
+    const currentTab = await chrome.tabs.getCurrent();
+    const currentWindowId = currentTab?.windowId;
+    let restoreVerified = false;
+
+    if (typeof currentWindowId === 'number') {
+      const createdTab = await chrome.tabs.create({ windowId: currentWindowId, url: tab.url, active: false });
+      restoreVerified = matchesRestoredUrl(createdTab);
+      if (!restoreVerified) {
+        const restoredWindowTabs = await chrome.tabs.query({ windowId: currentWindowId });
+        restoreVerified = restoredWindowTabs.some(matchesRestoredUrl);
+      }
+      if (typeof currentTab?.id === 'number') {
+        await chrome.tabs.update(currentTab.id, { active: true });
+      }
+    } else {
+      // Fallback when list-page tab context is unavailable.
+      const createdWindow = await chrome.windows.create({ url: tab.url });
+      if (!createdWindow || typeof createdWindow.id !== 'number') {
+        throw new Error('Missing window id');
+      }
+      restoreVerified = (createdWindow.tabs ?? []).some(matchesRestoredUrl);
+      if (!restoreVerified) {
+        const restoredWindowTabs = await chrome.tabs.query({ windowId: createdWindow.id });
+        restoreVerified = restoredWindowTabs.some(matchesRestoredUrl);
+      }
+    }
 
     // Atomicity guard: only remove the saved entry after we can confirm the tab exists.
-    const restoredFromCreatePayload = (createdWindow.tabs ?? []).some(matchesRestoredUrl);
-    let restoreVerified = restoredFromCreatePayload;
-    if (!restoreVerified) {
-      const restoredWindowTabs = await chrome.tabs.query({ windowId: createdWindow.id });
-      restoreVerified = restoredWindowTabs.some(matchesRestoredUrl);
-    }
     if (!restoreVerified) {
       setStatus('Restore could not be verified. Tab was kept in your list.');
       return;
