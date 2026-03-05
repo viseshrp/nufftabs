@@ -1249,17 +1249,21 @@ async function restoreSingle(groupKey: string, id: string): Promise<void> {
   try {
     const matchesRestoredUrl = (restoredTab: chrome.tabs.Tab): boolean =>
       restoredTab.url === tab.url || restoredTab.pendingUrl === tab.url;
+    const verifyRestoredInWindow = async (
+      windowId: number,
+      createdTabs: readonly chrome.tabs.Tab[] = [],
+    ): Promise<boolean> => {
+      if (createdTabs.some(matchesRestoredUrl)) return true;
+      const restoredWindowTabs = await chrome.tabs.query({ windowId });
+      return restoredWindowTabs.some(matchesRestoredUrl);
+    };
     const currentTab = await chrome.tabs.getCurrent();
     const currentWindowId = currentTab?.windowId;
     let restoreVerified = false;
 
     if (typeof currentWindowId === 'number') {
       const createdTab = await chrome.tabs.create({ windowId: currentWindowId, url: tab.url, active: false });
-      restoreVerified = matchesRestoredUrl(createdTab);
-      if (!restoreVerified) {
-        const restoredWindowTabs = await chrome.tabs.query({ windowId: currentWindowId });
-        restoreVerified = restoredWindowTabs.some(matchesRestoredUrl);
-      }
+      restoreVerified = await verifyRestoredInWindow(currentWindowId, [createdTab]);
       if (typeof currentTab?.id === 'number') {
         await chrome.tabs.update(currentTab.id, { active: true });
       }
@@ -1269,11 +1273,7 @@ async function restoreSingle(groupKey: string, id: string): Promise<void> {
       if (!createdWindow || typeof createdWindow.id !== 'number') {
         throw new Error('Missing window id');
       }
-      restoreVerified = (createdWindow.tabs ?? []).some(matchesRestoredUrl);
-      if (!restoreVerified) {
-        const restoredWindowTabs = await chrome.tabs.query({ windowId: createdWindow.id });
-        restoreVerified = restoredWindowTabs.some(matchesRestoredUrl);
-      }
+      restoreVerified = await verifyRestoredInWindow(createdWindow.id, createdWindow.tabs ?? []);
     }
 
     // Atomicity guard: only remove the saved entry after we can confirm the tab exists.
