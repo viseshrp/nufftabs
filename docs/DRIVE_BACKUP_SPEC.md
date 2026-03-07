@@ -45,8 +45,7 @@ Backup JSON shape:
 
 ## Implementation boundaries
 - Drive logic is isolated under `entrypoints/drive/`.
-- Optional standalone auth page logic is isolated under `entrypoints/drive-auth/` for direct-entry/debug flows.
-- Options page owns all user-facing backup controls.
+- Options page owns all user-facing auth, backup, and restore controls.
 - Existing storage module is reused for writing restored tabs/settings.
 
 ## Retention
@@ -55,7 +54,7 @@ Backup JSON shape:
 - Files past the retention cutoff are deleted via Drive API.
 
 ## Error behavior
-- Errors are surfaced as status text in the options page (and auth page when that standalone page is used).
+- Errors are surfaced as status text in the options page.
 - Drive fallback listing failures keep local UI responsive and show an empty list.
 - Restore fails fast on malformed payloads.
 

@@ -18,10 +18,10 @@ export const BACKUP_VERSION = 1;
 export const DEFAULT_RETENTION_COUNT = 10;
 
 /** Lowest retention value accepted from user input/storage. */
-export const MIN_RETENTION_COUNT = 1;
+const MIN_RETENTION_COUNT = 1;
 
 /** Highest retention value accepted from user input/storage. */
-export const MAX_RETENTION_COUNT = 500;
+const MAX_RETENTION_COUNT = 500;
 
 /** Storage keys used only by the Drive backup feature. */
 export const DRIVE_STORAGE_KEYS = {

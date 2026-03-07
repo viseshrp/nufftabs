@@ -29,10 +29,9 @@ junior developers and useful for future maintenance.
 - Hosts optional manual Google Drive backup controls (backup now, retention, restore).
 - Uses the shared toast/snackbar notifier adapter for all user-facing status messages.
 
-4) **Drive backup modules** (`entrypoints/drive/`, `entrypoints/drive-auth/`)
+4) **Drive backup modules** (`entrypoints/drive/`)
 - `entrypoints/drive/` contains auth wrappers, Drive REST client helpers, and backup orchestration.
-- `entrypoints/options/` drives the primary connect/disconnect UX directly in the options page.
-- `entrypoints/drive-auth/` remains available for direct-entry/debug auth flows.
+- `entrypoints/options/` drives the user-facing connect/disconnect, backup, and restore UX directly in the options page.
 
 5) **UI notification adapters** (`entrypoints/ui/notifications.ts`)
 - Provides centralized, DOM-focused notification primitives for user-facing messages.
@@ -242,7 +241,7 @@ For the full schema and reasoning, see `docs/storage.md`.
 - **List UI not updating:** `entrypoints/nufftabs/index.ts`
 - **Storage format issues:** `entrypoints/shared/storage.ts`
 - **Settings not respected:** `entrypoints/options/index.ts`
-- **Drive backup/auth issues:** `entrypoints/options/`, `entrypoints/drive/`, and `entrypoints/drive-auth/`
+- **Drive backup/auth issues:** `entrypoints/options/` and `entrypoints/drive/`
 
 ## Troubleshooting matrix
 - **Condense closes tabs but list is empty:** storage write failed; check background console

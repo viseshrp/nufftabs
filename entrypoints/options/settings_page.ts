@@ -31,7 +31,7 @@ import {
 import { normalizeRetentionCount, type DriveBackupEntry } from '../drive/types';
 
 /** Updates the status element's text content (used for save/error feedback). */
-export function setStatus(statusEl: HTMLDivElement | null, message: string): void {
+function setStatus(statusEl: HTMLDivElement | null, message: string): void {
   const ownerDocument = statusEl?.ownerDocument ?? document;
   const notifier = resolveDocumentToastNotifier(ownerDocument);
   notifier.notify(message);

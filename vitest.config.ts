@@ -20,8 +20,6 @@ export default defineConfig({
       exclude: [
         '**/*.d.ts',
         'entrypoints/nufftabs/index.ts',
-        'entrypoints/drive-auth/index.ts',
-        'entrypoints/drive-auth/drive_auth_page.ts',
       ],
     },
   },
