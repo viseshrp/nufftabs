@@ -244,7 +244,7 @@ export async function listDriveBackups(token: string, deps: DriveApiDeps = defau
 }
 
 /** One paginated options-restore listing response. */
-export type DriveBackupListPage = {
+type DriveBackupListPage = {
   backups: DriveBackupEntry[];
   nextPageToken: string | null;
 };

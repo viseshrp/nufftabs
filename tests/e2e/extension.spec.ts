@@ -194,8 +194,10 @@ test.describe('nufftabs extension e2e', () => {
     expect(listWindowId).not.toBeNull();
 
     const restoredTabs = await listPage.evaluate(async () => {
-      const tabs = await chrome.tabs.query({ url: 'https://example.com/1' });
-      return tabs.map((tab) => ({ url: tab.url, windowId: tab.windowId }));
+      const tabs = await chrome.tabs.query({});
+      return tabs
+        .filter((tab) => tab.url === 'https://example.com/1' || tab.pendingUrl === 'https://example.com/1')
+        .map((tab) => ({ url: tab.url ?? tab.pendingUrl, windowId: tab.windowId }));
     });
 
     expect(restoredTabs.length).toBeGreaterThan(0);
@@ -244,15 +246,22 @@ test.describe('nufftabs extension e2e', () => {
 
     await expect(listPage.locator('.group-card')).toHaveCount(0);
 
-    const restoredWindowIds = await listPage.evaluate(async (urls) => {
-      const allTabs = await chrome.tabs.query({});
-      return allTabs
-        .filter((tab) => typeof tab.url === 'string' && urls.includes(tab.url))
-        .map((tab) => tab.windowId)
-        .filter((windowId): windowId is number => typeof windowId === 'number');
-    }, singleRestoreUrls);
+    const getRestoredWindowIds = () =>
+      listPage.evaluate(async (urls) => {
+        const allTabs = await chrome.tabs.query({});
+        return allTabs
+          .filter((tab) => {
+            const candidateUrl =
+              typeof tab.url === 'string' && tab.url.length > 0 ? tab.url : tab.pendingUrl;
+            return typeof candidateUrl === 'string' && urls.includes(candidateUrl);
+          })
+          .map((tab) => tab.windowId)
+          .filter((windowId): windowId is number => typeof windowId === 'number');
+      }, singleRestoreUrls);
 
-    expect(restoredWindowIds).toHaveLength(singleRestoreUrls.length);
+    await expect.poll(async () => (await getRestoredWindowIds()).length).toBe(singleRestoreUrls.length);
+
+    const restoredWindowIds = await getRestoredWindowIds();
     for (const windowId of restoredWindowIds) {
       expect(windowId).toBe(listWindowId);
     }

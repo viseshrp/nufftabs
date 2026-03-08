@@ -134,7 +134,7 @@ E2E:
 ## Coverage requirements
 - Enforced in Vitest with >= 90% for statements, branches, functions, and lines.
 - Coverage is collected from the TypeScript source in `entrypoints/`.
-- Exclusion: `entrypoints/nufftabs/index.ts` plus Drive auth page glue (`entrypoints/drive-auth/index.ts`, `entrypoints/drive-auth/drive_auth_page.ts`) are excluded from unit/integration coverage because they are DOM-heavy glue code best validated via integration/E2E style tests.
+- Exclusion: `entrypoints/nufftabs/index.ts` is excluded from unit/integration coverage because it is DOM-heavy glue code best validated via integration/E2E style tests.
 
 ## CI structure (GitHub Actions)
 CI lives in `.github/workflows/ci.yml` and runs on PR + push.

@@ -49,34 +49,6 @@ Backup orchestration logic. Functions for:
 - `restoreFromBackup(fileId, token)` — downloads backup → validates → writes to storage using existing `writeSavedGroups()`
 - `listDriveBackups(token)` — fallback: list backups from Drive when local index is missing/corrupt
 
----
-
-### Auth Tab
-
-A dedicated extension page for OAuth connect/disconnect + status display. Opens in its own tab.
-
-#### [NEW] [drive-auth/index.html](file:///Users/vp-dc/Documents/GitHub/nufftabs/entrypoints/drive-auth/index.html)
-
-Minimal HTML: a card with connect/disconnect button and status display. Links to shared `theme.css`.
-
-#### [NEW] [drive-auth/index.ts](file:///Users/vp-dc/Documents/GitHub/nufftabs/entrypoints/drive-auth/index.ts)
-
-Entrypoint that imports CSS and calls `initDriveAuthPage()`.
-
-#### [NEW] [drive-auth/drive_auth_page.ts](file:///Users/vp-dc/Documents/GitHub/nufftabs/entrypoints/drive-auth/drive_auth_page.ts)
-
-Page logic:
-- On load: check `chrome.identity.getAuthToken({ interactive: false })` for existing auth
-- Connect button: calls `chrome.identity.getAuthToken({ interactive: true })`, stores auth state
-- Disconnect button: calls `chrome.identity.removeCachedAuthToken()` + revokes via `https://accounts.google.com/o/oauth2/revoke`
-- Displays connected email or error status
-
-#### [NEW] [drive-auth/style.css](file:///Users/vp-dc/Documents/GitHub/nufftabs/entrypoints/drive-auth/style.css)
-
-Minimal styles inheriting from `theme.css`, matching the options page aesthetic.
-
----
-
 ### Settings UI Updates
 
 Extend the existing options page with a "Google Drive Backup" section.
@@ -171,7 +143,7 @@ This runs `vitest run --coverage` which enforces 90% thresholds on statements, b
 - Missing local index → fallback to Drive listing
 
 #### Coverage exclusion
-- Add `entrypoints/drive-auth/index.ts` and `entrypoints/drive-auth/drive_auth_page.ts` to vitest coverage exclude (DOM-heavy glue; behavior validated by logic tests and manual testing)
+- No extra coverage exclusion needed beyond DOM-heavy entrypoint glue already covered by integration/E2E tests
 
 #### Existing tests (must still pass):
 - `tests/unit/storage_utils.test.ts`

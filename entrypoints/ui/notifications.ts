@@ -16,7 +16,7 @@ export type UiNotifier = {
 };
 
 /** Optional runtime behavior for snackbar notifications. */
-export type SnackbarNotifierOptions = {
+type SnackbarNotifierOptions = {
   /**
    * Visibility duration in milliseconds.
    * Defaults to the existing UI timing so behavior stays backward compatible.
