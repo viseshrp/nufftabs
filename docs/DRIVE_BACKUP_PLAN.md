@@ -1,6 +1,6 @@
 # Google Drive Manual Backup — Implementation Plan
 
-Add manual backup/restore to Google Drive for the NuffTabs Chrome extension. Users click "Backup Now" in Settings to upload a timestamped snapshot of saved tabs + settings. Backups are stored in `nufftabs_backups/<install_id>/` on Drive. Retention (default 30) trims old files. Restore lets users pick a backup to overwrite local data.
+Add manual backup/restore to Google Drive for the NuffTabs Chrome extension. Users click "Backup Now" in Settings to upload a timestamped snapshot of saved tabs + settings. Backups are stored in `nufftabs_backups/<install_id>/` on Drive. Retention (default 30) trims old files. Restore lets users either merge a backup into existing tab lists or replace local data entirely.
 
 ## User Review Required
 

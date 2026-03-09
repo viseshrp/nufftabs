@@ -119,7 +119,7 @@ Unit + integration:
 - Search behavior (case-insensitive title/URL match, hidden non-matching groups)
 - Lazy loading behavior (index-first group fetch + per-group "Load more" paging)
 - Combined search + lazy scenarios (searching unloaded groups and preserving row actions)
-- Manual Drive backup/restore behavior (upload/list/retention/restore via mocked APIs)
+- Manual Drive backup/restore behavior (upload/list/retention/replace restore/merge restore via mocked APIs)
 
 E2E:
 - Condense tabs
