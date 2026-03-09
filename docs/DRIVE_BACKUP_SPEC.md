@@ -33,7 +33,6 @@ Backup JSON shape:
 {
   "version": 1,
   "timestamp": 1700000000000,
-  "installId": "...",
   "savedTabs": { "groupKey": [{ "id": "...", "url": "...", "title": "...", "savedAt": 1700000000000 }] },
   "settings": {
     "excludePinned": true,
@@ -44,6 +43,7 @@ Backup JSON shape:
   }
 }
 ```
+The backup file intentionally excludes `installId` so a single exported backup can be restored on any install.
 
 ## Implementation boundaries
 - Drive logic is isolated under `entrypoints/drive/`.
