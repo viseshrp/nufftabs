@@ -343,6 +343,73 @@ describe('drive backup utilities', () => {
     expect(savedSettings.theme).toBe('light');
   });
 
+  it('merges restored backup groups into existing groups without replacing them', async () => {
+    const mock = createMockChrome({
+      initialStorage: {
+        [STORAGE_KEYS.savedTabsIndex]: ['existing', 'shared'],
+        'savedTabs:existing': [{ id: '1', url: 'https://existing.com', title: 'Existing', savedAt: 1 }],
+        'savedTabs:shared': [{ id: '2', url: 'https://shared-existing.com', title: 'Shared Existing', savedAt: 2 }],
+        [STORAGE_KEYS.settings]: {
+          excludePinned: true,
+          restoreBatchSize: 100,
+          discardRestoredTabs: false,
+          duplicateTabsPolicy: 'reject',
+          theme: 'os',
+        },
+      },
+    });
+    setMockChrome(mock.chrome);
+
+    const result = await restoreFromBackup(
+      'file-1',
+      'token-1',
+      {
+        downloadJsonFile: async () => ({
+          version: 1,
+          timestamp: 1,
+          installId: 'install-1',
+          savedTabs: {
+            shared: [
+              { id: '3', url: 'https://shared-existing.com', title: 'Duplicate Shared', savedAt: 3 },
+              { id: '4', url: 'https://shared-new.com', title: 'Shared New', savedAt: 4 },
+            ],
+            restored: [{ id: '5', url: 'https://restored.com', title: 'Restored', savedAt: 5 }],
+          },
+          settings: {
+            excludePinned: false,
+            restoreBatchSize: 77,
+            discardRestoredTabs: true,
+            duplicateTabsPolicy: 'allow',
+            theme: 'light',
+          },
+        }),
+      },
+      { mode: 'merge' },
+    );
+
+    expect(result.restoredGroups).toBe(3);
+    expect(result.restoredTabs).toBe(4);
+
+    const savedIndex = mock.storageData[STORAGE_KEYS.savedTabsIndex] as string[];
+    expect(savedIndex).toEqual(['existing', 'shared', 'restored']);
+
+    const existingGroup = mock.storageData['savedTabs:existing'] as Array<{ url: string }>;
+    expect(existingGroup).toHaveLength(1);
+
+    const sharedGroup = mock.storageData['savedTabs:shared'] as Array<{ url: string }>;
+    expect(sharedGroup).toHaveLength(2);
+    expect(sharedGroup[0]?.url).toBe('https://shared-existing.com');
+    expect(sharedGroup[1]?.url).toBe('https://shared-new.com');
+
+    const restoredGroup = mock.storageData['savedTabs:restored'] as Array<{ url: string }>;
+    expect(restoredGroup).toHaveLength(1);
+    expect(restoredGroup[0]?.url).toBe('https://restored.com');
+
+    const savedSettings = mock.storageData[STORAGE_KEYS.settings] as { restoreBatchSize: number; theme: string };
+    expect(savedSettings.restoreBatchSize).toBe(77);
+    expect(savedSettings.theme).toBe('light');
+  });
+
   it('fails restore when writing groups fails', async () => {
     const mock = createMockChrome();
     setMockChrome(mock.chrome);

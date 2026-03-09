@@ -202,6 +202,120 @@ describe('drive backup integration', () => {
     expect(uploadCalls).toHaveLength(0);
   });
 
+  it('merges a Drive backup into existing tab lists without replacing them', async () => {
+    const mock = createMockChrome({
+      initialStorage: {
+        [STORAGE_KEYS.settings]: {
+          excludePinned: true,
+          restoreBatchSize: 100,
+          discardRestoredTabs: false,
+          duplicateTabsPolicy: 'reject',
+          theme: 'os',
+        },
+        [STORAGE_KEYS.savedTabsIndex]: ['existing', 'shared'],
+        'savedTabs:existing': [{ id: '1', url: 'https://existing.com', title: 'Existing', savedAt: 1 }],
+        'savedTabs:shared': [{ id: '2', url: 'https://shared-existing.com', title: 'Shared Existing', savedAt: 2 }],
+        [DRIVE_STORAGE_KEYS.installId]: 'install-1',
+      },
+    });
+    setMockChrome(mock.chrome);
+
+    mock.chrome.identity.getAuthToken = (details, callback) => {
+      delete mock.chrome.runtime.lastError;
+      callback(details.interactive ? 'token-1' : 'token-1');
+    };
+
+    const fetchMock = vi.fn(async (input: string | URL) => {
+      const url = String(input);
+      if (url.includes('/drive/v3/files?') && url.includes('mimeType')) {
+        return new Response(JSON.stringify({ files: [{ id: 'folder-1' }] }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      if (url.includes('/drive/v3/files?')) {
+        return new Response(
+          JSON.stringify({
+            files: [
+              {
+                id: 'backup-1',
+                name: 'backup-2024-01-02T00-00-00-000Z-g2.json',
+                createdTime: '2024-01-02T00:00:00.000Z',
+                size: '100',
+              },
+            ],
+          }),
+          {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          },
+        );
+      }
+      if (url.includes('alt=media')) {
+        return new Response(
+          JSON.stringify({
+            savedTabs: {
+              shared: [
+                { id: '3', url: 'https://shared-existing.com', title: 'Duplicate Shared', savedAt: 3 },
+                { id: '4', url: 'https://shared-new.com', title: 'Shared New', savedAt: 4 },
+              ],
+              restored: [{ id: '5', url: 'https://restored.com', title: 'Restored', savedAt: 5 }],
+            },
+            settings: {
+              excludePinned: false,
+              restoreBatchSize: 25,
+              discardRestoredTabs: true,
+              duplicateTabsPolicy: 'allow',
+              theme: 'dark',
+            },
+          }),
+          {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          },
+        );
+      }
+      return new Response('', { status: 200 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    mountSettingsDom();
+    await initSettingsPage(document);
+
+    const openRestore = document.querySelector<HTMLButtonElement>('#openDriveRestore');
+    const backupTable = document.querySelector<HTMLTableSectionElement>('#driveBackupList');
+    const driveStatus = document.querySelector<HTMLDivElement>('#snackbar');
+    if (!openRestore || !backupTable || !driveStatus) {
+      throw new Error('Missing Drive restore controls');
+    }
+
+    openRestore.click();
+    await waitForCondition(() => backupTable.querySelectorAll('button[data-action="merge-backup"]').length === 1);
+
+    const mergeButton = backupTable.querySelector<HTMLButtonElement>('button[data-action="merge-backup"]');
+    if (!mergeButton) {
+      throw new Error('Missing merge row button');
+    }
+
+    mergeButton.click();
+    await waitForCondition(() => (driveStatus.textContent ?? '').includes('Merge completed.'));
+
+    const savedIndex = mock.storageData[STORAGE_KEYS.savedTabsIndex] as string[];
+    expect(savedIndex).toEqual(['existing', 'shared', 'restored']);
+
+    const existingGroup = mock.storageData['savedTabs:existing'] as Array<{ url: string }>;
+    expect(existingGroup).toHaveLength(1);
+
+    const sharedGroup = mock.storageData['savedTabs:shared'] as Array<{ url: string }>;
+    expect(sharedGroup).toHaveLength(2);
+    expect(sharedGroup[0]?.url).toBe('https://shared-existing.com');
+    expect(sharedGroup[1]?.url).toBe('https://shared-new.com');
+
+    const restoredGroup = mock.storageData['savedTabs:restored'] as Array<{ url: string }>;
+    expect(restoredGroup).toHaveLength(1);
+    expect(restoredGroup[0]?.url).toBe('https://restored.com');
+  });
+
   it('keeps restore disabled when disconnected and surfaces auth/retention errors', async () => {
     const mock = createMockChrome({
       initialStorage: {

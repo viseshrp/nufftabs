@@ -122,12 +122,27 @@ function renderDriveBackups(listEl: HTMLTableSectionElement | null, backups: Dri
     const actionsCell = document.createElement('td');
     actionsCell.className = 'row-actions';
 
+    /**
+     * Restore keeps the original destructive behavior for users who explicitly
+     * want the backup snapshot to replace local tabs and settings.
+     */
     const restoreButton = document.createElement('button');
     restoreButton.type = 'button';
     restoreButton.dataset.action = 'restore-backup';
     restoreButton.dataset.fileId = entry.fileId;
     restoreButton.textContent = 'Restore';
     actionsCell.appendChild(restoreButton);
+
+    /**
+     * Merge reuses the same backup payload but applies it non-destructively so
+     * current tab lists remain in place and backup groups are appended in.
+     */
+    const mergeButton = document.createElement('button');
+    mergeButton.type = 'button';
+    mergeButton.dataset.action = 'merge-backup';
+    mergeButton.dataset.fileId = entry.fileId;
+    mergeButton.textContent = 'Merge';
+    actionsCell.appendChild(mergeButton);
 
     const deleteButton = document.createElement('button');
     deleteButton.type = 'button';
@@ -545,23 +560,25 @@ async function initDriveBackupSection(documentRef: Document): Promise<void> {
     const fileId = button.dataset.fileId;
     if (!fileId) return;
 
-    if (button.dataset.action === 'restore-backup') {
+    if (button.dataset.action === 'restore-backup' || button.dataset.action === 'merge-backup') {
       void (async () => {
+        const restoreMode = button.dataset.action === 'merge-backup' ? 'merge' : 'replace';
+        const progressLabel = restoreMode === 'merge' ? 'Merging backup...' : 'Restoring backup...';
         setBusyReason('restore');
-        setStatus(driveStatusEl, 'Restoring backup...');
+        setStatus(driveStatusEl, progressLabel);
 
         try {
           const token = await getAuthToken(true);
           currentToken = token;
           isConnected = true;
-          const restored = await restoreFromBackup(fileId, token);
+          const restored = await restoreFromBackup(fileId, token, undefined, { mode: restoreMode });
           closeRestoreDialog();
           setStatus(
             driveStatusEl,
-            `Restore completed. ${restored.restoredTabs} tab${restored.restoredTabs === 1 ? '' : 's'} across ${restored.restoredGroups} group${restored.restoredGroups === 1 ? '' : 's'}.`,
+            `${restoreMode === 'merge' ? 'Merge' : 'Restore'} completed. ${restored.restoredTabs} tab${restored.restoredTabs === 1 ? '' : 's'} across ${restored.restoredGroups} group${restored.restoredGroups === 1 ? '' : 's'}.`,
           );
         } catch (error) {
-          const message = formatDriveAuthError(error, 'Restore failed.');
+          const message = formatDriveAuthError(error, restoreMode === 'merge' ? 'Merge failed.' : 'Restore failed.');
           setStatus(driveStatusEl, message);
         } finally {
           setBusyReason(null);

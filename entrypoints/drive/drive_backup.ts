@@ -12,6 +12,7 @@ import {
   type SavedTabGroups,
   type Settings,
 } from '../shared/storage';
+import { mergeGroups } from '../shared/group_merge';
 import { logExtensionError, runWithConcurrency } from '../shared/utils';
 import {
   deleteFile,
@@ -310,14 +311,27 @@ export async function performBackup(
   return backups;
 }
 
+/** Restore modes supported by Drive restore operations. */
+export type RestoreFromBackupMode = 'replace' | 'merge';
+
 /**
- * Downloads a backup file from Drive, validates payload shape, then overwrites
+ * Optional restore behavior flags.
+ * This remains an options bag so older callers keep the original replace
+ * behavior without any call-site changes.
+ */
+export type RestoreFromBackupOptions = {
+  mode?: RestoreFromBackupMode;
+};
+
+/**
+ * Downloads a backup file from Drive, validates payload shape, then restores
  * local saved tabs and settings using existing storage-layer helpers.
  */
 export async function restoreFromBackup(
   fileId: string,
   token: string,
   deps: Pick<DriveApiDeps, 'downloadJsonFile'> = defaultDeps,
+  options: RestoreFromBackupOptions = {},
 ): Promise<{ restoredGroups: number; restoredTabs: number }> {
   const rawPayload = await deps.downloadJsonFile(fileId, token);
   if (!rawPayload || typeof rawPayload !== 'object') {
@@ -327,8 +341,19 @@ export async function restoreFromBackup(
   const savedTabsRaw = (rawPayload as { savedTabs?: unknown }).savedTabs;
   const settingsRaw = (rawPayload as { settings?: unknown }).settings;
 
-  const groups = normalizeSavedGroups(savedTabsRaw);
+  const incomingGroups = normalizeSavedGroups(savedTabsRaw);
   const settings = normalizeSettings(settingsRaw);
+  const restoreMode = options.mode ?? 'replace';
+  /**
+   * Merge restore shares one duplicate-URL index across the entire operation.
+   * That keeps the work linear in total tab count instead of repeatedly
+   * scanning previously merged groups for every incoming tab.
+   */
+  let groups = incomingGroups;
+  if (restoreMode === 'merge') {
+    const [existingGroups, currentSettings] = await Promise.all([readSavedGroups(), readSettings()]);
+    groups = mergeGroups(existingGroups, incomingGroups, currentSettings.duplicateTabsPolicy);
+  }
 
   const savedGroups = await writeSavedGroups(groups);
   if (!savedGroups) {
