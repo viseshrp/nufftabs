@@ -7,7 +7,9 @@ nufftabs supports optional manual backup and restore to Google Drive. This featu
 - Users connect/disconnect Google Drive directly from the options-page Drive section.
 - Users click **Backup now** to upload a full snapshot.
 - Users can configure retention (default: 10 backups).
-- Users can restore any listed backup, which overwrites local saved tabs + settings.
+- Users can restore any listed backup in two ways:
+- `Merge` appends backup groups into the current local tab lists without removing existing groups.
+- `Restore` keeps the original overwrite behavior for local saved tabs only.
 
 ## Permissions and OAuth
 - `identity` permission is required for `chrome.identity.getAuthToken`.
@@ -31,22 +33,15 @@ Backup JSON shape:
 {
   "version": 1,
   "timestamp": 1700000000000,
-  "installId": "...",
-  "savedTabs": { "groupKey": [{ "id": "...", "url": "...", "title": "...", "savedAt": 1700000000000 }] },
-  "settings": {
-    "excludePinned": true,
-    "restoreBatchSize": 100,
-    "discardRestoredTabs": false,
-    "duplicateTabsPolicy": "allow",
-    "theme": "os"
-  }
+  "savedTabs": { "groupKey": [{ "id": "...", "url": "...", "title": "...", "savedAt": 1700000000000 }] }
 }
 ```
+The backup file intentionally excludes `installId` and `settings` so a single exported backup can be restored on any install without overwriting local preferences.
 
 ## Implementation boundaries
 - Drive logic is isolated under `entrypoints/drive/`.
 - Options page owns all user-facing auth, backup, and restore controls.
-- Existing storage module is reused for writing restored tabs/settings.
+- Existing storage module is reused for writing restored tabs, and shared merge helpers are reused for non-destructive merge restore.
 
 ## Retention
 - Retention is enforced immediately after successful upload.

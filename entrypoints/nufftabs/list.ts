@@ -3,15 +3,9 @@
  * formatting, normalizing, and merging saved tab groups.
  */
 import { createSavedTab, type SavedTab, type SavedTabGroups } from '../shared/storage';
-import { appendTabsByDuplicatePolicy, collectSavedTabUrls } from '../shared/duplicates';
-import type { DuplicateTabsPolicy } from '../shared/storage';
+import { cloneGroups, mergeGroups } from '../shared/group_merge';
 
-/** Shallow-copies a groups map so callers can replace arrays without mutating the original. */
-export function cloneGroups(groups: SavedTabGroups): SavedTabGroups {
-  // Shallow copy only; tab arrays are shared. Callers must replace arrays instead of mutating
-  // them in place or the original state will be modified and change detection can be skipped.
-  return { ...groups };
-}
+export { cloneGroups, mergeGroups };
 
 /** Returns the total number of individual tabs across all groups. */
 export function countTotalTabs(groups: SavedTabGroups): number {
@@ -129,23 +123,4 @@ export function normalizeImportedGroups(data: unknown, fallbackKey: string): Sav
   }
 
   return null;
-}
-
-/** Merges incoming groups into existing ones by concatenating tab arrays per group key. */
-export function mergeGroups(
-  existing: SavedTabGroups,
-  incoming: SavedTabGroups,
-  duplicateTabsPolicy: DuplicateTabsPolicy = 'allow',
-): SavedTabGroups {
-  const merged = cloneGroups(existing);
-  const knownUrls = duplicateTabsPolicy === 'reject' ? collectSavedTabUrls(existing) : undefined;
-  for (const [groupKey, tabs] of Object.entries(incoming)) {
-    if (tabs.length === 0) continue;
-    const existingTabs = merged[groupKey] ?? [];
-    const { tabs: mergedTabs } = appendTabsByDuplicatePolicy(existingTabs, tabs, duplicateTabsPolicy, knownUrls);
-    if (mergedTabs.length > 0) {
-      merged[groupKey] = mergedTabs;
-    }
-  }
-  return merged;
 }
