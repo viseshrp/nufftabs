@@ -4,13 +4,10 @@
  */
 import {
 	normalizeSavedGroups,
-	normalizeSettings,
 	readSavedGroups,
 	readSettings,
 	writeSavedGroups,
-	writeSettings,
 	type SavedTabGroups,
-	type Settings,
 } from "../shared/storage";
 import { mergeGroups } from "../shared/group_merge";
 import { logExtensionError, runWithConcurrency } from "../shared/utils";
@@ -106,20 +103,17 @@ export async function getOrCreateInstallId(): Promise<string> {
 	return created;
 }
 
-/** Creates a serializable backup payload from current saved groups and settings. */
+/** Creates a serializable backup payload from current saved groups only. */
 export function serializeBackup(
 	groups: SavedTabGroups,
-	settings: Settings,
 	timestamp = Date.now(),
 ): SerializedBackupPayload {
 	return {
 		version: BACKUP_VERSION,
 		timestamp,
-		// Keep backup contents portable across installs and machines. The local
-		// install ID still determines the Drive folder path, but the file payload
-		// itself must stay free of install-specific identifiers.
+		// Keep Drive backups portable and scoped to tab data only. Settings stay
+		// in extension storage so restores never overwrite install-specific prefs.
 		savedTabs: groups,
-		settings,
 	};
 }
 
@@ -331,15 +325,13 @@ export async function performBackup(
 	deps: DriveApiDeps = defaultDeps,
 	preloaded?: {
 		groups?: SavedTabGroups;
-		settings?: Settings;
 	},
 ): Promise<DriveBackupEntry[]> {
 	const installId = await getOrCreateInstallId();
-	const settings = preloaded?.settings ?? (await readSettings());
 	const groups = preloaded?.groups ?? (await readSavedGroups());
 
 	const timestamp = Date.now();
-	const payload = serializeBackup(groups, settings, timestamp);
+	const payload = serializeBackup(groups, timestamp);
 	const content = JSON.stringify(payload, null, 2);
 
 	const installFolderId = await getInstallFolderId(installId, token, deps);
@@ -380,7 +372,7 @@ export type RestoreFromBackupOptions = {
 
 /**
  * Downloads a backup file from Drive, validates payload shape, then restores
- * local saved tabs and settings using existing storage-layer helpers.
+ * local saved tabs. Settings remain sourced from extension storage only.
  */
 export async function restoreFromBackup(
 	fileId: string,
@@ -394,10 +386,7 @@ export async function restoreFromBackup(
 	}
 
 	const savedTabsRaw = (rawPayload as { savedTabs?: unknown }).savedTabs;
-	const settingsRaw = (rawPayload as { settings?: unknown }).settings;
-
 	const incomingGroups = normalizeSavedGroups(savedTabsRaw);
-	const settings = normalizeSettings(settingsRaw);
 	const restoreMode = options.mode ?? "replace";
 	/**
 	 * Merge restore shares one duplicate-URL index across the entire operation.
@@ -420,11 +409,6 @@ export async function restoreFromBackup(
 	const savedGroups = await writeSavedGroups(groups);
 	if (!savedGroups) {
 		throw new Error("Failed to write restored tab groups to local storage.");
-	}
-
-	const savedSettings = await writeSettings(settings);
-	if (!savedSettings) {
-		throw new Error("Failed to write restored settings to local storage.");
 	}
 
 	const restoredGroups = Object.keys(groups).length;

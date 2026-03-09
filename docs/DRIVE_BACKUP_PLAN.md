@@ -1,6 +1,6 @@
 # Google Drive Manual Backup — Implementation Plan
 
-Add manual backup/restore to Google Drive for the NuffTabs Chrome extension. Users click "Backup Now" in Settings to upload a timestamped snapshot of saved tabs + settings. Backups are stored in `nufftabs_backups/<install_id>/` on Drive. Retention (default 30) trims old files. Restore lets users either merge a backup into existing tab lists or replace local data entirely.
+Add manual backup/restore to Google Drive for the NuffTabs Chrome extension. Users click "Backup Now" in Settings to upload a timestamped snapshot of saved tabs only. Backups are stored in `nufftabs_backups/<install_id>/` on Drive. Retention (default 30) trims old files. Restore lets users either merge a backup into existing tab lists or replace local saved tabs entirely.
 
 ## User Review Required
 
@@ -41,8 +41,8 @@ All functions take an OAuth token parameter (no global state). Uses `fetch()` wi
 
 Backup orchestration logic. Functions for:
 - `getOrCreateInstallId()` — reads/creates `installId` in `chrome.storage.local` using `crypto.randomUUID()`
-- `serializeBackup(groups, settings)` — creates the portable backup JSON payload `{ version: 1, timestamp, savedTabs, settings }`
-- `performBackup(token, retention?, deps?, preloaded?)` — orchestrates: read data → serialize → upload → update local index → run retention (optionally reuses preloaded groups/settings to avoid duplicate reads)
+- `serializeBackup(groups)` — creates the portable backup JSON payload `{ version: 1, timestamp, savedTabs }`
+- `performBackup(token, retention?, deps?, preloaded?)` — orchestrates: read groups → serialize → upload → update local index → run retention (optionally reuses preloaded groups to avoid duplicate reads)
 - `enforceRetention(installFolderId, retentionCount, token)` — lists backups, deletes oldest beyond N
 - `updateLocalIndex(installId, backups)` — writes local backup index to `chrome.storage.local`
 - `readLocalIndex()` → reads and normalizes the local backup index

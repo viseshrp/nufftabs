@@ -214,8 +214,8 @@ The packaged extension zip is generated under `.output/`.
 2. Click **Connect to Google Drive** and approve OAuth access.
 3. The same button updates in place to show connection progress/state and acts as **Disconnect** when already connected.
 4. Set **Retention** (how many backups to keep).
-5. Click **Backup now** to upload a snapshot of saved tabs + settings.
-6. Use **Merge** on any listed backup row to append backup groups into your current tab lists, or use **Restore** to replace local tabs and settings with that backup.
+5. Click **Backup now** to upload a snapshot of saved tabs.
+6. Use **Merge** on any listed backup row to append backup groups into your current tab lists, or use **Restore** to replace local saved tabs with that backup.
 
 ### Local OAuth setup for unpacked builds
 If you see `bad client id` or auth failures in dev, your unpacked extension ID likely does

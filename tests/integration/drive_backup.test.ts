@@ -261,13 +261,6 @@ describe('drive backup integration', () => {
               ],
               restored: [{ id: '5', url: 'https://restored.com', title: 'Restored', savedAt: 5 }],
             },
-            settings: {
-              excludePinned: false,
-              restoreBatchSize: 25,
-              discardRestoredTabs: true,
-              duplicateTabsPolicy: 'allow',
-              theme: 'dark',
-            },
           }),
           {
             status: 200,
@@ -314,6 +307,10 @@ describe('drive backup integration', () => {
     const restoredGroup = mock.storageData['savedTabs:restored'] as Array<{ url: string }>;
     expect(restoredGroup).toHaveLength(1);
     expect(restoredGroup[0]?.url).toBe('https://restored.com');
+
+    const savedSettings = mock.storageData[STORAGE_KEYS.settings] as { restoreBatchSize: number; theme: string };
+    expect(savedSettings.restoreBatchSize).toBe(100);
+    expect(savedSettings.theme).toBe('os');
   });
 
   it('keeps restore disabled when disconnected and surfaces auth/retention errors', async () => {
@@ -1492,13 +1489,6 @@ describe('drive backup integration', () => {
             savedTabs: {
               restored: [{ id: '1', url: 'https://restored.com', title: 'Restored', savedAt: 1 }],
             },
-            settings: {
-              excludePinned: false,
-              restoreBatchSize: 25,
-              discardRestoredTabs: true,
-              duplicateTabsPolicy: 'allow',
-              theme: 'dark',
-            },
           }),
           {
             status: 200,
@@ -1541,5 +1531,9 @@ describe('drive backup integration', () => {
       const text = driveStatus.textContent ?? '';
       return text.includes('Restore completed') || text.includes('Connected');
     });
+
+    const savedSettings = mock.storageData[STORAGE_KEYS.settings] as { restoreBatchSize: number; theme: string };
+    expect(savedSettings.restoreBatchSize).toBe(100);
+    expect(savedSettings.theme).toBe('os');
   });
 });

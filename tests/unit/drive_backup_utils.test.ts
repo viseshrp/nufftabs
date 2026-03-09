@@ -50,20 +50,14 @@ describe("drive backup utilities", () => {
 					},
 				],
 			},
-			{
-				excludePinned: true,
-				restoreBatchSize: 100,
-				discardRestoredTabs: false,
-				duplicateTabsPolicy: "allow",
-				theme: "os",
-			},
 			1700000000000,
 		);
 
 		expect(payload.version).toBe(BACKUP_VERSION);
 		expect(payload.timestamp).toBe(1700000000000);
 		expect(Object.keys(payload.savedTabs)).toEqual(["g1"]);
-		expect(payload.settings.excludePinned).toBe(true);
+		expect(Object.keys(payload)).toEqual(["version", "timestamp", "savedTabs"]);
+		expect("settings" in payload).toBe(false);
 		expect("installId" in payload).toBe(false);
 	});
 
@@ -382,8 +376,18 @@ describe("drive backup utilities", () => {
 		expect(backups).toHaveLength(2);
 	});
 
-	it("restores backup payload into groups and settings", async () => {
-		const mock = createMockChrome();
+	it("restores backup payload into groups without changing settings", async () => {
+		const mock = createMockChrome({
+			initialStorage: {
+				[STORAGE_KEYS.settings]: {
+					excludePinned: true,
+					restoreBatchSize: 100,
+					discardRestoredTabs: false,
+					duplicateTabsPolicy: "reject",
+					theme: "os",
+				},
+			},
+		});
 		setMockChrome(mock.chrome);
 
 		const result = await restoreFromBackup("file-1", "token-1", {
@@ -400,13 +404,6 @@ describe("drive backup utilities", () => {
 						},
 					],
 				},
-				settings: {
-					excludePinned: false,
-					restoreBatchSize: 77,
-					discardRestoredTabs: true,
-					duplicateTabsPolicy: "allow",
-					theme: "light",
-				},
 			}),
 		});
 
@@ -421,13 +418,25 @@ describe("drive backup utilities", () => {
 		const savedSettings = mock.storageData[STORAGE_KEYS.settings] as {
 			restoreBatchSize: number;
 			theme: string;
+			duplicateTabsPolicy: string;
 		};
-		expect(savedSettings.restoreBatchSize).toBe(77);
-		expect(savedSettings.theme).toBe("light");
+		expect(savedSettings.restoreBatchSize).toBe(100);
+		expect(savedSettings.theme).toBe("os");
+		expect(savedSettings.duplicateTabsPolicy).toBe("reject");
 	});
 
-	it("ignores legacy install ids present in older backup payloads", async () => {
-		const mock = createMockChrome();
+	it("ignores legacy install ids and settings present in older backup payloads", async () => {
+		const mock = createMockChrome({
+			initialStorage: {
+				[STORAGE_KEYS.settings]: {
+					excludePinned: true,
+					restoreBatchSize: 100,
+					discardRestoredTabs: false,
+					duplicateTabsPolicy: "reject",
+					theme: "os",
+				},
+			},
+		});
 		setMockChrome(mock.chrome);
 
 		const result = await restoreFromBackup("file-1", "token-1", {
@@ -462,6 +471,13 @@ describe("drive backup utilities", () => {
 			STORAGE_KEYS.savedTabsIndex
 		] as string[];
 		expect(savedIndex).toEqual(["restored"]);
+
+		const savedSettings = mock.storageData[STORAGE_KEYS.settings] as {
+			restoreBatchSize: number;
+			theme: string;
+		};
+		expect(savedSettings.restoreBatchSize).toBe(100);
+		expect(savedSettings.theme).toBe("os");
 	});
 
 	it("merges restored backup groups into existing groups without replacing them", async () => {
@@ -526,13 +542,6 @@ describe("drive backup utilities", () => {
 							},
 						],
 					},
-					settings: {
-						excludePinned: false,
-						restoreBatchSize: 77,
-						discardRestoredTabs: true,
-						duplicateTabsPolicy: "allow",
-						theme: "light",
-					},
 				}),
 			},
 			{ mode: "merge" },
@@ -567,9 +576,11 @@ describe("drive backup utilities", () => {
 		const savedSettings = mock.storageData[STORAGE_KEYS.settings] as {
 			restoreBatchSize: number;
 			theme: string;
+			duplicateTabsPolicy: string;
 		};
-		expect(savedSettings.restoreBatchSize).toBe(77);
-		expect(savedSettings.theme).toBe("light");
+		expect(savedSettings.restoreBatchSize).toBe(100);
+		expect(savedSettings.theme).toBe("os");
+		expect(savedSettings.duplicateTabsPolicy).toBe("reject");
 	});
 
 	it("fails restore when writing groups fails", async () => {
@@ -584,44 +595,9 @@ describe("drive backup utilities", () => {
 			restoreFromBackup("file-1", "token-1", {
 				downloadJsonFile: async () => ({
 					savedTabs: { restored: [{ url: "https://restored.com" }] },
-					settings: {
-						excludePinned: true,
-						restoreBatchSize: 100,
-						discardRestoredTabs: false,
-						duplicateTabsPolicy: "allow",
-						theme: "os",
-					},
 				}),
 			}),
 		).rejects.toThrow("Failed to write restored tab groups");
-	});
-
-	it("fails restore when writing settings fails", async () => {
-		const mock = createMockChrome();
-		setMockChrome(mock.chrome);
-
-		const originalSet = mock.chrome.storage.local.set;
-		mock.chrome.storage.local.set = async (payload) => {
-			if (Object.hasOwn(payload, STORAGE_KEYS.settings)) {
-				throw new Error("settings fail");
-			}
-			await originalSet(payload);
-		};
-
-		await expect(
-			restoreFromBackup("file-1", "token-1", {
-				downloadJsonFile: async () => ({
-					savedTabs: { restored: [{ url: "https://restored.com" }] },
-					settings: {
-						excludePinned: true,
-						restoreBatchSize: 100,
-						discardRestoredTabs: false,
-						duplicateTabsPolicy: "allow",
-						theme: "os",
-					},
-				}),
-			}),
-		).rejects.toThrow("Failed to write restored settings");
 	});
 
 	it("uses local backup index first and falls back when empty", async () => {
