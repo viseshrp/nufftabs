@@ -21,7 +21,10 @@ import {
 	normalizeRetentionCount,
 	parseDriveTimestamp,
 } from "../../entrypoints/drive/types";
-import { STORAGE_KEYS } from "../../entrypoints/shared/storage";
+import {
+	STORAGE_KEYS,
+	savedGroupMetadataStorageKey,
+} from "../../entrypoints/shared/storage";
 import { createMockChrome, setMockChrome } from "../helpers/mock_chrome";
 
 describe("drive backup utilities", () => {
@@ -424,9 +427,9 @@ describe("drive backup utilities", () => {
 			STORAGE_KEYS.savedTabsIndex
 		] as string[];
 		expect(savedIndex).toEqual(["restored"]);
-		expect(mock.storageData[STORAGE_KEYS.savedTabGroupMetadata]).toEqual({
-			restored: { pinned: true },
-		});
+			expect(mock.storageData[savedGroupMetadataStorageKey("restored")]).toEqual({
+				pinned: true,
+			});
 
 		const savedSettings = mock.storageData[STORAGE_KEYS.settings] as {
 			restoreBatchSize: number;
@@ -572,11 +575,15 @@ describe("drive backup utilities", () => {
 			STORAGE_KEYS.savedTabsIndex
 		] as string[];
 		expect(savedIndex).toEqual(["existing", "shared", "restored"]);
-		expect(mock.storageData[STORAGE_KEYS.savedTabGroupMetadata]).toEqual({
-			existing: { pinned: true },
-			shared: { pinned: true },
-			restored: { pinned: true },
-		});
+			expect(mock.storageData[savedGroupMetadataStorageKey("existing")]).toEqual({
+				pinned: true,
+			});
+			expect(mock.storageData[savedGroupMetadataStorageKey("shared")]).toEqual({
+				pinned: true,
+			});
+			expect(mock.storageData[savedGroupMetadataStorageKey("restored")]).toEqual({
+				pinned: true,
+			});
 
 		const existingGroup = mock.storageData["savedTabs:existing"] as Array<{
 			url: string;

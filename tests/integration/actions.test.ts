@@ -2,7 +2,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { LIST_PAGE_PATH, STORAGE_KEYS } from '../../entrypoints/shared/storage';
+import { LIST_PAGE_PATH, STORAGE_KEYS, savedGroupMetadataStorageKey } from '../../entrypoints/shared/storage';
 import { createMockChrome, setMockChrome } from '../helpers/mock_chrome';
 
 const listHtml = readFileSync(join(process.cwd(), 'entrypoints', 'nufftabs', 'index.html'), 'utf-8');
@@ -125,14 +125,12 @@ describe('list page actions', () => {
     olderPin?.click();
 
     await waitForCondition(() => {
-      const metadata = mock.storageData[STORAGE_KEYS.savedTabGroupMetadata] as
-        | Record<string, { pinned?: boolean }>
-        | undefined;
-      return metadata?.[older]?.pinned === true && document.querySelector<HTMLElement>('.group-card')?.dataset.groupKey === older;
+      const metadata = mock.storageData[savedGroupMetadataStorageKey(older)] as { pinned?: boolean } | undefined;
+      return metadata?.pinned === true && document.querySelector<HTMLElement>('.group-card')?.dataset.groupKey === older;
     });
 
-    const metadata = mock.storageData[STORAGE_KEYS.savedTabGroupMetadata] as Record<string, { pinned?: boolean }>;
-    expect(metadata[older]?.pinned).toBe(true);
+    const metadata = mock.storageData[savedGroupMetadataStorageKey(older)] as { pinned?: boolean };
+    expect(metadata.pinned).toBe(true);
     expect(document.querySelector<HTMLElement>(`[data-group-key="${older}"]`)?.classList.contains('is-pinned')).toBe(true);
 
     const pinnedButton = document.querySelector<HTMLButtonElement>(`[data-group-key="${older}"] button[data-action="toggle-pin"]`);
@@ -261,15 +259,14 @@ describe('list page actions', () => {
     importJson?.click();
 
     await waitForCondition(() => {
-      const metadata = mock.storageData[STORAGE_KEYS.savedTabGroupMetadata] as
-        | Record<string, { pinned?: boolean }>
-        | undefined;
-      return metadata?.[imported]?.pinned === true;
+      const metadata = mock.storageData[savedGroupMetadataStorageKey(imported)] as { pinned?: boolean } | undefined;
+      return metadata?.pinned === true;
     });
 
-    const metadata = mock.storageData[STORAGE_KEYS.savedTabGroupMetadata] as Record<string, { pinned?: boolean }>;
-    expect(metadata[exported]?.pinned).toBe(true);
-    expect(metadata[imported]?.pinned).toBe(true);
+    const exportedMetadata = mock.storageData[savedGroupMetadataStorageKey(exported)] as { pinned?: boolean };
+    const importedMetadata = mock.storageData[savedGroupMetadataStorageKey(imported)] as { pinned?: boolean };
+    expect(exportedMetadata.pinned).toBe(true);
+    expect(importedMetadata.pinned).toBe(true);
   });
 
   it('preserves existing collapse states and expands new groups on append import', async () => {

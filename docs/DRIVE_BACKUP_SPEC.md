@@ -39,6 +39,10 @@ Backup JSON shape:
 ```
 The backup file intentionally excludes `installId` and `settings` so a single exported backup can be restored on any install without overwriting local preferences. `groupMetadata` is portable saved-list state, currently used to preserve pinned tab groups.
 
+Local storage keeps pinned state in per-group keys (`savedTabGroupMetadata:<groupKey>`)
+to avoid concurrent pin toggles overwriting a shared metadata map. Backup JSON remains
+the compact `groupMetadata` object above so exported files stay stable and easy to read.
+
 ## Implementation boundaries
 - Drive logic is isolated under `entrypoints/drive/`.
 - Options page owns all user-facing auth, backup, and restore controls.

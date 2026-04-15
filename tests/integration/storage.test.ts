@@ -7,6 +7,7 @@ import {
   readSavedGroupMetadata,
   readSavedGroups,
   readSettings,
+  savedGroupMetadataStorageKey,
   writeSavedGroup,
   writeSavedGroupPinned,
   writeSavedGroups,
@@ -16,11 +17,17 @@ import {
 import { createMockChrome, setMockChrome } from '../helpers/mock_chrome';
 
 const makeTab = (id: string) => ({ id, url: `https://example.com/${id}`, title: id, savedAt: 10 });
+let currentMock: ReturnType<typeof createMockChrome>;
+
+/** Reads raw mock storage so tests can verify the physical key layout. */
+function mockChromeStorageValue(key: string): unknown {
+  return currentMock.storageData[key];
+}
 
 describe('storage integration', () => {
   beforeEach(() => {
-    const mock = createMockChrome();
-    setMockChrome(mock.chrome);
+    currentMock = createMockChrome();
+    setMockChrome(currentMock.chrome);
   });
 
   it('writes and reads a single group with index updates', async () => {
@@ -59,6 +66,20 @@ describe('storage integration', () => {
     expect(Object.keys(groups)).toEqual(['one']);
   });
 
+  it('rewrites groups without clobbering independent metadata keys', async () => {
+    const payload: SavedTabGroups = {
+      one: [makeTab('1')],
+      two: [makeTab('2')],
+    };
+    expect(await writeSavedGroups(payload, { two: { pinned: true } })).toBe(true);
+
+    // Bulk rewrites without explicit metadata should not read and rewrite pin metadata.
+    expect(await writeSavedGroups({ one: [makeTab('updated')], two: [makeTab('2')] })).toBe(true);
+
+    expect(mockChromeStorageValue(savedGroupMetadataStorageKey('two'))).toEqual({ pinned: true });
+    expect(mockChromeStorageValue(STORAGE_KEYS.savedTabGroupMetadata)).toBeUndefined();
+  });
+
   it('persists group pin metadata and prunes it when groups are removed', async () => {
     const payload: SavedTabGroups = {
       one: [makeTab('1')],
@@ -66,18 +87,23 @@ describe('storage integration', () => {
     };
     expect(await writeSavedGroups(payload, { one: { pinned: true }, missing: { pinned: true } })).toBe(true);
     expect(await readSavedGroupMetadata()).toEqual({ one: { pinned: true } });
+    expect(mockChromeStorageValue(savedGroupMetadataStorageKey('one'))).toEqual({ pinned: true });
+    expect(mockChromeStorageValue(savedGroupMetadataStorageKey('missing'))).toBeUndefined();
 
     expect(await writeSavedGroupPinned('two', true)).toBe(true);
     expect(await readSavedGroupMetadata()).toEqual({
       one: { pinned: true },
       two: { pinned: true },
     });
+    expect(mockChromeStorageValue(savedGroupMetadataStorageKey('two'))).toEqual({ pinned: true });
 
     expect(await writeSavedGroup('one', [])).toBe(true);
     expect(await readSavedGroupMetadata()).toEqual({ two: { pinned: true } });
+    expect(mockChromeStorageValue(savedGroupMetadataStorageKey('one'))).toBeUndefined();
 
     expect(await writeSavedGroups({})).toBe(true);
     expect(await readSavedGroupMetadata()).toEqual({});
+    expect(mockChromeStorageValue(savedGroupMetadataStorageKey('two'))).toBeUndefined();
   });
 
   it('handles group pin metadata edge cases safely', async () => {
@@ -87,12 +113,29 @@ describe('storage integration', () => {
     };
     expect(await writeSavedGroups(payload, { one: { pinned: true } })).toBe(true);
 
-    // Unpinning deletes the compact metadata entry instead of storing explicit false values.
+    // Unpinning writes a tombstone so old aggregate-map pins cannot reappear.
     expect(await writeSavedGroupPinned('one', false)).toBe(true);
     expect(await readSavedGroupMetadata()).toEqual({});
+    expect(mockChromeStorageValue(savedGroupMetadataStorageKey('one'))).toEqual({ pinned: false });
 
     // Missing groups cannot be pinned because metadata must stay tied to the saved-group index.
     expect(await writeSavedGroupPinned('missing', true)).toBe(false);
+  });
+
+  it('reads legacy metadata while per-group tombstones override old pins', async () => {
+    const mock = createMockChrome({
+      initialStorage: {
+        [STORAGE_KEYS.savedTabsIndex]: ['legacy', 'unpinned'],
+        [STORAGE_KEYS.savedTabGroupMetadata]: {
+          legacy: { pinned: true },
+          unpinned: { pinned: true },
+        },
+        [savedGroupMetadataStorageKey('unpinned')]: { pinned: false },
+      },
+    });
+    setMockChrome(mock.chrome);
+
+    expect(await readSavedGroupMetadata()).toEqual({ legacy: { pinned: true } });
   });
 
   it('returns empty group metadata when metadata reads fail', async () => {

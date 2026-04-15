@@ -2,7 +2,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { initSettingsPage } from '../../entrypoints/options/settings_page';
 import { DRIVE_STORAGE_KEYS } from '../../entrypoints/drive/types';
-import { STORAGE_KEYS } from '../../entrypoints/shared/storage';
+import { STORAGE_KEYS, savedGroupMetadataStorageKey } from '../../entrypoints/shared/storage';
 import { createMockChrome, setMockChrome } from '../helpers/mock_chrome';
 
 async function waitForCondition(predicate: () => boolean, cycles = 80): Promise<void> {
@@ -304,11 +304,9 @@ describe('drive backup integration', () => {
 
     const savedIndex = mock.storageData[STORAGE_KEYS.savedTabsIndex] as string[];
     expect(savedIndex).toEqual(['existing', 'shared', 'restored']);
-    expect(mock.storageData[STORAGE_KEYS.savedTabGroupMetadata]).toEqual({
-      existing: { pinned: true },
-      shared: { pinned: true },
-      restored: { pinned: true },
-    });
+    expect(mock.storageData[savedGroupMetadataStorageKey('existing')]).toEqual({ pinned: true });
+    expect(mock.storageData[savedGroupMetadataStorageKey('shared')]).toEqual({ pinned: true });
+    expect(mock.storageData[savedGroupMetadataStorageKey('restored')]).toEqual({ pinned: true });
 
     const existingGroup = mock.storageData['savedTabs:existing'] as Array<{ url: string }>;
     expect(existingGroup).toHaveLength(1);

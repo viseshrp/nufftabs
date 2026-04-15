@@ -9,7 +9,8 @@ understand the decisions and avoid common pitfalls.
   added or removed.
 - **Simple to reason about:** minimal schema and a single source of truth.
 - **Only `chrome.storage.local`:** no sync requirements for saved tabs.
-- **No legacy migration:** the extension assumes a clean schema from day one.
+- **Backward-compatible reads:** new code reads older aggregate metadata while writing
+  the safer per-group layout.
 
 ## Storage keys
 All data lives in `chrome.storage.local`.
@@ -30,10 +31,18 @@ single-group updates.
 
 ### 3) Group metadata
 ```
+savedTabGroupMetadata:<groupKey>: { pinned: true } | { pinned: false }
+```
+Each metadata entry is stored under its own group key. `{ pinned: true }` marks a
+group as pinned. `{ pinned: false }` is a tombstone used to override older aggregate
+metadata during migration; exported backups still omit unpinned groups.
+
+The older aggregate key is still read as a fallback:
+```
 savedTabGroupMetadata: Record<string, { pinned: true }>
 ```
-This lightweight map stores per-group flags such as pinned state. Missing group
-keys are treated as unpinned, and writes prune entries for deleted groups.
+New writes avoid this shared map so concurrent pin toggles for different groups do
+not overwrite each other.
 
 ### 4) Settings
 ```
@@ -77,9 +86,7 @@ savedTabs:123-1700000000000-uuid-a: [
 savedTabs:456-1700000001000-uuid-b: [
   { "id": "uuid-3", "url": "https://openai.com", "title": "OpenAI", "savedAt": 1737860100000 }
 ]
-savedTabGroupMetadata: {
-  "123-1700000000000-uuid-a": { "pinned": true }
-}
+savedTabGroupMetadata:123-1700000000000-uuid-a: { "pinned": true }
 settings: { "excludePinned": true, "restoreBatchSize": 100, "discardRestoredTabs": false, "duplicateTabsPolicy": "allow", "theme": "os" }
 driveInstallId: "0f8fad5b-d9cb-469f-a165-70867728950e"
 driveRetentionCount: 10
@@ -132,7 +139,7 @@ The extension uses two read patterns:
 
 1. **Index-first UI pass (list page)**
    - Read `savedTabsIndex`.
-   - Read `savedTabGroupMetadata` for pinned sorting and pin button state.
+   - Read `savedTabGroupMetadata:<groupKey>` entries for pinned sorting and pin button state.
    - Render group cards/placeholders from keys.
    - Read `savedTabs:<groupKey>` on demand (viewport/search/expand).
 2. **Full-read pass (imports/exports/total count refresh)**
@@ -151,16 +158,27 @@ The extension uses two read patterns:
 - If `tabs.length === 0`:
   - Remove `savedTabs:<groupKey>`.
   - Remove `groupKey` from `savedTabsIndex`.
-  - Remove `groupKey` from `savedTabGroupMetadata`.
+  - Remove `savedTabGroupMetadata:<groupKey>`.
 
 ### Write all groups
 `writeSavedGroups(savedTabs, groupMetadata?)`:
 - Rebuild `savedTabsIndex` from the object keys.
 - Write each `savedTabs:<groupKey>` entry.
-- Write pruned `savedTabGroupMetadata` for active groups only.
-- Remove entries for groups that no longer exist.
+- If explicit metadata is supplied, write per-group `savedTabGroupMetadata:<groupKey>`
+  entries for active groups only.
+- Remove tab and metadata entries for groups that no longer exist.
 
 This is used for bulk imports and replacement flows.
+
+### Pin or unpin a group
+`writeSavedGroupPinned(groupKey, pinned)`:
+- Read `savedTabsIndex` to confirm the group still exists.
+- Write exactly one metadata key: `savedTabGroupMetadata:<groupKey>`.
+- Use `{ pinned: false }` for unpin so older aggregate metadata cannot re-pin the
+  group on the next read.
+
+This keeps the common pin toggle O(1) in write payload size and avoids rewriting a
+shared metadata map from multiple open list pages.
 
 ## Why per-group storage?
 A single monolithic `savedTabs` value would require rewriting the entire dataset on

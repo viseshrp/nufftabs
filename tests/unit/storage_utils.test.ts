@@ -2,10 +2,12 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   createSavedTab,
   filterSavedGroupMetadataForKeys,
+  isSavedGroupMetadataStorageKey,
   isSavedGroupStorageKey,
   normalizeSavedGroupMetadata,
   normalizeSavedGroups,
   normalizeSettings,
+  savedGroupMetadataStorageKey,
 } from '../../entrypoints/shared/storage';
 
 describe('storage utilities', () => {
@@ -39,6 +41,8 @@ describe('storage utilities', () => {
     expect(normalized.discardRestoredTabs).toBe(false);
     expect(normalized.duplicateTabsPolicy).toBe('allow');
     expect(isSavedGroupStorageKey('savedTabs:123')).toBe(true);
+    expect(savedGroupMetadataStorageKey('123')).toBe('savedTabGroupMetadata:123');
+    expect(isSavedGroupMetadataStorageKey('savedTabGroupMetadata:123')).toBe(true);
     expect(isSavedGroupStorageKey('settings')).toBe(false);
   });
 

@@ -78,7 +78,8 @@ tradeoffs. These are documented in code comments, but summarized here for mainta
 ### Developer notes
 - **Storage schema:** saved tabs are stored per group under `savedTabs:<groupKey>` with a
   `savedTabsIndex` array listing active group keys. Pinned group state is stored separately
-  in `savedTabGroupMetadata` so pin toggles do not rewrite tab payloads. This avoids full-blob rewrites.
+  under `savedTabGroupMetadata:<groupKey>` so pin toggles write one small key instead of a
+  shared metadata map or tab payload.
 - **Data shapes:** `SavedTab` requires a UUID `id`, non-empty `url`, `title`, and `savedAt`
   epoch ms. Settings are `{ excludePinned, restoreBatchSize, discardRestoredTabs, duplicateTabsPolicy, theme }`.
 - **Restore chunking:** `restoreBatchSize` controls how many tabs open per window during
@@ -239,7 +240,7 @@ not match the OAuth client's configured Chrome Extension ID.
 
 ## Permissions
 - `tabs`: required to query, create, update, close, and discard tabs/windows.
-- `storage`: required to persist `savedTabsIndex`, `savedTabs:<groupKey>`, `savedTabGroupMetadata`, and settings in `chrome.storage.local`.
+- `storage`: required to persist `savedTabsIndex`, `savedTabs:<groupKey>`, `savedTabGroupMetadata:<groupKey>`, and settings in `chrome.storage.local`.
 - `identity`: required to acquire OAuth tokens for optional Google Drive backup actions.
 - `https://www.googleapis.com/` host permission: required to call Google Drive REST APIs for manual backup/restore.
 
@@ -255,7 +256,7 @@ not match the OAuth client's configured Chrome Extension ID.
 If any list tab exists, nufftabs reuses the most recently active one instead of creating duplicates.
 
 **Where is data stored?**  
-In `chrome.storage.local` under `savedTabsIndex`, `savedTabs:<groupKey>`, `savedTabGroupMetadata`, and `settings`.
+In `chrome.storage.local` under `savedTabsIndex`, `savedTabs:<groupKey>`, `savedTabGroupMetadata:<groupKey>`, and `settings`.
 
 **Why are pinned tabs excluded by default?**  
 It’s a safety default so pinned tabs are not closed unless you turn the setting off.

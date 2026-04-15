@@ -23,6 +23,7 @@ import {
   readSavedGroupsIndex,
   STORAGE_KEYS,
   GROUP_KEY_PREFIX,
+  isSavedGroupMetadataStorageKey,
   isSavedGroupStorageKey,
   filterSavedGroupMetadataForKeys,
   writeSavedGroup,
@@ -1806,7 +1807,7 @@ async function init(): Promise<void> {
     const hasSavedTabsChange =
       Boolean(changes[STORAGE_KEYS.savedTabsIndex]) ||
       Boolean(changes[STORAGE_KEYS.savedTabGroupMetadata]) ||
-      changeKeys.some((key) => isSavedGroupStorageKey(key));
+      changeKeys.some((key) => isSavedGroupStorageKey(key) || isSavedGroupMetadataStorageKey(key));
     if (!hasSavedTabsChange) return;
     const changedGroupKeys = changeKeys
       .filter((key) => isSavedGroupStorageKey(key))
