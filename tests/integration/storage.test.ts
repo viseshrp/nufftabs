@@ -3,9 +3,11 @@ import {
   DEFAULT_SETTINGS,
   appendSavedGroup,
   readSavedGroup,
+  readSavedGroupMetadata,
   readSavedGroups,
   readSettings,
   writeSavedGroup,
+  writeSavedGroupPinned,
   writeSavedGroups,
   writeSettings,
   type SavedTabGroups,
@@ -54,6 +56,27 @@ describe('storage integration', () => {
     expect(await writeSavedGroups({ one: [makeTab('1')] })).toBe(true);
     const groups = await readSavedGroups();
     expect(Object.keys(groups)).toEqual(['one']);
+  });
+
+  it('persists group pin metadata and prunes it when groups are removed', async () => {
+    const payload: SavedTabGroups = {
+      one: [makeTab('1')],
+      two: [makeTab('2')],
+    };
+    expect(await writeSavedGroups(payload, { one: { pinned: true }, missing: { pinned: true } })).toBe(true);
+    expect(await readSavedGroupMetadata()).toEqual({ one: { pinned: true } });
+
+    expect(await writeSavedGroupPinned('two', true)).toBe(true);
+    expect(await readSavedGroupMetadata()).toEqual({
+      one: { pinned: true },
+      two: { pinned: true },
+    });
+
+    expect(await writeSavedGroup('one', [])).toBe(true);
+    expect(await readSavedGroupMetadata()).toEqual({ two: { pinned: true } });
+
+    expect(await writeSavedGroups({})).toBe(true);
+    expect(await readSavedGroupMetadata()).toEqual({});
   });
 
   it('appends groups without clobbering existing ones', async () => {
@@ -109,4 +132,3 @@ describe('storage integration', () => {
     expect(await readSettings()).toEqual(DEFAULT_SETTINGS);
   });
 });
-

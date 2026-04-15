@@ -1,7 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   createSavedTab,
+  filterSavedGroupMetadataForKeys,
   isSavedGroupStorageKey,
+  normalizeSavedGroupMetadata,
   normalizeSavedGroups,
   normalizeSettings,
 } from '../../entrypoints/shared/storage';
@@ -38,5 +40,24 @@ describe('storage utilities', () => {
     expect(normalized.duplicateTabsPolicy).toBe('allow');
     expect(isSavedGroupStorageKey('savedTabs:123')).toBe(true);
     expect(isSavedGroupStorageKey('settings')).toBe(false);
+  });
+
+  it('normalizes and filters pinned group metadata', () => {
+    const normalized = normalizeSavedGroupMetadata({
+      pinned: { pinned: true },
+      compact: true,
+      unpinned: { pinned: false },
+      invalid: { other: true },
+    });
+
+    expect(normalized).toEqual({
+      pinned: { pinned: true },
+      compact: { pinned: true },
+    });
+
+    // Filtering metadata at write boundaries keeps deleted groups from retaining stale pins.
+    expect(filterSavedGroupMetadataForKeys(normalized, ['compact'])).toEqual({
+      compact: { pinned: true },
+    });
   });
 });
