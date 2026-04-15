@@ -1,8 +1,8 @@
 /**
  * Persistence layer for saved tab groups and extension settings.
  * All data is stored in `chrome.storage.local` using a two-level scheme:
- *   • An index array (`savedTabsIndex`) listing group keys.
- *   • Individual group entries keyed as `savedTabs:<groupKey>`.
+ *   • Individual group entries keyed as `savedTabs:<groupKey>`; these are the source of truth.
+ *   • A compatibility index array (`savedTabsIndex`) mirroring active group keys for older tooling.
  *   • Per-group metadata entries keyed as `savedTabGroupMetadata:<groupKey>`.
  */
 import { logExtensionError } from './utils';
@@ -57,6 +57,7 @@ export type SettingsInput = {
 
 /** Top-level keys used in `chrome.storage.local`. */
 export const STORAGE_KEYS = {
+  /** Compatibility mirror only; group discovery reads physical `savedTabs:<groupKey>` keys. */
   savedTabsIndex: 'savedTabsIndex',
   /** Legacy aggregate metadata map retained as a read fallback for older persisted data. */
   savedTabGroupMetadata: 'savedTabGroupMetadata',
@@ -213,6 +214,13 @@ function groupStorageKey(groupKey: string): string {
   return `${GROUP_KEY_PREFIX}${groupKey}`;
 }
 
+/** Extracts a group key from a physical group storage key, returning null for unrelated keys. */
+function groupKeyFromStorageKey(key: string): string | null {
+  if (!isSavedGroupStorageKey(key)) return null;
+  const groupKey = key.slice(GROUP_KEY_PREFIX.length);
+  return groupKey.length > 0 ? groupKey : null;
+}
+
 /** Returns the `chrome.storage.local` metadata key for a saved-tab group key. */
 export function savedGroupMetadataStorageKey(groupKey: string): string {
   return `${GROUP_METADATA_KEY_PREFIX}${groupKey}`;
@@ -228,10 +236,25 @@ export function isSavedGroupMetadataStorageKey(key: string): boolean {
   return key.startsWith(GROUP_METADATA_KEY_PREFIX);
 }
 
-/** Reads the ordered list of group keys from storage. */
-export async function readSavedGroupsIndex(): Promise<string[]> {
+/** Reads the legacy compatibility index for runtimes without key enumeration support. */
+async function readLegacySavedGroupsIndex(): Promise<string[]> {
   const result = await chrome.storage.local.get([STORAGE_KEYS.savedTabsIndex]);
   return normalizeIndex(result[STORAGE_KEYS.savedTabsIndex]);
+}
+
+/** Reads active group keys from physical group entries so stale index writes cannot hide groups. */
+export async function readSavedGroupsIndex(): Promise<string[]> {
+  if (typeof chrome.storage.local.getKeys !== 'function') {
+    return readLegacySavedGroupsIndex();
+  }
+
+  const groupKeys: string[] = [];
+  const storageKeys = await chrome.storage.local.getKeys();
+  for (const storageKey of storageKeys) {
+    const groupKey = groupKeyFromStorageKey(storageKey);
+    if (groupKey) groupKeys.push(groupKey);
+  }
+  return normalizeIndex(groupKeys);
 }
 
 /** Reads pinned-group metadata from storage, returning an empty map on failure. */
@@ -400,7 +423,7 @@ export async function readSavedGroup(groupKey: string): Promise<SavedTab[]> {
   }
 }
 
-/** Writes a single group to storage, updating the index. An empty array removes the group. */
+/** Writes a single group and mirrors the active keys index. An empty array removes the group. */
 export async function writeSavedGroup(groupKey: string, tabs: SavedTab[]): Promise<boolean> {
   try {
     const index = await readSavedGroupsIndex();
@@ -426,41 +449,21 @@ export async function writeSavedGroup(groupKey: string, tabs: SavedTab[]): Promi
   }
 }
 
-/**
- * Appends a new group to storage with optimistic concurrency control.
- * Retries up to `maxAttempts` times if a concurrent write drops the key from the index.
- */
-export async function appendSavedGroup(
-  groupKey: string,
-  tabs: SavedTab[],
-  maxAttempts = 3,
-): Promise<boolean> {
+/** Appends a new group by writing its physical group entry plus the compatibility index mirror. */
+export async function appendSavedGroup(groupKey: string, tabs: SavedTab[]): Promise<boolean> {
   if (tabs.length === 0) return false;
-  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
-    try {
-      const index = await readSavedGroupsIndex();
-      const merged = Array.from(new Set([...index, groupKey]));
-      // Always write the merged index to reduce lost updates under concurrent writes.
-      await chrome.storage.local.set({
-        [STORAGE_KEYS.savedTabsIndex]: merged,
-        [groupStorageKey(groupKey)]: tabs,
-      });
-      const verified = await readSavedGroupsIndex();
-      const stabilized = Array.from(new Set([...verified, groupKey]));
-      // Reconcile if a concurrent write dropped our key from the index.
-      if (stabilized.length !== verified.length) {
-        await chrome.storage.local.set({ [STORAGE_KEYS.savedTabsIndex]: stabilized });
-        const finalIndex = await readSavedGroupsIndex();
-        if (finalIndex.includes(groupKey)) return true;
-      } else if (verified.includes(groupKey)) {
-        return true;
-      }
-    } catch (error) {
-      logExtensionError(`Failed to append saved tab group (${groupKey})`, error, { operation: 'runtime_context' });
-      return false;
-    }
+  try {
+    const index = await readSavedGroupsIndex();
+    const nextIndex = Array.from(new Set([...index, groupKey]));
+    await chrome.storage.local.set({
+      [STORAGE_KEYS.savedTabsIndex]: nextIndex,
+      [groupStorageKey(groupKey)]: tabs,
+    });
+    return true;
+  } catch (error) {
+    logExtensionError(`Failed to append saved tab group (${groupKey})`, error, { operation: 'runtime_context' });
+    return false;
   }
-  return false;
 }
 
 /** Updates one group's pinned flag without loading or rewriting that group's tab payload. */

@@ -6,6 +6,7 @@ import {
   readSavedGroup,
   readSavedGroupMetadata,
   readSavedGroups,
+  readSavedGroupsIndex,
   readSettings,
   savedGroupMetadataStorageKey,
   writeSavedGroup,
@@ -64,6 +65,71 @@ describe('storage integration', () => {
     expect(await writeSavedGroups({ one: [makeTab('1')] })).toBe(true);
     const groups = await readSavedGroups();
     expect(Object.keys(groups)).toEqual(['one']);
+  });
+
+  it('discovers active groups from physical group keys when the compatibility index is stale', async () => {
+    const mock = createMockChrome({
+      initialStorage: {
+        [STORAGE_KEYS.savedTabsIndex]: ['one'],
+        'savedTabs:one': [makeTab('1')],
+        'savedTabs:two': [makeTab('2')],
+      },
+    });
+    setMockChrome(mock.chrome);
+
+    expect((await readSavedGroupsIndex()).sort()).toEqual(['one', 'two']);
+    expect(Object.keys(await readSavedGroups()).sort()).toEqual(['one', 'two']);
+  });
+
+  it('falls back to the compatibility index when key enumeration is unavailable', async () => {
+    const mock = createMockChrome({
+      initialStorage: {
+        [STORAGE_KEYS.savedTabsIndex]: ['legacy'],
+        'savedTabs:legacy': [makeTab('legacy')],
+      },
+    });
+    setMockChrome(mock.chrome);
+    const storageArea: { getKeys?: () => Promise<string[]> } = mock.chrome.storage.local;
+    delete storageArea.getKeys;
+
+    expect(await readSavedGroupsIndex()).toEqual(['legacy']);
+    expect(Object.keys(await readSavedGroups())).toEqual(['legacy']);
+  });
+
+  it('keeps concurrent group adds discoverable even if the index mirror loses one add', async () => {
+    const originalGetKeys = currentMock.chrome.storage.local.getKeys;
+    let readCount = 0;
+    currentMock.chrome.storage.local.getKeys = async () => {
+      readCount += 1;
+      return readCount <= 2 ? [] : originalGetKeys();
+    };
+
+    await Promise.all([writeSavedGroup('one', [makeTab('1')]), writeSavedGroup('two', [makeTab('2')])]);
+
+    expect(Object.keys(await readSavedGroups()).sort()).toEqual(['one', 'two']);
+    expect(mockChromeStorageValue(STORAGE_KEYS.savedTabsIndex)).toEqual(['two']);
+  });
+
+  it('keeps a concurrently added group visible when another group is deleted', async () => {
+    expect(await writeSavedGroup('one', [makeTab('1')])).toBe(true);
+
+    const originalSet = currentMock.chrome.storage.local.set;
+    let injectedConcurrentAdd = false;
+    currentMock.chrome.storage.local.set = async (payload) => {
+      if (!injectedConcurrentAdd && STORAGE_KEYS.savedTabsIndex in payload && !('savedTabs:two' in payload)) {
+        injectedConcurrentAdd = true;
+        await originalSet({
+          [STORAGE_KEYS.savedTabsIndex]: ['one', 'two'],
+          'savedTabs:two': [makeTab('2')],
+        });
+      }
+      await originalSet(payload);
+    };
+
+    expect(await writeSavedGroup('one', [])).toBe(true);
+
+    expect(Object.keys(await readSavedGroups())).toEqual(['two']);
+    expect(mockChromeStorageValue(STORAGE_KEYS.savedTabsIndex)).toEqual([]);
   });
 
   it('rewrites groups without clobbering independent metadata keys', async () => {
@@ -126,6 +192,8 @@ describe('storage integration', () => {
     const mock = createMockChrome({
       initialStorage: {
         [STORAGE_KEYS.savedTabsIndex]: ['legacy', 'unpinned'],
+        'savedTabs:legacy': [makeTab('legacy')],
+        'savedTabs:unpinned': [makeTab('unpinned')],
         [STORAGE_KEYS.savedTabGroupMetadata]: {
           legacy: { pinned: true },
           unpinned: { pinned: true },
@@ -139,7 +207,11 @@ describe('storage integration', () => {
   });
 
   it('returns empty group metadata when metadata reads fail', async () => {
-    const mock = createMockChrome();
+    const mock = createMockChrome({
+      initialStorage: {
+        'savedTabs:one': [makeTab('1')],
+      },
+    });
     setMockChrome(mock.chrome);
     mock.chrome.storage.local.get = async () => {
       throw new Error('boom');
@@ -152,6 +224,7 @@ describe('storage integration', () => {
     const mock = createMockChrome({
       initialStorage: {
         [STORAGE_KEYS.savedTabsIndex]: ['one'],
+        'savedTabs:one': [makeTab('1')],
         [STORAGE_KEYS.savedTabGroupMetadata]: { one: { pinned: true } },
       },
     });
@@ -195,7 +268,11 @@ describe('storage integration', () => {
   });
 
   it('returns safe defaults when storage throws', async () => {
-    const mock = createMockChrome();
+    const mock = createMockChrome({
+      initialStorage: {
+        'savedTabs:1': [makeTab('a')],
+      },
+    });
     setMockChrome(mock.chrome);
 
     mock.chrome.storage.local.get = async () => {

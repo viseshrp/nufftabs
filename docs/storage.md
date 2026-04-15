@@ -7,7 +7,7 @@ understand the decisions and avoid common pitfalls.
 ## Goals and constraints
 - **Fast for large lists:** avoid rewriting a giant object every time a single tab is
   added or removed.
-- **Simple to reason about:** minimal schema and a single source of truth.
+- **Simple to reason about:** physical group entries are the single source of truth.
 - **Only `chrome.storage.local`:** no sync requirements for saved tabs.
 - **Backward-compatible reads:** new code reads older aggregate metadata while writing
   the safer per-group layout.
@@ -15,12 +15,13 @@ understand the decisions and avoid common pitfalls.
 ## Storage keys
 All data lives in `chrome.storage.local`.
 
-### 1) Index of groups
+### 1) Compatibility index of groups
 ```
 savedTabsIndex: string[]
 ```
-This is the list of active group keys. It is the canonical list used to discover
-groups on read, and enables index-first lazy loading in the list page.
+This mirrors active group keys for older tooling and debugging. New reads discover
+groups from physical `savedTabs:<groupKey>` keys with `chrome.storage.local.getKeys()`,
+so a stale index write cannot hide an unrelated group.
 
 ### 2) Per-group entries
 ```
@@ -137,13 +138,13 @@ writeSavedGroup(groupKey, [])
 ## Read flow
 The extension uses two read patterns:
 
-1. **Index-first UI pass (list page)**
-   - Read `savedTabsIndex`.
+1. **Key-first UI pass (list page)**
+   - Enumerate `savedTabs:<groupKey>` storage keys to discover active groups.
    - Read `savedTabGroupMetadata:<groupKey>` entries for pinned sorting and pin button state.
    - Render group cards/placeholders from keys.
    - Read `savedTabs:<groupKey>` on demand (viewport/search/expand).
 2. **Full-read pass (imports/exports/total count refresh)**
-   - Read `savedTabsIndex`.
+   - Enumerate `savedTabs:<groupKey>` storage keys to discover active groups.
    - Read each `savedTabs:<groupKey>`.
    - Normalize each list (drop invalid entries).
    - Assemble `SavedTabGroups` in memory.
@@ -153,12 +154,12 @@ The extension uses two read patterns:
 ### Write a single group
 `writeSavedGroup(groupKey, tabs)`:
 - If `tabs.length > 0`:
-  - Ensure `groupKey` is present in `savedTabsIndex`.
   - Write `savedTabs:<groupKey>` with the array.
+  - Update `savedTabsIndex` as a compatibility mirror.
 - If `tabs.length === 0`:
   - Remove `savedTabs:<groupKey>`.
-  - Remove `groupKey` from `savedTabsIndex`.
   - Remove `savedTabGroupMetadata:<groupKey>`.
+  - Update `savedTabsIndex` as a compatibility mirror.
 
 ### Write all groups
 `writeSavedGroups(savedTabs, groupMetadata?)`:
@@ -172,7 +173,7 @@ This is used for bulk imports and replacement flows.
 
 ### Pin or unpin a group
 `writeSavedGroupPinned(groupKey, pinned)`:
-- Read `savedTabsIndex` to confirm the group still exists.
+- Enumerate `savedTabs:<groupKey>` keys to confirm the group still exists.
 - Write exactly one metadata key: `savedTabGroupMetadata:<groupKey>`.
 - Use `{ pinned: false }` for unpin so older aggregate metadata cannot re-pin the
   group on the next read.
@@ -182,9 +183,9 @@ shared metadata map from multiple open list pages.
 
 ## Why per-group storage?
 A single monolithic `savedTabs` value would require rewriting the entire dataset on
-small changes, which is slow for large lists. The index + group layout makes common
+small changes, which is slow for large lists. The key-enumeration + group layout makes common
 operations (`restoreSingle`, `deleteSingle`, `condense`) fast and proportional to one group.
-It also enables lazy data-fetch: the UI can render from index first and fetch group payloads
+It also enables lazy data-fetch: the UI can render from group keys first and fetch group payloads
 only when needed.
 
 ## Validation / normalization
@@ -209,10 +210,10 @@ If you need to add fields:
 4. Update any export/import logic that serializes tabs.
 
 ## Troubleshooting storage issues
-- **Saved list empty after condense:** check that `savedTabsIndex` is populated and
-  that each `savedTabs:<groupKey>` exists.
-- **Group not showing in UI:** confirm the group key is present in `savedTabsIndex`
-  and the stored array contains valid objects with `url`.
+- **Saved list empty after condense:** check that each `savedTabs:<groupKey>` exists
+  and contains valid tab entries.
+- **Group not showing in UI:** confirm the `savedTabs:<groupKey>` array contains
+  valid objects with `url`.
 - **Unexpected ordering:** check whether `savedAt` values are identical (same timestamp
   is used for all tabs in a condense action).
 

@@ -617,7 +617,7 @@ describe("drive backup utilities", () => {
 		const mock = createMockChrome();
 		setMockChrome(mock.chrome);
 
-		mock.chrome.storage.local.get = async () => {
+		mock.chrome.storage.local.set = async () => {
 			throw new Error("boom");
 		};
 
