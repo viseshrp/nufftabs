@@ -7,9 +7,10 @@ nufftabs is a minimal Chrome (MV3) extension to condense all tabs from the curre
 ## Core features
 - Condense tabs from the current window (optionally excluding pinned tabs).
 - List UI grouped by condense action, with per-group restore all/delete all plus per-tab restore/delete.
+- Pin saved tab groups so important groups stay above unpinned groups.
 - Dynamic search in the fixed top bar filters tabs by title/URL.
 - Drag-and-drop between groups to move a saved tab.
-- Index-first lazy loading: group keys load first, group payloads load on demand.
+- Key-first lazy loading: group keys load first, group payloads load on demand.
 - Export/import JSON (append or replace), import from file, and OneTab import.
 - Restore rules: single restore uses the current window; restore all opens new windows per chunk, reusing the list window only when it is the sole tab.
 - Safety guardrails: condense and restore mutate storage only after a successful verification step.
@@ -23,14 +24,14 @@ nufftabs is a minimal Chrome (MV3) extension to condense all tabs from the curre
 - Triggered by clicking the extension action icon.
 - Reads settings (`excludePinned`, `restoreBatchSize`, `discardRestoredTabs`, `duplicateTabsPolicy`) from `chrome.storage.local`.
 - Skips browser-internal URLs (`chrome://`, `chrome-extension://`, `chrome-search://`, `chrome-untrusted://`, `devtools://`, `about:`) so only user-content tabs are condensed.
-- Saves eligible tabs (URL + title + timestamp) to a new group under `savedTabs:<groupKey>` and updates `savedTabsIndex`.
+- Saves eligible tabs (URL + title + timestamp) to a new group under `savedTabs:<groupKey>` and mirrors the key into `savedTabsIndex` for compatibility.
 - Verifies the saved group can be read back with matching tab entries.
 - Closes eligible tabs only after verification succeeds.
 - Focuses an existing nufftabs list tab if one exists anywhere (most recently active), or creates a new one if none exist. The list tab is pinned.
 
 ### List page
 - Unlisted page at `/nufftabs.html`.
-- Reads `savedTabsIndex` first, then loads group payloads on demand.
+- Enumerates `savedTabs:<groupKey>` keys and lightweight group metadata first, then loads group payloads on demand.
 - Renders saved tab groups from `chrome.storage.local` and keeps the header count based on total saved tabs.
 - Filters visible rows and groups from the top app-bar search input.
 - Refreshes on storage changes and when the tab becomes visible.
@@ -45,7 +46,7 @@ tradeoffs. These are documented in code comments, but summarized here for mainta
 - **Incremental list rendering:** only the first `RENDER_PAGE_SIZE` items render initially.
   Remaining tabs require a "Load more" click to render additional chunks. This bounds DOM
   size but means not all rows are immediately visible.
-- **Index-first group loading:** the page loads `savedTabsIndex` first, then fetches each
+- **Key-first group loading:** the page enumerates `savedTabs:<groupKey>` keys first, then fetches each
   `savedTabs:<groupKey>` payload as needed (viewport/search/expand). This keeps first paint
   responsive, but initial renders can show loading placeholders for off-screen groups.
 - **Event delegation:** a single click handler on the list container routes actions via
@@ -76,7 +77,10 @@ tradeoffs. These are documented in code comments, but summarized here for mainta
 
 ### Developer notes
 - **Storage schema:** saved tabs are stored per group under `savedTabs:<groupKey>` with a
-  `savedTabsIndex` array listing active group keys. This avoids full-blob rewrites.
+  `savedTabsIndex` compatibility mirror. Active groups are discovered from physical
+  `savedTabs:<groupKey>` keys so stale index writes cannot hide unrelated groups.
+  Pinned group state is stored separately under `savedTabGroupMetadata:<groupKey>` so
+  pin toggles write one small key instead of a shared metadata map or tab payload.
 - **Data shapes:** `SavedTab` requires a UUID `id`, non-empty `url`, `title`, and `savedAt`
   epoch ms. Settings are `{ excludePinned, restoreBatchSize, discardRestoredTabs, duplicateTabsPolicy, theme }`.
 - **Restore chunking:** `restoreBatchSize` controls how many tabs open per window during
@@ -149,7 +153,7 @@ The packaged extension zip is generated under `.output/`.
 4. Matching groups show filtered counts (`x of y tabs`) and preserve all row/group actions.
 
 ### Large lists and lazy loading
-- Group index (`savedTabsIndex`) is read first.
+- Group keys are enumerated first from `savedTabs:<groupKey>` storage entries.
 - Group payloads are loaded when they are near the viewport, expanded, or needed by search.
 - Within each visible group, rows are rendered in pages (`RENDER_PAGE_SIZE`) with **Load more**.
 - Header tab count always reflects total saved tabs, not just loaded groups.
@@ -237,7 +241,7 @@ not match the OAuth client's configured Chrome Extension ID.
 
 ## Permissions
 - `tabs`: required to query, create, update, close, and discard tabs/windows.
-- `storage`: required to persist `savedTabsIndex`, `savedTabs:<groupKey>`, and settings in `chrome.storage.local`.
+- `storage`: required to persist `savedTabsIndex`, `savedTabs:<groupKey>`, `savedTabGroupMetadata:<groupKey>`, and settings in `chrome.storage.local`.
 - `identity`: required to acquire OAuth tokens for optional Google Drive backup actions.
 - `https://www.googleapis.com/` host permission: required to call Google Drive REST APIs for manual backup/restore.
 
@@ -253,7 +257,7 @@ not match the OAuth client's configured Chrome Extension ID.
 If any list tab exists, nufftabs reuses the most recently active one instead of creating duplicates.
 
 **Where is data stored?**  
-In `chrome.storage.local` under `savedTabsIndex`, `savedTabs:<groupKey>`, and `settings`.
+In `chrome.storage.local` under `savedTabsIndex`, `savedTabs:<groupKey>`, `savedTabGroupMetadata:<groupKey>`, and `settings`.
 
 **Why are pinned tabs excluded by default?**  
 It’s a safety default so pinned tabs are not closed unless you turn the setting off.

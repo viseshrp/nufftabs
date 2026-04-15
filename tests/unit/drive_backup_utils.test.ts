@@ -21,7 +21,10 @@ import {
 	normalizeRetentionCount,
 	parseDriveTimestamp,
 } from "../../entrypoints/drive/types";
-import { STORAGE_KEYS } from "../../entrypoints/shared/storage";
+import {
+	STORAGE_KEYS,
+	savedGroupMetadataStorageKey,
+} from "../../entrypoints/shared/storage";
 import { createMockChrome, setMockChrome } from "../helpers/mock_chrome";
 
 describe("drive backup utilities", () => {
@@ -51,12 +54,14 @@ describe("drive backup utilities", () => {
 				],
 			},
 			1700000000000,
+			{ g1: { pinned: true }, stale: { pinned: true } },
 		);
 
 		expect(payload.version).toBe(BACKUP_VERSION);
 		expect(payload.timestamp).toBe(1700000000000);
 		expect(Object.keys(payload.savedTabs)).toEqual(["g1"]);
-		expect(Object.keys(payload)).toEqual(["version", "timestamp", "savedTabs"]);
+		expect(payload.groupMetadata).toEqual({ g1: { pinned: true } });
+		expect(Object.keys(payload)).toEqual(["version", "timestamp", "savedTabs", "groupMetadata"]);
 		expect("settings" in payload).toBe(false);
 		expect("installId" in payload).toBe(false);
 	});
@@ -276,6 +281,7 @@ describe("drive backup utilities", () => {
 				"savedTabs:g1": [
 					{ id: "1", url: "https://example.com", title: "Example", savedAt: 1 },
 				],
+				[STORAGE_KEYS.savedTabGroupMetadata]: { g1: { pinned: true } },
 				[DRIVE_STORAGE_KEYS.installId]: "install-1",
 			},
 		});
@@ -320,6 +326,9 @@ describe("drive backup utilities", () => {
 		expect(uploads).toHaveLength(1);
 		expect(uploads[0]?.name).toContain("nufftabs-backup-");
 		expect(uploads[0]?.content).not.toContain('"installId"');
+		expect(JSON.parse(uploads[0]?.content ?? "{}").groupMetadata).toEqual({
+			g1: { pinned: true },
+		});
 		expect(backups).toHaveLength(1);
 		expect(deleted).toEqual(["old-file"]);
 
@@ -404,6 +413,10 @@ describe("drive backup utilities", () => {
 						},
 					],
 				},
+				groupMetadata: {
+					restored: { pinned: true },
+					stale: { pinned: true },
+				},
 			}),
 		});
 
@@ -414,6 +427,9 @@ describe("drive backup utilities", () => {
 			STORAGE_KEYS.savedTabsIndex
 		] as string[];
 		expect(savedIndex).toEqual(["restored"]);
+			expect(mock.storageData[savedGroupMetadataStorageKey("restored")]).toEqual({
+				pinned: true,
+			});
 
 		const savedSettings = mock.storageData[STORAGE_KEYS.settings] as {
 			restoreBatchSize: number;
@@ -500,6 +516,7 @@ describe("drive backup utilities", () => {
 						savedAt: 2,
 					},
 				],
+				[STORAGE_KEYS.savedTabGroupMetadata]: { existing: { pinned: true } },
 				[STORAGE_KEYS.settings]: {
 					excludePinned: true,
 					restoreBatchSize: 100,
@@ -542,6 +559,10 @@ describe("drive backup utilities", () => {
 							},
 						],
 					},
+					groupMetadata: {
+						shared: { pinned: true },
+						restored: { pinned: true },
+					},
 				}),
 			},
 			{ mode: "merge" },
@@ -554,6 +575,15 @@ describe("drive backup utilities", () => {
 			STORAGE_KEYS.savedTabsIndex
 		] as string[];
 		expect(savedIndex).toEqual(["existing", "shared", "restored"]);
+			expect(mock.storageData[savedGroupMetadataStorageKey("existing")]).toEqual({
+				pinned: true,
+			});
+			expect(mock.storageData[savedGroupMetadataStorageKey("shared")]).toEqual({
+				pinned: true,
+			});
+			expect(mock.storageData[savedGroupMetadataStorageKey("restored")]).toEqual({
+				pinned: true,
+			});
 
 		const existingGroup = mock.storageData["savedTabs:existing"] as Array<{
 			url: string;
@@ -587,7 +617,7 @@ describe("drive backup utilities", () => {
 		const mock = createMockChrome();
 		setMockChrome(mock.chrome);
 
-		mock.chrome.storage.local.get = async () => {
+		mock.chrome.storage.local.set = async () => {
 			throw new Error("boom");
 		};
 

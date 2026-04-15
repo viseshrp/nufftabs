@@ -1,8 +1,9 @@
 /**
  * Persistence layer for saved tab groups and extension settings.
  * All data is stored in `chrome.storage.local` using a two-level scheme:
- *   • An index array (`savedTabsIndex`) listing group keys.
- *   • Individual group entries keyed as `savedTabs:<groupKey>`.
+ *   • Individual group entries keyed as `savedTabs:<groupKey>`; these are the source of truth.
+ *   • A compatibility index array (`savedTabsIndex`) mirroring active group keys for older tooling.
+ *   • Per-group metadata entries keyed as `savedTabGroupMetadata:<groupKey>`.
  */
 import { logExtensionError } from './utils';
 
@@ -18,6 +19,15 @@ export type SavedTab = {
 
 /** Map of group-key → array of saved tabs. Each key represents one condense session. */
 export type SavedTabGroups = Record<string, SavedTab[]>;
+
+/** Metadata for one saved-tab group. Keep this small because it loads with the index. */
+export type SavedTabGroupMeta = {
+  /** Pinned groups sort before unpinned groups in the list page. */
+  pinned: boolean;
+};
+
+/** Map of group-key → metadata. Missing keys use default unpinned behavior. */
+export type SavedTabGroupMetadata = Record<string, SavedTabGroupMeta>;
 
 /** Fully resolved extension settings with all fields guaranteed present. */
 export type Settings = {
@@ -47,7 +57,10 @@ export type SettingsInput = {
 
 /** Top-level keys used in `chrome.storage.local`. */
 export const STORAGE_KEYS = {
+  /** Compatibility mirror only; group discovery reads physical `savedTabs:<groupKey>` keys. */
   savedTabsIndex: 'savedTabsIndex',
+  /** Legacy aggregate metadata map retained as a read fallback for older persisted data. */
+  savedTabGroupMetadata: 'savedTabGroupMetadata',
   settings: 'settings',
 } as const;
 
@@ -68,6 +81,9 @@ export const UNKNOWN_GROUP_KEY = 'unknown';
 
 /** Storage key prefix prepended to each group key for individual group entries. */
 export const GROUP_KEY_PREFIX = 'savedTabs:';
+
+/** Storage key prefix prepended to each group key for per-group metadata entries. */
+export const GROUP_METADATA_KEY_PREFIX = 'savedTabGroupMetadata:';
 
 /** Input shape accepted by `createSavedTab`; optional fields receive generated defaults. */
 type SavedTabInput = {
@@ -137,9 +153,77 @@ function normalizeIndex(value: unknown): string[] {
   return Array.from(new Set(index));
 }
 
+/** Coerces one unknown metadata entry into a supported group metadata object. */
+function normalizeSavedGroupMeta(value: unknown): SavedTabGroupMeta | null {
+  // Accept compact `true` entries as a defensive migration/import path.
+  if (value === true) return { pinned: true };
+  if (!value || typeof value !== 'object') return null;
+
+  const pinned = (value as { pinned?: unknown }).pinned;
+  return pinned === true ? { pinned: true } : null;
+}
+
+/** Internal read state for one per-group metadata key, including migration tombstones. */
+type StoredSavedGroupMetaState = SavedTabGroupMeta | 'unpinned' | null;
+
+/** Coerces one per-group metadata entry and preserves explicit unpin tombstones. */
+function normalizeStoredSavedGroupMeta(value: unknown): StoredSavedGroupMetaState {
+  // `false` is accepted as a compact tombstone for defensive forward compatibility.
+  if (value === false) return 'unpinned';
+  if (value === true) return { pinned: true };
+  if (!value || typeof value !== 'object') return null;
+
+  const pinned = (value as { pinned?: unknown }).pinned;
+  if (pinned === false) return 'unpinned';
+  return pinned === true ? { pinned: true } : null;
+}
+
+/** Normalizes a metadata map, dropping unknown flags and unpinned entries. */
+export function normalizeSavedGroupMetadata(value: unknown): SavedTabGroupMetadata {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+
+  const metadata: SavedTabGroupMetadata = {};
+  for (const [groupKey, rawMeta] of Object.entries(value as Record<string, unknown>)) {
+    if (!isNonEmptyString(groupKey)) continue;
+    const normalized = normalizeSavedGroupMeta(rawMeta);
+    if (normalized) metadata[groupKey] = normalized;
+  }
+  return metadata;
+}
+
+/**
+ * Filters metadata to active group keys.
+ * This prevents stale pin flags from surviving after group deletes or replace imports.
+ */
+export function filterSavedGroupMetadataForKeys(
+  metadata: SavedTabGroupMetadata,
+  groupKeys: Iterable<string>,
+): SavedTabGroupMetadata {
+  const allowedKeys = new Set(groupKeys);
+  const filtered: SavedTabGroupMetadata = {};
+  for (const [groupKey, groupMeta] of Object.entries(metadata)) {
+    if (allowedKeys.has(groupKey) && groupMeta.pinned) {
+      filtered[groupKey] = { pinned: true };
+    }
+  }
+  return filtered;
+}
+
 /** Returns the `chrome.storage.local` key for a given group key. */
 function groupStorageKey(groupKey: string): string {
   return `${GROUP_KEY_PREFIX}${groupKey}`;
+}
+
+/** Extracts a group key from a physical group storage key, returning null for unrelated keys. */
+function groupKeyFromStorageKey(key: string): string | null {
+  if (!isSavedGroupStorageKey(key)) return null;
+  const groupKey = key.slice(GROUP_KEY_PREFIX.length);
+  return groupKey.length > 0 ? groupKey : null;
+}
+
+/** Returns the `chrome.storage.local` metadata key for a saved-tab group key. */
+export function savedGroupMetadataStorageKey(groupKey: string): string {
+  return `${GROUP_METADATA_KEY_PREFIX}${groupKey}`;
 }
 
 /** Returns true if the storage key represents an individual saved-tab group entry. */
@@ -147,20 +231,86 @@ export function isSavedGroupStorageKey(key: string): boolean {
   return key.startsWith(GROUP_KEY_PREFIX);
 }
 
-/** Reads the ordered list of group keys from storage. */
-export async function readSavedGroupsIndex(): Promise<string[]> {
+/** Returns true if the storage key represents an individual saved-tab group metadata entry. */
+export function isSavedGroupMetadataStorageKey(key: string): boolean {
+  return key.startsWith(GROUP_METADATA_KEY_PREFIX);
+}
+
+/** Reads the legacy compatibility index for runtimes without key enumeration support. */
+async function readLegacySavedGroupsIndex(): Promise<string[]> {
   const result = await chrome.storage.local.get([STORAGE_KEYS.savedTabsIndex]);
   return normalizeIndex(result[STORAGE_KEYS.savedTabsIndex]);
 }
 
+/** Reads active group keys from physical group entries so stale index writes cannot hide groups. */
+export async function readSavedGroupsIndex(): Promise<string[]> {
+  if (typeof chrome.storage.local.getKeys !== 'function') {
+    return readLegacySavedGroupsIndex();
+  }
+
+  const groupKeys: string[] = [];
+  const storageKeys = await chrome.storage.local.getKeys();
+  for (const storageKey of storageKeys) {
+    const groupKey = groupKeyFromStorageKey(storageKey);
+    if (groupKey) groupKeys.push(groupKey);
+  }
+  return normalizeIndex(groupKeys);
+}
+
+/** Reads pinned-group metadata from storage, returning an empty map on failure. */
+export async function readSavedGroupMetadata(): Promise<SavedTabGroupMetadata> {
+  try {
+    const index = await readSavedGroupsIndex();
+    if (index.length === 0) return {};
+
+    const metadataKeys = index.map((groupKey) => savedGroupMetadataStorageKey(groupKey));
+    const result = await chrome.storage.local.get([STORAGE_KEYS.savedTabGroupMetadata, ...metadataKeys]);
+    const metadata = filterSavedGroupMetadataForKeys(
+      normalizeSavedGroupMetadata(result[STORAGE_KEYS.savedTabGroupMetadata]),
+      index,
+    );
+
+    for (const groupKey of index) {
+      const storedMeta = normalizeStoredSavedGroupMeta(result[savedGroupMetadataStorageKey(groupKey)]);
+      if (storedMeta === 'unpinned') {
+        // Per-group tombstones override legacy aggregate pins during migration.
+        delete metadata[groupKey];
+      } else if (storedMeta) {
+        metadata[groupKey] = storedMeta;
+      }
+    }
+    return metadata;
+  } catch (error) {
+    logExtensionError('Failed to read saved group metadata', error, { operation: 'runtime_context' });
+    return {};
+  }
+}
+
+/** Adds exact per-group metadata writes to an existing storage payload. */
+function applyGroupMetadataPayload(
+  payload: Record<string, unknown>,
+  groupMetadata: SavedTabGroupMetadata,
+  groupKeys: string[],
+): void {
+  const nextMetadata = filterSavedGroupMetadataForKeys(groupMetadata, groupKeys);
+  for (const groupKey of groupKeys) {
+    payload[savedGroupMetadataStorageKey(groupKey)] = nextMetadata[groupKey] ?? { pinned: false };
+  }
+}
+
 /** Atomically writes all groups to storage and removes stale group entries. */
-async function writeAllGroupsInternal(savedTabs: SavedTabGroups, existingIndex: string[]): Promise<void> {
+async function writeAllGroupsInternal(
+  savedTabs: SavedTabGroups,
+  existingIndex: string[],
+  groupMetadata?: SavedTabGroupMetadata,
+): Promise<void> {
   const entries = Object.entries(savedTabs).filter(([, tabs]) => tabs.length > 0);
   const nextIndex = entries.map(([key]) => key);
   const nextIndexSet = new Set(nextIndex);
   const payload: Record<string, unknown> = {
     [STORAGE_KEYS.savedTabsIndex]: nextIndex,
   };
+  if (groupMetadata) applyGroupMetadataPayload(payload, groupMetadata, nextIndex);
   for (const [key, tabs] of entries) {
     payload[groupStorageKey(key)] = tabs;
   }
@@ -169,7 +319,9 @@ async function writeAllGroupsInternal(savedTabs: SavedTabGroups, existingIndex: 
 
   const removedKeys: string[] = [];
   for (const key of existingIndex) {
-    if (!nextIndexSet.has(key)) removedKeys.push(groupStorageKey(key));
+    if (!nextIndexSet.has(key)) {
+      removedKeys.push(groupStorageKey(key), savedGroupMetadataStorageKey(key));
+    }
   }
   if (removedKeys.length > 0) {
     await chrome.storage.local.remove(removedKeys);
@@ -245,11 +397,14 @@ export async function readSavedGroups(_fallbackKey = UNKNOWN_GROUP_KEY): Promise
   }
 }
 
-/** Replaces all saved groups in storage, returning true on success. */
-export async function writeSavedGroups(savedTabs: SavedTabGroups): Promise<boolean> {
+/** Replaces all saved groups and optional group metadata in storage, returning true on success. */
+export async function writeSavedGroups(
+  savedTabs: SavedTabGroups,
+  groupMetadata?: SavedTabGroupMetadata,
+): Promise<boolean> {
   try {
     const existingIndex = await readSavedGroupsIndex();
-    await writeAllGroupsInternal(savedTabs, existingIndex);
+    await writeAllGroupsInternal(savedTabs, existingIndex, groupMetadata);
     return true;
   } catch (error) {
     logExtensionError('Failed to write saved groups', error, { operation: 'runtime_context' });
@@ -268,7 +423,7 @@ export async function readSavedGroup(groupKey: string): Promise<SavedTab[]> {
   }
 }
 
-/** Writes a single group to storage, updating the index. An empty array removes the group. */
+/** Writes a single group and mirrors the active keys index. An empty array removes the group. */
 export async function writeSavedGroup(groupKey: string, tabs: SavedTab[]): Promise<boolean> {
   try {
     const index = await readSavedGroupsIndex();
@@ -282,8 +437,10 @@ export async function writeSavedGroup(groupKey: string, tabs: SavedTab[]): Promi
       });
     } else {
       if (hasGroup) nextIndex = index.filter((key) => key !== groupKey);
-      await chrome.storage.local.set({ [STORAGE_KEYS.savedTabsIndex]: nextIndex });
-      await chrome.storage.local.remove(groupStorageKey(groupKey));
+      await chrome.storage.local.set({
+        [STORAGE_KEYS.savedTabsIndex]: nextIndex,
+      });
+      await chrome.storage.local.remove([groupStorageKey(groupKey), savedGroupMetadataStorageKey(groupKey)]);
     }
     return true;
   } catch (error) {
@@ -292,41 +449,37 @@ export async function writeSavedGroup(groupKey: string, tabs: SavedTab[]): Promi
   }
 }
 
-/**
- * Appends a new group to storage with optimistic concurrency control.
- * Retries up to `maxAttempts` times if a concurrent write drops the key from the index.
- */
-export async function appendSavedGroup(
-  groupKey: string,
-  tabs: SavedTab[],
-  maxAttempts = 3,
-): Promise<boolean> {
+/** Appends a new group by writing its physical group entry plus the compatibility index mirror. */
+export async function appendSavedGroup(groupKey: string, tabs: SavedTab[]): Promise<boolean> {
   if (tabs.length === 0) return false;
-  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
-    try {
-      const index = await readSavedGroupsIndex();
-      const merged = Array.from(new Set([...index, groupKey]));
-      // Always write the merged index to reduce lost updates under concurrent writes.
-      await chrome.storage.local.set({
-        [STORAGE_KEYS.savedTabsIndex]: merged,
-        [groupStorageKey(groupKey)]: tabs,
-      });
-      const verified = await readSavedGroupsIndex();
-      const stabilized = Array.from(new Set([...verified, groupKey]));
-      // Reconcile if a concurrent write dropped our key from the index.
-      if (stabilized.length !== verified.length) {
-        await chrome.storage.local.set({ [STORAGE_KEYS.savedTabsIndex]: stabilized });
-        const finalIndex = await readSavedGroupsIndex();
-        if (finalIndex.includes(groupKey)) return true;
-      } else if (verified.includes(groupKey)) {
-        return true;
-      }
-    } catch (error) {
-      logExtensionError(`Failed to append saved tab group (${groupKey})`, error, { operation: 'runtime_context' });
-      return false;
-    }
+  try {
+    const index = await readSavedGroupsIndex();
+    const nextIndex = Array.from(new Set([...index, groupKey]));
+    await chrome.storage.local.set({
+      [STORAGE_KEYS.savedTabsIndex]: nextIndex,
+      [groupStorageKey(groupKey)]: tabs,
+    });
+    return true;
+  } catch (error) {
+    logExtensionError(`Failed to append saved tab group (${groupKey})`, error, { operation: 'runtime_context' });
+    return false;
   }
-  return false;
+}
+
+/** Updates one group's pinned flag without loading or rewriting that group's tab payload. */
+export async function writeSavedGroupPinned(groupKey: string, pinned: boolean): Promise<boolean> {
+  try {
+    const index = await readSavedGroupsIndex();
+    if (!index.includes(groupKey)) return false;
+
+    await chrome.storage.local.set({
+      [savedGroupMetadataStorageKey(groupKey)]: pinned ? { pinned: true } : { pinned: false },
+    });
+    return true;
+  } catch (error) {
+    logExtensionError(`Failed to write saved group pin state (${groupKey})`, error, { operation: 'runtime_context' });
+    return false;
+  }
 }
 
 /** Reads the user's extension settings from storage, returning defaults on failure. */

@@ -5,8 +5,10 @@ import {
   formatCreatedAt,
   getGroupCreatedAt,
   isSameGroup,
+  mergeGroupMetadata,
   mergeGroups,
   normalizeImportedGroups,
+  normalizeImportedPayload,
   normalizeTabArray,
 } from '../../entrypoints/nufftabs/list';
 
@@ -63,6 +65,26 @@ describe('list', () => {
     expect(normalizeImportedGroups('bad', 'fallback')).toBeNull();
   });
 
+  it('normalizes imported group metadata from wrapped exports', () => {
+    const normalized = normalizeImportedPayload(
+      {
+        savedTabs: {
+          pinned: [{ url: 'https://pinned.com' }],
+          unpinned: [{ url: 'https://unpinned.com' }],
+        },
+        groupMetadata: {
+          pinned: { pinned: true },
+          stale: { pinned: true },
+          unpinned: { pinned: false },
+        },
+      },
+      'fallback',
+    );
+
+    expect(Object.keys(normalized?.groups ?? {})).toEqual(['pinned', 'unpinned']);
+    expect(normalized?.groupMetadata).toEqual({ pinned: { pinned: true } });
+  });
+
   it('returns null for invalid tab arrays', () => {
     expect(normalizeTabArray([{ title: 'Missing URL' }])).toBeNull();
     expect(normalizeTabArray([null])).toBeNull();
@@ -104,5 +126,24 @@ describe('list', () => {
     expect(merged.one).toHaveLength(2);
     expect(merged.two).toHaveLength(1);
     expect(merged.two?.[0]?.url).toBe('https://new.com');
+  });
+
+  it('merges group metadata while pruning removed groups', () => {
+    const [firstTab, secondTab] = sampleTabs;
+    if (!firstTab || !secondTab) throw new Error('Missing sample tabs');
+
+    const merged = mergeGroupMetadata(
+      { existing: { pinned: true }, removed: { pinned: true } },
+      { incoming: { pinned: true } },
+      {
+        existing: [firstTab],
+        incoming: [secondTab],
+      },
+    );
+
+    expect(merged).toEqual({
+      existing: { pinned: true },
+      incoming: { pinned: true },
+    });
   });
 });

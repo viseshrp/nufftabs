@@ -28,11 +28,13 @@ export type MockChrome = {
   storage: {
     local: {
       get: (keys: StorageGetKeys) => Promise<StorageRecord>;
+      getKeys: () => Promise<string[]>;
       set: (payload: StorageRecord) => Promise<void>;
       remove: (keys: string | string[]) => Promise<void>;
     };
     sync: {
       get: (keys: StorageGetKeys) => Promise<StorageRecord>;
+      getKeys: () => Promise<string[]>;
       set: (payload: StorageRecord) => Promise<void>;
       remove: (keys: string | string[]) => Promise<void>;
     };
@@ -182,6 +184,9 @@ export function createMockChrome(options?: { initialStorage?: StorageRecord }) {
         }, {} as StorageRecord);
       }
       return { ...storageData } as StorageRecord;
+    },
+    async getKeys() {
+      return Object.keys(storageData);
     },
     async set(payload: StorageRecord) {
       const changes: Record<string, { oldValue?: unknown; newValue?: unknown }> = {};

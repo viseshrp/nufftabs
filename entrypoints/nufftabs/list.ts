@@ -2,10 +2,17 @@
  * Pure utility functions for the list page: cloning, comparing, counting,
  * formatting, normalizing, and merging saved tab groups.
  */
-import { createSavedTab, type SavedTab, type SavedTabGroups } from '../shared/storage';
-import { cloneGroups, mergeGroups } from '../shared/group_merge';
+import {
+  createSavedTab,
+  filterSavedGroupMetadataForKeys,
+  normalizeSavedGroupMetadata,
+  type SavedTab,
+  type SavedTabGroupMetadata,
+  type SavedTabGroups,
+} from '../shared/storage';
+import { cloneGroups, mergeGroupMetadata, mergeGroups } from '../shared/group_merge';
 
-export { cloneGroups, mergeGroups };
+export { cloneGroups, mergeGroupMetadata, mergeGroups };
 
 /** Returns the total number of individual tabs across all groups. */
 export function countTotalTabs(groups: SavedTabGroups): number {
@@ -93,34 +100,64 @@ export function normalizeTabArray(data: unknown): SavedTab[] | null {
   return normalized;
 }
 
+/** Normalized import payload used by JSON import, file import, and Drive restore logic. */
+export type NormalizedImportedPayload = {
+  /** Valid tab groups parsed from the incoming JSON shape. */
+  groups: SavedTabGroups;
+  /** Pinned group flags parsed from the incoming JSON shape and scoped to `groups`. */
+  groupMetadata: SavedTabGroupMetadata;
+};
+
+/** Extracts the tab-group portion from supported import wrappers. */
+function getImportedGroupsPayload(data: unknown): unknown | null {
+  if (Array.isArray(data)) return data;
+  if (!data || typeof data !== 'object') return null;
+
+  const objectData = data as Record<string, unknown>;
+  return Object.hasOwn(objectData, 'savedTabs') ? objectData.savedTabs : data;
+}
+
+/** Extracts optional group metadata from supported import wrappers. */
+function getImportedGroupMetadataPayload(data: unknown): unknown {
+  if (!data || typeof data !== 'object' || Array.isArray(data)) return undefined;
+
+  const objectData = data as Record<string, unknown>;
+  return objectData.groupMetadata ?? objectData.savedTabGroupMetadata;
+}
+
 /**
- * Normalizes unknown imported data into `SavedTabGroups`.
+ * Normalizes unknown imported data into tab groups plus optional group metadata.
  * Handles flat arrays, `{ savedTabs: ... }` wrappers, and direct group objects.
  */
-export function normalizeImportedGroups(data: unknown, fallbackKey: string): SavedTabGroups | null {
-  const payload = Array.isArray(data)
-    ? data
-    : data && typeof data === 'object'
-      ? (data as { savedTabs?: unknown }).savedTabs ?? data
-      : null;
+export function normalizeImportedPayload(data: unknown, fallbackKey: string): NormalizedImportedPayload | null {
+  const payload = getImportedGroupsPayload(data);
 
   if (!payload) return null;
 
+  let groups: SavedTabGroups | null = null;
   if (Array.isArray(payload)) {
     const normalized = normalizeTabArray(payload);
     if (!normalized) return null;
-    return normalized.length > 0 ? { [fallbackKey]: normalized } : {};
-  }
-
-  if (payload && typeof payload === 'object') {
-    const groups: SavedTabGroups = {};
+    groups = normalized.length > 0 ? { [fallbackKey]: normalized } : {};
+  } else if (payload && typeof payload === 'object') {
+    groups = {};
     for (const [key, value] of Object.entries(payload as Record<string, unknown>)) {
       const normalized = normalizeTabArray(value);
       if (!normalized) return null;
       if (normalized.length > 0) groups[key] = normalized;
     }
-    return groups;
   }
 
-  return null;
+  if (!groups) return null;
+
+  const groupMetadata = filterSavedGroupMetadataForKeys(
+    normalizeSavedGroupMetadata(getImportedGroupMetadataPayload(data)),
+    Object.keys(groups),
+  );
+  return { groups, groupMetadata };
+}
+
+/** Backwards-compatible helper for callers/tests that only need imported groups. */
+export function normalizeImportedGroups(data: unknown, fallbackKey: string): SavedTabGroups | null {
+  return normalizeImportedPayload(data, fallbackKey)?.groups ?? null;
 }

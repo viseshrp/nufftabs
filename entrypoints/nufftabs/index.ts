@@ -10,8 +10,9 @@ import {
   countTotalTabs,
   formatCreatedAt,
   isSameGroup,
+  mergeGroupMetadata,
   mergeGroups,
-  normalizeImportedGroups,
+  normalizeImportedPayload,
 } from './list';
 import { createCondenseGroupKey } from '../shared/condense';
 import { restoreTabs } from './restore';
@@ -22,11 +23,16 @@ import {
   readSavedGroupsIndex,
   STORAGE_KEYS,
   GROUP_KEY_PREFIX,
+  isSavedGroupMetadataStorageKey,
   isSavedGroupStorageKey,
+  filterSavedGroupMetadataForKeys,
   writeSavedGroup,
+  writeSavedGroupPinned,
   writeSavedGroups,
   normalizeSettings,
+  readSavedGroupMetadata,
   type SavedTab,
+  type SavedTabGroupMetadata,
   type SavedTabGroups,
 } from '../shared/storage';
 import { appendTabsByDuplicatePolicy, collectSavedTabUrls } from '../shared/duplicates';
@@ -72,12 +78,14 @@ type ListPageState = {
   currentGroups: SavedTabGroups;
   /** Filtered tab arrays after applying the active search term. */
   visibleGroups: SavedTabGroups;
+  /** Per-group metadata such as pinned state; kept separate from large tab payloads. */
+  groupMetadata: SavedTabGroupMetadata;
   activeSearchTerm: string;
   draggedTab: { groupKey: string; tabId: string } | null;
   totalTabCount: number;
   /** Ordered list of known group keys from the storage index. */
   indexedGroupKeys: string[];
-  /** Same keys as `indexedGroupKeys`, sorted newest-first for stable rendering/search traversal. */
+  /** Same keys as `indexedGroupKeys`, sorted pinned-first then newest-first. */
   sortedIndexedGroupKeys: string[];
   indexedGroupKeySet: Set<string>;
   /** Per-group tab counts used to keep the header count fresh without full storage scans. */
@@ -105,6 +113,7 @@ type ListPageState = {
 const state: ListPageState = {
   currentGroups: {},
   visibleGroups: {},
+  groupMetadata: {},
   activeSearchTerm: '',
   draggedTab: null,
   totalTabCount: 0,
@@ -204,6 +213,7 @@ type GroupView = {
   card: HTMLElement;
   titleEl: HTMLDivElement;
   metaEl: HTMLDivElement;
+  pinButton: HTMLButtonElement;
   collapseButton: HTMLButtonElement;
   itemsWrap: HTMLDivElement;
   list: HTMLUListElement;
@@ -473,6 +483,24 @@ function createGroupView(groupKey: string): GroupView {
   const actions = document.createElement('div');
   actions.className = 'group-actions';
 
+  const pinButton = document.createElement('button');
+  pinButton.className = 'icon-button pin-toggle';
+  pinButton.type = 'button';
+  pinButton.dataset.action = 'toggle-pin';
+  pinButton.setAttribute('aria-label', 'Pin group');
+  pinButton.setAttribute('title', 'Pin group');
+  pinButton.appendChild(
+    createSvgIcon([
+      {
+        tag: 'path',
+        attrs: {
+          d: 'M14 3l7 7-2 2-1.4-1.4-4.6 4.6V20l-1 1-3.2-3.2L5 21l-2-2 3.2-3.2L3 12.6l1-1h4.8l4.6-4.6L12 5z',
+          fill: 'currentColor',
+        },
+      },
+    ]),
+  );
+
   const collapseButton = document.createElement('button');
   collapseButton.className = 'icon-button collapse-toggle';
   collapseButton.type = 'button';
@@ -588,6 +616,7 @@ function createGroupView(groupKey: string): GroupView {
     ]),
   );
 
+  actions.appendChild(pinButton);
   actions.appendChild(collapseButton);
   actions.appendChild(restoreAllButton);
   actions.appendChild(deleteAllButton);
@@ -629,6 +658,7 @@ function createGroupView(groupKey: string): GroupView {
     card,
     titleEl: title,
     metaEl: meta,
+    pinButton,
     collapseButton,
     itemsWrap,
     list,
@@ -642,6 +672,24 @@ function parseGroupCreationTime(key: string): number | null {
   if (parts.length < 3) return null;
   const timestamp = Number(parts[1]);
   return Number.isFinite(timestamp) && timestamp > 0 ? timestamp : null;
+}
+
+/** Returns true when the group is currently pinned in metadata. */
+function isGroupPinned(groupKey: string): boolean {
+  return state.groupMetadata[groupKey]?.pinned === true;
+}
+
+/**
+ * Sorts pinned groups before unpinned groups, then keeps the existing newest-first order.
+ * The tie-breaker makes equal timestamps deterministic without scanning tab payloads.
+ */
+function compareGroupKeys(a: string, b: string): number {
+  const aPinned = isGroupPinned(a);
+  const bPinned = isGroupPinned(b);
+  if (aPinned !== bPinned) return aPinned ? -1 : 1;
+
+  const createdDiff = (parseGroupCreationTime(b) ?? 0) - (parseGroupCreationTime(a) ?? 0);
+  return createdDiff !== 0 ? createdDiff : a.localeCompare(b);
 }
 
 /** Trims and lowercases a search query for case-insensitive matching. */
@@ -671,16 +719,25 @@ function updateEmptyStateText(message: 'saved' | 'matching'): void {
   label.textContent = 'No matching tabs';
 }
 
-/** Returns group keys sorted newest-first by creation timestamp. */
+/** Returns group keys sorted pinned-first and then newest-first by creation timestamp. */
 function getSortedGroupKeys(): string[] {
   return state.sortedIndexedGroupKeys.slice();
 }
 
-/** Rebuilds the cached newest-first key order from `indexedGroupKeys`. */
+/** Rebuilds the cached pinned-first/newest-first key order from `indexedGroupKeys`. */
 function rebuildSortedIndexedGroupKeys(): void {
-  state.sortedIndexedGroupKeys = state.indexedGroupKeys
-    .slice()
-    .sort((a, b) => (parseGroupCreationTime(b) ?? 0) - (parseGroupCreationTime(a) ?? 0));
+  state.sortedIndexedGroupKeys = state.indexedGroupKeys.slice().sort(compareGroupKeys);
+}
+
+/** Prunes state metadata to the current index so deleted groups cannot remain pinned. */
+function pruneGroupMetadataToIndexedKeys(): void {
+  state.groupMetadata = filterSavedGroupMetadataForKeys(state.groupMetadata, state.indexedGroupKeySet);
+}
+
+/** Replaces metadata and rebuilds sorted keys because pinned state affects ordering. */
+function setGroupMetadata(nextMetadata: SavedTabGroupMetadata): void {
+  state.groupMetadata = filterSavedGroupMetadataForKeys(nextMetadata, state.indexedGroupKeySet);
+  rebuildSortedIndexedGroupKeys();
 }
 
 /** Returns true if the group's tab array has been loaded from storage. */
@@ -703,6 +760,7 @@ function removeIndexedGroupKey(groupKey: string): void {
   state.indexedGroupKeySet.delete(groupKey);
   state.groupTabCounts.delete(groupKey);
   state.collapsedGroupKeys.delete(groupKey);
+  delete state.groupMetadata[groupKey];
   delete state.currentGroups[groupKey];
   delete state.visibleGroups[groupKey];
   state.groupLoadTasks.delete(groupKey);
@@ -713,7 +771,6 @@ function removeIndexedGroupKey(groupKey: string): void {
 function setIndexedGroups(nextKeys: string[]): void {
   state.indexedGroupKeys = nextKeys.slice();
   state.indexedGroupKeySet = new Set(nextKeys);
-  rebuildSortedIndexedGroupKeys();
   for (const key of Object.keys(state.currentGroups)) {
     if (!state.indexedGroupKeySet.has(key)) delete state.currentGroups[key];
   }
@@ -729,6 +786,8 @@ function setIndexedGroups(nextKeys: string[]): void {
   for (const key of state.collapsedGroupKeys.keys()) {
     if (!state.indexedGroupKeySet.has(key)) state.collapsedGroupKeys.delete(key);
   }
+  pruneGroupMetadataToIndexedKeys();
+  rebuildSortedIndexedGroupKeys();
 }
 
 /** Updates the in-memory group data after a group load or mutation and triggers a re-render. */
@@ -742,10 +801,11 @@ function applyLoadedGroup(groupKey: string, tabs: SavedTab[]): void {
   scheduleRenderGroups();
 }
 
-/** Replaces all in-memory groups at once (used after full imports). */
-function applyFullGroups(nextGroups: SavedTabGroups): void {
+/** Replaces all in-memory groups at once (used after full imports/restores). */
+function applyFullGroups(nextGroups: SavedTabGroups, nextMetadata?: SavedTabGroupMetadata): void {
   const keys = Object.keys(nextGroups);
   setIndexedGroups(keys);
+  if (nextMetadata) setGroupMetadata(nextMetadata);
   state.currentGroups = cloneGroups(nextGroups);
   scheduleRenderGroups();
 }
@@ -946,6 +1006,19 @@ function applyGroupCollapsedDomState(groupKey: string): void {
   view.collapseButton.setAttribute('title', collapseLabel);
 }
 
+/** Applies pinned visuals and accessible labels for one group card. */
+function applyGroupPinnedDomState(groupKey: string): void {
+  const view = groupViews.get(groupKey);
+  if (!view) return;
+  const pinned = isGroupPinned(groupKey);
+  view.card.classList.toggle('is-pinned', pinned);
+  view.pinButton.classList.toggle('is-active', pinned);
+  view.pinButton.setAttribute('aria-pressed', String(pinned));
+  const pinLabel = pinned ? 'Unpin group' : 'Pin group';
+  view.pinButton.setAttribute('aria-label', pinLabel);
+  view.pinButton.setAttribute('title', pinLabel);
+}
+
 /**
  * Sets the collapsed state of a single group card.
  *
@@ -961,6 +1034,25 @@ function setGroupCollapsed(groupKey: string, collapsed: boolean): void {
   if (!collapsed && !isGroupLoaded(groupKey)) {
     runAsyncTask(ensureGroupLoaded(groupKey), `Failed to load group (${groupKey})`);
   }
+}
+
+/** Persists and applies a group pin toggle without reading the group's tab payload. */
+async function toggleGroupPinned(groupKey: string): Promise<void> {
+  const nextPinned = !isGroupPinned(groupKey);
+  const saved = await writeSavedGroupPinned(groupKey, nextPinned);
+  if (!saved) {
+    setStatus(nextPinned ? 'Failed to pin group.' : 'Failed to unpin group.');
+    return;
+  }
+
+  if (nextPinned) {
+    state.groupMetadata[groupKey] = { pinned: true };
+  } else {
+    delete state.groupMetadata[groupKey];
+  }
+  rebuildSortedIndexedGroupKeys();
+  scheduleRenderGroups();
+  setStatus(nextPinned ? 'Pinned group.' : 'Unpinned group.');
 }
 
 /**
@@ -1141,6 +1233,7 @@ function renderGroups(): void {
 
   // Sync per-card visual state from the explicit collapse-state set.
   for (const entry of entries) {
+    applyGroupPinnedDomState(entry.groupKey);
     applyGroupCollapsedDomState(entry.groupKey);
   }
 
@@ -1164,8 +1257,9 @@ async function refreshList(changedGroupKeys?: string[]): Promise<void> {
       state.groupLoadTasks.delete(groupKey);
     }
   }
-  const index = await readSavedGroupsIndex();
+  const [index, groupMetadata] = await Promise.all([readSavedGroupsIndex(), readSavedGroupMetadata()]);
   setIndexedGroups(index);
+  setGroupMetadata(groupMetadata);
   cancelScheduledRenderGroups();
   renderGroups();
   if (state.activeSearchTerm) {
@@ -1192,6 +1286,11 @@ function handleGroupAction(event: Event): void {
   const groupKey = card?.dataset.groupKey;
 
   switch (action) {
+    case 'toggle-pin': {
+      if (!groupKey) return;
+      runAsyncTask(toggleGroupPinned(groupKey), 'Failed to toggle group pin');
+      break;
+    }
     case 'toggle-collapse': {
       if (!card || !groupKey) return;
       const isCollapsed = card.classList.contains('is-collapsed');
@@ -1461,13 +1560,14 @@ async function handleDrop(targetGroupKey: string): Promise<void> {
   setStatus('Moved 1 tab.');
 }
 
-/** Serializes all saved tabs to JSON, copies to clipboard, and downloads a backup file. */
+/** Serializes saved tab groups plus metadata, then copies and downloads the backup JSON. */
 async function exportJson(): Promise<void> {
   if (!jsonAreaEl) return;
   const savedGroups = areAllIndexedGroupsLoaded() ? cloneGroups(state.currentGroups) : await readSavedGroups();
+  const groupMetadata = filterSavedGroupMetadataForKeys(await readSavedGroupMetadata(), Object.keys(savedGroups));
   const groupCount = Object.keys(savedGroups).length;
   const total = countTotalTabs(savedGroups);
-  jsonAreaEl.value = JSON.stringify({ savedTabs: savedGroups }, null, 2);
+  jsonAreaEl.value = JSON.stringify({ savedTabs: savedGroups, groupMetadata }, null, 2);
 
   let copied = false;
   try {
@@ -1513,24 +1613,29 @@ async function importJsonText(text: string, mode: 'append' | 'replace'): Promise
     const parsed = JSON.parse(text);
     const windowId = await getCurrentWindowId();
     const fallbackKey = createCondenseGroupKey(windowId);
-    const normalized = normalizeImportedGroups(parsed, fallbackKey);
+    const normalized = normalizeImportedPayload(parsed, fallbackKey);
     if (!normalized) {
       setStatus('Import failed. JSON structure not recognized. Paste a NuffTabs export and try again.');
       return;
     }
-    const existing = mode === 'replace' ? {} : await readSavedGroups();
+    const existing: SavedTabGroups = mode === 'replace' ? {} : await readSavedGroups();
+    const existingMetadata: SavedTabGroupMetadata = mode === 'replace' ? {} : await readSavedGroupMetadata();
     const nextGroups =
       mode === 'replace'
-        ? mergeGroups({}, normalized, settings.duplicateTabsPolicy)
-        : mergeGroups(existing, normalized, settings.duplicateTabsPolicy);
+        ? mergeGroups({}, normalized.groups, settings.duplicateTabsPolicy)
+        : mergeGroups(existing, normalized.groups, settings.duplicateTabsPolicy);
+    const nextMetadata =
+      mode === 'replace'
+        ? filterSavedGroupMetadataForKeys(normalized.groupMetadata, Object.keys(nextGroups))
+        : mergeGroupMetadata(existingMetadata, normalized.groupMetadata, nextGroups);
     const importedCount = countTotalTabs(nextGroups) - countTotalTabs(existing);
-    const saved = await writeSavedGroups(nextGroups);
+    const saved = await writeSavedGroups(nextGroups, nextMetadata);
     if (!saved) {
       setStatus("Import failed. Couldn't save tabs to extension storage.");
       await refreshList();
       return;
     }
-    applyFullGroups(nextGroups);
+    applyFullGroups(nextGroups, nextMetadata);
     setTabCount(countTotalTabs(nextGroups));
     setStatus(`Successfully imported ${importedCount} tab${importedCount === 1 ? '' : 's'}.`);
   } catch (error) {
@@ -1701,7 +1806,8 @@ async function init(): Promise<void> {
     const changeKeys = Object.keys(changes);
     const hasSavedTabsChange =
       Boolean(changes[STORAGE_KEYS.savedTabsIndex]) ||
-      changeKeys.some((key) => isSavedGroupStorageKey(key));
+      Boolean(changes[STORAGE_KEYS.savedTabGroupMetadata]) ||
+      changeKeys.some((key) => isSavedGroupStorageKey(key) || isSavedGroupMetadataStorageKey(key));
     if (!hasSavedTabsChange) return;
     const changedGroupKeys = changeKeys
       .filter((key) => isSavedGroupStorageKey(key))

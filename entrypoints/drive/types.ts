@@ -2,7 +2,7 @@
  * Shared Drive-backup types and constants used by backup orchestration,
  * Drive API adapters, and options/auth UI code.
  */
-import type { SavedTabGroups } from "../shared/storage";
+import type { SavedTabGroupMetadata, SavedTabGroups } from "../shared/storage";
 import {
 	createNufftabsBackupFileName,
 	extractTabGroupCountFromBackupFileName,
@@ -50,11 +50,13 @@ export type SerializedBackupPayload = {
 	version: number;
 	timestamp: number;
 	/**
-	 * Drive backups intentionally include only saved tab groups.
+	 * Drive backups intentionally include saved tab groups and portable metadata only.
 	 * Settings must remain sourced from extension storage, so Drive restore never
 	 * overwrites per-install preferences with values captured elsewhere.
 	 */
 	savedTabs: SavedTabGroups;
+	/** Optional group metadata, currently used to preserve pinned group state. */
+	groupMetadata?: SavedTabGroupMetadata;
 };
 
 /** Minimal Drive file fields we need for listing backup files. */
