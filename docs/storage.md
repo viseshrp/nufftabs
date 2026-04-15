@@ -28,7 +28,14 @@ savedTabs:<groupKey>: SavedTab[]
 Each group is stored under its own key. This prevents large rewrites and allows
 single-group updates.
 
-### 3) Settings
+### 3) Group metadata
+```
+savedTabGroupMetadata: Record<string, { pinned: true }>
+```
+This lightweight map stores per-group flags such as pinned state. Missing group
+keys are treated as unpinned, and writes prune entries for deleted groups.
+
+### 4) Settings
 ```
 settings: {
   excludePinned: boolean;
@@ -40,7 +47,7 @@ settings: {
 ```
 Settings are stored locally (not sync) for simplicity and to avoid conflicts.
 
-### 4) Optional Drive backup metadata
+### 5) Optional Drive backup metadata
 ```
 driveInstallId: string
 driveBackupIndex: {
@@ -70,6 +77,9 @@ savedTabs:123-1700000000000-uuid-a: [
 savedTabs:456-1700000001000-uuid-b: [
   { "id": "uuid-3", "url": "https://openai.com", "title": "OpenAI", "savedAt": 1737860100000 }
 ]
+savedTabGroupMetadata: {
+  "123-1700000000000-uuid-a": { "pinned": true }
+}
 settings: { "excludePinned": true, "restoreBatchSize": 100, "discardRestoredTabs": false, "duplicateTabsPolicy": "allow", "theme": "os" }
 driveInstallId: "0f8fad5b-d9cb-469f-a165-70867728950e"
 driveRetentionCount: 10
@@ -122,6 +132,7 @@ The extension uses two read patterns:
 
 1. **Index-first UI pass (list page)**
    - Read `savedTabsIndex`.
+   - Read `savedTabGroupMetadata` for pinned sorting and pin button state.
    - Render group cards/placeholders from keys.
    - Read `savedTabs:<groupKey>` on demand (viewport/search/expand).
 2. **Full-read pass (imports/exports/total count refresh)**
@@ -140,11 +151,13 @@ The extension uses two read patterns:
 - If `tabs.length === 0`:
   - Remove `savedTabs:<groupKey>`.
   - Remove `groupKey` from `savedTabsIndex`.
+  - Remove `groupKey` from `savedTabGroupMetadata`.
 
 ### Write all groups
-`writeSavedGroups(savedTabs)`:
+`writeSavedGroups(savedTabs, groupMetadata?)`:
 - Rebuild `savedTabsIndex` from the object keys.
 - Write each `savedTabs:<groupKey>` entry.
+- Write pruned `savedTabGroupMetadata` for active groups only.
 - Remove entries for groups that no longer exist.
 
 This is used for bulk imports and replacement flows.

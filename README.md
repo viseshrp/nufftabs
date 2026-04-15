@@ -7,6 +7,7 @@ nufftabs is a minimal Chrome (MV3) extension to condense all tabs from the curre
 ## Core features
 - Condense tabs from the current window (optionally excluding pinned tabs).
 - List UI grouped by condense action, with per-group restore all/delete all plus per-tab restore/delete.
+- Pin saved tab groups so important groups stay above unpinned groups.
 - Dynamic search in the fixed top bar filters tabs by title/URL.
 - Drag-and-drop between groups to move a saved tab.
 - Index-first lazy loading: group keys load first, group payloads load on demand.
@@ -30,7 +31,7 @@ nufftabs is a minimal Chrome (MV3) extension to condense all tabs from the curre
 
 ### List page
 - Unlisted page at `/nufftabs.html`.
-- Reads `savedTabsIndex` first, then loads group payloads on demand.
+- Reads `savedTabsIndex` and lightweight group metadata first, then loads group payloads on demand.
 - Renders saved tab groups from `chrome.storage.local` and keeps the header count based on total saved tabs.
 - Filters visible rows and groups from the top app-bar search input.
 - Refreshes on storage changes and when the tab becomes visible.
@@ -76,7 +77,8 @@ tradeoffs. These are documented in code comments, but summarized here for mainta
 
 ### Developer notes
 - **Storage schema:** saved tabs are stored per group under `savedTabs:<groupKey>` with a
-  `savedTabsIndex` array listing active group keys. This avoids full-blob rewrites.
+  `savedTabsIndex` array listing active group keys. Pinned group state is stored separately
+  in `savedTabGroupMetadata` so pin toggles do not rewrite tab payloads. This avoids full-blob rewrites.
 - **Data shapes:** `SavedTab` requires a UUID `id`, non-empty `url`, `title`, and `savedAt`
   epoch ms. Settings are `{ excludePinned, restoreBatchSize, discardRestoredTabs, duplicateTabsPolicy, theme }`.
 - **Restore chunking:** `restoreBatchSize` controls how many tabs open per window during
@@ -237,7 +239,7 @@ not match the OAuth client's configured Chrome Extension ID.
 
 ## Permissions
 - `tabs`: required to query, create, update, close, and discard tabs/windows.
-- `storage`: required to persist `savedTabsIndex`, `savedTabs:<groupKey>`, and settings in `chrome.storage.local`.
+- `storage`: required to persist `savedTabsIndex`, `savedTabs:<groupKey>`, `savedTabGroupMetadata`, and settings in `chrome.storage.local`.
 - `identity`: required to acquire OAuth tokens for optional Google Drive backup actions.
 - `https://www.googleapis.com/` host permission: required to call Google Drive REST APIs for manual backup/restore.
 
@@ -253,7 +255,7 @@ not match the OAuth client's configured Chrome Extension ID.
 If any list tab exists, nufftabs reuses the most recently active one instead of creating duplicates.
 
 **Where is data stored?**  
-In `chrome.storage.local` under `savedTabsIndex`, `savedTabs:<groupKey>`, and `settings`.
+In `chrome.storage.local` under `savedTabsIndex`, `savedTabs:<groupKey>`, `savedTabGroupMetadata`, and `settings`.
 
 **Why are pinned tabs excluded by default?**  
 It’s a safety default so pinned tabs are not closed unless you turn the setting off.

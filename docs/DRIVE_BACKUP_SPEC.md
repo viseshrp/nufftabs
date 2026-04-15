@@ -33,10 +33,11 @@ Backup JSON shape:
 {
   "version": 1,
   "timestamp": 1700000000000,
-  "savedTabs": { "groupKey": [{ "id": "...", "url": "...", "title": "...", "savedAt": 1700000000000 }] }
+  "savedTabs": { "groupKey": [{ "id": "...", "url": "...", "title": "...", "savedAt": 1700000000000 }] },
+  "groupMetadata": { "groupKey": { "pinned": true } }
 }
 ```
-The backup file intentionally excludes `installId` and `settings` so a single exported backup can be restored on any install without overwriting local preferences.
+The backup file intentionally excludes `installId` and `settings` so a single exported backup can be restored on any install without overwriting local preferences. `groupMetadata` is portable saved-list state, currently used to preserve pinned tab groups.
 
 ## Implementation boundaries
 - Drive logic is isolated under `entrypoints/drive/`.
