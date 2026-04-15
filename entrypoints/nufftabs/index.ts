@@ -679,19 +679,6 @@ function isGroupPinned(groupKey: string): boolean {
   return state.groupMetadata[groupKey]?.pinned === true;
 }
 
-/**
- * Sorts pinned groups before unpinned groups, then keeps the existing newest-first order.
- * The tie-breaker makes equal timestamps deterministic without scanning tab payloads.
- */
-function compareGroupKeys(a: string, b: string): number {
-  const aPinned = isGroupPinned(a);
-  const bPinned = isGroupPinned(b);
-  if (aPinned !== bPinned) return aPinned ? -1 : 1;
-
-  const createdDiff = (parseGroupCreationTime(b) ?? 0) - (parseGroupCreationTime(a) ?? 0);
-  return createdDiff !== 0 ? createdDiff : a.localeCompare(b);
-}
-
 /** Trims and lowercases a search query for case-insensitive matching. */
 function normalizeSearchTerm(value: string): string {
   return value.trim().toLowerCase();
@@ -724,9 +711,23 @@ function getSortedGroupKeys(): string[] {
   return state.sortedIndexedGroupKeys.slice();
 }
 
-/** Rebuilds the cached pinned-first/newest-first key order from `indexedGroupKeys`. */
+/**
+ * Rebuilds the cached pinned-first/newest-first key order from `indexedGroupKeys`.
+ * Timestamps and pin flags are pre-computed once (O(N)) so the sort comparator is O(1).
+ */
 function rebuildSortedIndexedGroupKeys(): void {
-  state.sortedIndexedGroupKeys = state.indexedGroupKeys.slice().sort(compareGroupKeys);
+  type KeyMeta = { key: string; pinned: boolean; createdAt: number };
+  const keysWithMeta: KeyMeta[] = state.indexedGroupKeys.map((key) => ({
+    key,
+    pinned: isGroupPinned(key),
+    createdAt: parseGroupCreationTime(key) ?? 0,
+  }));
+  keysWithMeta.sort((a, b) => {
+    if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
+    const diff = b.createdAt - a.createdAt;
+    return diff !== 0 ? diff : a.key.localeCompare(b.key);
+  });
+  state.sortedIndexedGroupKeys = keysWithMeta.map(({ key }) => key);
 }
 
 /** Prunes state metadata to the current index so deleted groups cannot remain pinned. */
