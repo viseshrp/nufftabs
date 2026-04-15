@@ -209,8 +209,9 @@ button {
 }
 
 .icon-button svg {
-  width: 24px;
-  height: 24px;
+  /* Keep the 48px button target while making the visible glyph roughly 15% smaller. */
+  width: 20.4px;
+  height: 20.4px;
   fill: currentColor;
 }
 
