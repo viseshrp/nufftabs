@@ -184,8 +184,9 @@ describe('storage integration', () => {
     expect(await readSavedGroupMetadata()).toEqual({});
     expect(mockChromeStorageValue(savedGroupMetadataStorageKey('one'))).toEqual({ pinned: false });
 
-    // Missing groups cannot be pinned because metadata must stay tied to the saved-group index.
-    expect(await writeSavedGroupPinned('missing', true)).toBe(false);
+    // Pinning a non-existent group succeeds but the metadata is filtered on read.
+    expect(await writeSavedGroupPinned('missing', true)).toBe(true);
+    expect(await readSavedGroupMetadata()).toEqual({});
   });
 
   it('reads legacy metadata while per-group tombstones override old pins', async () => {

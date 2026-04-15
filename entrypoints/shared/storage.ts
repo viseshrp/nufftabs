@@ -469,9 +469,11 @@ export async function appendSavedGroup(groupKey: string, tabs: SavedTab[]): Prom
 /** Updates one group's pinned flag without loading or rewriting that group's tab payload. */
 export async function writeSavedGroupPinned(groupKey: string, pinned: boolean): Promise<boolean> {
   try {
-    const index = await readSavedGroupsIndex();
-    if (!index.includes(groupKey)) return false;
-
+    // Write directly to the per-group metadata key without a preceding index read.
+    // Each group owns an isolated key so concurrent calls cannot corrupt each other's
+    // state, and chrome.storage.local.set is atomic for a single key.  Orphaned metadata
+    // for a deleted group is harmless: readSavedGroupMetadata filters by the current
+    // index, and group-deletion paths already remove per-group metadata keys.
     await chrome.storage.local.set({
       [savedGroupMetadataStorageKey(groupKey)]: pinned ? { pinned: true } : { pinned: false },
     });
