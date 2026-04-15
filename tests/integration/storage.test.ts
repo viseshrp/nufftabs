@@ -1,6 +1,7 @@
 import { describe, expect, it, beforeEach } from 'vitest';
 import {
   DEFAULT_SETTINGS,
+  STORAGE_KEYS,
   appendSavedGroup,
   readSavedGroup,
   readSavedGroupMetadata,
@@ -77,6 +78,46 @@ describe('storage integration', () => {
 
     expect(await writeSavedGroups({})).toBe(true);
     expect(await readSavedGroupMetadata()).toEqual({});
+  });
+
+  it('handles group pin metadata edge cases safely', async () => {
+    const payload: SavedTabGroups = {
+      one: [makeTab('1')],
+      two: [makeTab('2')],
+    };
+    expect(await writeSavedGroups(payload, { one: { pinned: true } })).toBe(true);
+
+    // Unpinning deletes the compact metadata entry instead of storing explicit false values.
+    expect(await writeSavedGroupPinned('one', false)).toBe(true);
+    expect(await readSavedGroupMetadata()).toEqual({});
+
+    // Missing groups cannot be pinned because metadata must stay tied to the saved-group index.
+    expect(await writeSavedGroupPinned('missing', true)).toBe(false);
+  });
+
+  it('returns empty group metadata when metadata reads fail', async () => {
+    const mock = createMockChrome();
+    setMockChrome(mock.chrome);
+    mock.chrome.storage.local.get = async () => {
+      throw new Error('boom');
+    };
+
+    expect(await readSavedGroupMetadata()).toEqual({});
+  });
+
+  it('returns false when writing group pin metadata fails', async () => {
+    const mock = createMockChrome({
+      initialStorage: {
+        [STORAGE_KEYS.savedTabsIndex]: ['one'],
+        [STORAGE_KEYS.savedTabGroupMetadata]: { one: { pinned: true } },
+      },
+    });
+    setMockChrome(mock.chrome);
+    mock.chrome.storage.local.set = async () => {
+      throw new Error('boom');
+    };
+
+    expect(await writeSavedGroupPinned('one', false)).toBe(false);
   });
 
   it('appends groups without clobbering existing ones', async () => {
