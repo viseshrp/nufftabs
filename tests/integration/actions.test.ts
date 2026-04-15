@@ -7,12 +7,23 @@ import { createMockChrome, setMockChrome } from '../helpers/mock_chrome';
 
 const listHtml = readFileSync(join(process.cwd(), 'entrypoints', 'nufftabs', 'index.html'), 'utf-8');
 
-async function setupListPage(groups: Record<string, unknown[]>) {
+async function waitForCondition(predicate: () => boolean, cycles = 80): Promise<void> {
+  for (let index = 0; index < cycles; index += 1) {
+    if (predicate()) return;
+    await Promise.resolve();
+  }
+  throw new Error('Condition did not become true in expected microtask cycles.');
+}
+
+async function setupListPage(groups: Record<string, unknown[]>, groupMetadata: Record<string, unknown> = {}) {
   vi.resetModules();
   document.documentElement.innerHTML = listHtml;
 
   const savedTabsIndex = Object.keys(groups);
-  const storagePayload: Record<string, unknown> = { [STORAGE_KEYS.savedTabsIndex]: savedTabsIndex };
+  const storagePayload: Record<string, unknown> = {
+    [STORAGE_KEYS.savedTabsIndex]: savedTabsIndex,
+    [STORAGE_KEYS.savedTabGroupMetadata]: groupMetadata,
+  };
   for (const [key, tabs] of Object.entries(groups)) {
     storagePayload[`savedTabs:${key}`] = tabs;
   }
@@ -96,6 +107,39 @@ describe('list page actions', () => {
     expect(status?.textContent).toContain('Merge duplicates canceled.');
   });
 
+  it('pins a group, persists metadata, and sorts it above newer unpinned groups', async () => {
+    const older = '1-1000-older';
+    const newer = '1-2000-newer';
+    const { mock } = await setupListPage({
+      [older]: [{ id: 'old', url: 'https://old.example', title: 'Old', savedAt: 10 }],
+      [newer]: [{ id: 'new', url: 'https://new.example', title: 'New', savedAt: 20 }],
+    });
+    window.requestAnimationFrame = (callback: FrameRequestCallback) => {
+      callback(1);
+      return 1;
+    };
+
+    expect(document.querySelector<HTMLElement>('.group-card')?.dataset.groupKey).toBe(newer);
+
+    const olderPin = document.querySelector<HTMLButtonElement>(`[data-group-key="${older}"] button[data-action="toggle-pin"]`);
+    olderPin?.click();
+
+    await waitForCondition(() => {
+      const metadata = mock.storageData[STORAGE_KEYS.savedTabGroupMetadata] as
+        | Record<string, { pinned?: boolean }>
+        | undefined;
+      return metadata?.[older]?.pinned === true && document.querySelector<HTMLElement>('.group-card')?.dataset.groupKey === older;
+    });
+
+    const metadata = mock.storageData[STORAGE_KEYS.savedTabGroupMetadata] as Record<string, { pinned?: boolean }>;
+    expect(metadata[older]?.pinned).toBe(true);
+    expect(document.querySelector<HTMLElement>(`[data-group-key="${older}"]`)?.classList.contains('is-pinned')).toBe(true);
+
+    const pinnedButton = document.querySelector<HTMLButtonElement>(`[data-group-key="${older}"] button[data-action="toggle-pin"]`);
+    expect(pinnedButton?.getAttribute('aria-pressed')).toBe('true');
+    expect(pinnedButton?.getAttribute('aria-label')).toBe('Unpin group');
+  });
+
   it('handles merge duplicate write failures safely', async () => {
     const { mock } = await setupListPage({
       '1-1700000000000-old': [{ id: 'old', url: 'https://dup.com', title: 'Old Duplicate', savedAt: 1 }],
@@ -158,6 +202,7 @@ describe('list page actions', () => {
     const exportJson = document.querySelector<HTMLButtonElement>('#exportJson');
     exportJson?.click();
     const jsonArea = document.querySelector<HTMLTextAreaElement>('#jsonArea');
+    await waitForCondition(() => jsonArea?.value.includes('savedTabs') === true);
     expect(jsonArea?.value).toContain('savedTabs');
 
     if (jsonArea) {
@@ -180,6 +225,51 @@ describe('list page actions', () => {
 
     const status = document.querySelector<HTMLDivElement>('#snackbar');
     expect(status?.textContent).toContain('skipped');
+  });
+
+  it('exports and imports pinned group metadata with JSON backups', async () => {
+    const exported = '1-1000-exported';
+    const imported = '1-2000-imported';
+    const { mock } = await setupListPage(
+      {
+        [exported]: [{ id: 'a', url: 'https://exported.example', title: 'Exported', savedAt: 1 }],
+      },
+      { [exported]: { pinned: true } },
+    );
+
+    const toggleIo = document.querySelector<HTMLButtonElement>('#toggleIo');
+    toggleIo?.click();
+
+    const exportJson = document.querySelector<HTMLButtonElement>('#exportJson');
+    exportJson?.click();
+    const jsonArea = document.querySelector<HTMLTextAreaElement>('#jsonArea');
+    await waitForCondition(() => jsonArea?.value.includes('"groupMetadata"') === true);
+    expect(jsonArea?.value).toContain('"groupMetadata"');
+    expect(jsonArea?.value).toContain(exported);
+
+    if (jsonArea) {
+      jsonArea.value = JSON.stringify({
+        savedTabs: {
+          [imported]: [{ id: 'imp', url: 'https://imported.example', title: 'Imported', savedAt: 2 }],
+        },
+        groupMetadata: {
+          [imported]: { pinned: true },
+        },
+      });
+    }
+    const importJson = document.querySelector<HTMLButtonElement>('button#importJson');
+    importJson?.click();
+
+    await waitForCondition(() => {
+      const metadata = mock.storageData[STORAGE_KEYS.savedTabGroupMetadata] as
+        | Record<string, { pinned?: boolean }>
+        | undefined;
+      return metadata?.[imported]?.pinned === true;
+    });
+
+    const metadata = mock.storageData[STORAGE_KEYS.savedTabGroupMetadata] as Record<string, { pinned?: boolean }>;
+    expect(metadata[exported]?.pinned).toBe(true);
+    expect(metadata[imported]?.pinned).toBe(true);
   });
 
   it('preserves existing collapse states and expands new groups on append import', async () => {

@@ -232,6 +232,11 @@ button {
   pointer-events: none;
 }
 
+.icon-button.pin-toggle.is-active {
+  background-color: var(--md-sys-color-secondary-container);
+  color: var(--md-sys-color-primary);
+}
+
 /* Empty State */
 .empty {
   padding: 64px 24px;
@@ -283,6 +288,15 @@ button {
 .group-card:hover {
   /* Only change elevation slightly, no color shift */
   box-shadow: var(--md-sys-elevation-2);
+}
+
+.group-card.is-pinned {
+  /* Inset marker avoids layout shift when pinning/unpinning a card. */
+  box-shadow: inset 4px 0 0 var(--md-sys-color-primary), var(--md-sys-elevation-1);
+}
+
+.group-card.is-pinned:hover {
+  box-shadow: inset 4px 0 0 var(--md-sys-color-primary), var(--md-sys-elevation-2);
 }
 
 .group-header {

@@ -61,6 +61,7 @@ describe('drive backup integration', () => {
         },
         [STORAGE_KEYS.savedTabsIndex]: ['g1'],
         'savedTabs:g1': [{ id: '1', url: 'https://example.com', title: 'Example', savedAt: 1 }],
+        [STORAGE_KEYS.savedTabGroupMetadata]: { g1: { pinned: true } },
         [DRIVE_STORAGE_KEYS.installId]: 'install-1',
         [DRIVE_STORAGE_KEYS.driveBackupIndex]: {
           installId: 'install-1',
@@ -156,6 +157,9 @@ describe('drive backup integration', () => {
       backups: Array<{ fileId: string }>;
     };
     expect(backupIndex.backups[0]?.fileId).toBe('new-file');
+    const uploadCall = fetchMock.mock.calls.find((call) => String(call[0]).includes('/upload/drive/v3/files'));
+    expect(String(uploadCall?.[1]?.body ?? '')).toContain('"groupMetadata"');
+    expect(String(uploadCall?.[1]?.body ?? '')).toContain('"pinned": true');
 
     const driveStatus = document.querySelector<HTMLDivElement>('#snackbar');
     await waitForCondition(() => {
@@ -215,6 +219,7 @@ describe('drive backup integration', () => {
         [STORAGE_KEYS.savedTabsIndex]: ['existing', 'shared'],
         'savedTabs:existing': [{ id: '1', url: 'https://existing.com', title: 'Existing', savedAt: 1 }],
         'savedTabs:shared': [{ id: '2', url: 'https://shared-existing.com', title: 'Shared Existing', savedAt: 2 }],
+        [STORAGE_KEYS.savedTabGroupMetadata]: { existing: { pinned: true } },
         [DRIVE_STORAGE_KEYS.installId]: 'install-1',
       },
     });
@@ -261,6 +266,10 @@ describe('drive backup integration', () => {
               ],
               restored: [{ id: '5', url: 'https://restored.com', title: 'Restored', savedAt: 5 }],
             },
+            groupMetadata: {
+              restored: { pinned: true },
+              shared: { pinned: true },
+            },
           }),
           {
             status: 200,
@@ -295,6 +304,11 @@ describe('drive backup integration', () => {
 
     const savedIndex = mock.storageData[STORAGE_KEYS.savedTabsIndex] as string[];
     expect(savedIndex).toEqual(['existing', 'shared', 'restored']);
+    expect(mock.storageData[STORAGE_KEYS.savedTabGroupMetadata]).toEqual({
+      existing: { pinned: true },
+      shared: { pinned: true },
+      restored: { pinned: true },
+    });
 
     const existingGroup = mock.storageData['savedTabs:existing'] as Array<{ url: string }>;
     expect(existingGroup).toHaveLength(1);

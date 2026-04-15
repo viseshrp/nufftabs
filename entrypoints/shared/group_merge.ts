@@ -4,7 +4,12 @@
  * the same duplicate-handling behavior without creating cross-layer imports.
  */
 import { appendTabsByDuplicatePolicy, collectSavedTabUrls } from './duplicates';
-import type { DuplicateTabsPolicy, SavedTabGroups } from './storage';
+import {
+  filterSavedGroupMetadataForKeys,
+  type DuplicateTabsPolicy,
+  type SavedTabGroupMetadata,
+  type SavedTabGroups,
+} from './storage';
 
 /** Shallow-copies a groups map so callers can replace arrays without mutating the original. */
 export function cloneGroups(groups: SavedTabGroups): SavedTabGroups {
@@ -37,4 +42,20 @@ export function mergeGroups(
   }
 
   return merged;
+}
+
+/**
+ * Merges incoming group metadata into existing metadata for the final group set.
+ * Incoming pinned flags intentionally win so imported/backed-up pins are not lost.
+ */
+export function mergeGroupMetadata(
+  existing: SavedTabGroupMetadata,
+  incoming: SavedTabGroupMetadata,
+  groups: SavedTabGroups,
+): SavedTabGroupMetadata {
+  const merged: SavedTabGroupMetadata = { ...existing };
+  for (const [groupKey, groupMeta] of Object.entries(incoming)) {
+    if (groupMeta.pinned) merged[groupKey] = { pinned: true };
+  }
+  return filterSavedGroupMetadataForKeys(merged, Object.keys(groups));
 }

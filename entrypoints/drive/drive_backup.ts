@@ -4,12 +4,16 @@
  */
 import {
 	normalizeSavedGroups,
+	normalizeSavedGroupMetadata,
+	readSavedGroupMetadata,
 	readSavedGroups,
 	readSettings,
 	writeSavedGroups,
+	filterSavedGroupMetadataForKeys,
+	type SavedTabGroupMetadata,
 	type SavedTabGroups,
 } from "../shared/storage";
-import { mergeGroups } from "../shared/group_merge";
+import { mergeGroupMetadata, mergeGroups } from "../shared/group_merge";
 import { logExtensionError, runWithConcurrency } from "../shared/utils";
 import {
 	deleteFile,
@@ -103,17 +107,23 @@ export async function getOrCreateInstallId(): Promise<string> {
 	return created;
 }
 
-/** Creates a serializable backup payload from current saved groups only. */
+/** Creates a serializable backup payload from saved groups and their portable metadata. */
 export function serializeBackup(
 	groups: SavedTabGroups,
 	timestamp = Date.now(),
+	groupMetadata: SavedTabGroupMetadata = {},
 ): SerializedBackupPayload {
+	const filteredMetadata = filterSavedGroupMetadataForKeys(
+		groupMetadata,
+		Object.keys(groups),
+	);
 	return {
 		version: BACKUP_VERSION,
 		timestamp,
 		// Keep Drive backups portable and scoped to tab data only. Settings stay
 		// in extension storage so restores never overwrite install-specific prefs.
 		savedTabs: groups,
+		groupMetadata: filteredMetadata,
 	};
 }
 
@@ -325,13 +335,19 @@ export async function performBackup(
 	deps: DriveApiDeps = defaultDeps,
 	preloaded?: {
 		groups?: SavedTabGroups;
+		groupMetadata?: SavedTabGroupMetadata;
 	},
 ): Promise<DriveBackupEntry[]> {
 	const installId = await getOrCreateInstallId();
-	const groups = preloaded?.groups ?? (await readSavedGroups());
+	const [groups, groupMetadata] = preloaded?.groups
+		? [
+				preloaded.groups,
+				preloaded.groupMetadata ?? (await readSavedGroupMetadata()),
+			]
+		: await Promise.all([readSavedGroups(), readSavedGroupMetadata()]);
 
 	const timestamp = Date.now();
-	const payload = serializeBackup(groups, timestamp);
+	const payload = serializeBackup(groups, timestamp, groupMetadata);
 	const content = JSON.stringify(payload, null, 2);
 
 	const installFolderId = await getInstallFolderId(installId, token, deps);
@@ -385,8 +401,17 @@ export async function restoreFromBackup(
 		throw new Error("Backup payload is not an object.");
 	}
 
-	const savedTabsRaw = (rawPayload as { savedTabs?: unknown }).savedTabs;
+	const payload = rawPayload as {
+		savedTabs?: unknown;
+		groupMetadata?: unknown;
+		savedTabGroupMetadata?: unknown;
+	};
+	const savedTabsRaw = payload.savedTabs;
 	const incomingGroups = normalizeSavedGroups(savedTabsRaw);
+	const incomingMetadata = filterSavedGroupMetadataForKeys(
+		normalizeSavedGroupMetadata(payload.groupMetadata ?? payload.savedTabGroupMetadata),
+		Object.keys(incomingGroups),
+	);
 	const restoreMode = options.mode ?? "replace";
 	/**
 	 * Merge restore shares one duplicate-URL index across the entire operation.
@@ -394,9 +419,11 @@ export async function restoreFromBackup(
 	 * scanning previously merged groups for every incoming tab.
 	 */
 	let groups = incomingGroups;
+	let groupMetadata = incomingMetadata;
 	if (restoreMode === "merge") {
-		const [existingGroups, currentSettings] = await Promise.all([
+		const [existingGroups, existingMetadata, currentSettings] = await Promise.all([
 			readSavedGroups(),
+			readSavedGroupMetadata(),
 			readSettings(),
 		]);
 		groups = mergeGroups(
@@ -404,9 +431,10 @@ export async function restoreFromBackup(
 			incomingGroups,
 			currentSettings.duplicateTabsPolicy,
 		);
+		groupMetadata = mergeGroupMetadata(existingMetadata, incomingMetadata, groups);
 	}
 
-	const savedGroups = await writeSavedGroups(groups);
+	const savedGroups = await writeSavedGroups(groups, groupMetadata);
 	if (!savedGroups) {
 		throw new Error("Failed to write restored tab groups to local storage.");
 	}
