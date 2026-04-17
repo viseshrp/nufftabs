@@ -1118,30 +1118,30 @@ function updateToggleCollapseAllButton(): void {
 
 /**
  * Applies the default collapse behavior on first render: collapses every group
- * except the first one in the sorted list (the most recent).
+ * except the first non-pinned one. Pinned groups are always collapsed initially.
  *
- * This keeps the page compact on initial load while still showing the newest
- * group's tabs immediately.
- *
- * @param sortedGroupKeys - Group keys already sorted newest-first.
+ * @param sortedGroupKeys - Group keys in sorted order (pinned-first, then newest-first).
  */
 function applyDefaultCollapse(sortedGroupKeys: string[]): void {
   state.initialCollapseApplied = true;
   state.collapsedGroupKeys.clear();
 
-  // Only one group (or none) — nothing to collapse.
-  if (sortedGroupKeys.length <= 1) return;
+  if (sortedGroupKeys.length === 0) return;
 
-  // Collapse every group except the first (most recent).
-  for (let i = 1; i < sortedGroupKeys.length; i++) {
-    const groupKey = sortedGroupKeys[i];
-    if (groupKey) {
+  // Collapse every group except the first non-pinned one.
+  let firstUnpinnedSeen = false;
+  for (const groupKey of sortedGroupKeys) {
+    if (!groupKey) continue;
+    if (!isGroupPinned(groupKey) && !firstUnpinnedSeen) {
+      firstUnpinnedSeen = true;
+      // Leave this group expanded (don't add to collapsedGroupKeys).
+    } else {
       state.collapsedGroupKeys.add(groupKey);
     }
   }
 
-  // Derivation: not *all* groups are collapsed because the first one stays open.
-  state.allGroupsCollapsed = false;
+  // Derivation: not *all* groups are collapsed if any non-pinned group exists.
+  state.allGroupsCollapsed = !firstUnpinnedSeen;
 }
 
 /** Diffs current state against the DOM, reconciles group cards, and triggers lazy loading. */
