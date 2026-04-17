@@ -1126,8 +1126,7 @@ function applyDefaultCollapse(sortedGroupKeys: string[]): void {
   state.initialCollapseApplied = true;
   state.collapsedGroupKeys.clear();
 
-  // Only one group (or none) — nothing to collapse.
-  if (sortedGroupKeys.length <= 1) return;
+  if (sortedGroupKeys.length === 0) return;
 
   // Collapse every group except the first non-pinned one.
   let firstUnpinnedSeen = false;
